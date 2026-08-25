@@ -135,18 +135,36 @@ echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 
 echo "✍️  Signing app bundle..."
 
+# Prefer a stable local signing identity ("Retrace Dev Local") over an ad-hoc
+# signature: ad-hoc signatures are content-derived, so every rebuild gets a
+# different code identity and macOS re-requires Screen Recording/Accessibility
+# permission on every single dev build. A stable identity keeps that identity
+# constant across rebuilds so TCC grants persist. This identity is local to
+# each developer's machine (self-signed cert in the login keychain, trusted
+# for the Code Signing policy) - it won't exist on a fresh checkout or in CI,
+# so fall back to ad-hoc signing there rather than failing the build. See
+# local/docs for the one-time setup steps to create and trust the identity.
+SIGN_IDENTITY="-"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"Retrace Dev Local\""; then
+    SIGN_IDENTITY="Retrace Dev Local"
+else
+    echo "ℹ️  No trusted 'Retrace Dev Local' signing identity found; signing ad-hoc."
+    echo "   Permissions (Screen Recording/Accessibility) will need to be re-granted"
+    echo "   after every rebuild until that identity is set up. See local/docs."
+fi
+
 # Sign frameworks first (required before signing the app)
 for fw in "$APP_BUNDLE/Contents/Frameworks/"*.framework; do
-    [ -d "$fw" ] && codesign --force --sign - "$fw"
+    [ -d "$fw" ] && codesign --force --sign "$SIGN_IDENTITY" "$fw"
 done
 
 # Sign nested helper executables before the containing app.
 if [ -f "$APP_BUNDLE/Contents/Library/Helpers/RetraceCrashRecoveryHelper" ]; then
-    codesign --force --sign - "$APP_BUNDLE/Contents/Library/Helpers/RetraceCrashRecoveryHelper"
+    codesign --force --sign "$SIGN_IDENTITY" "$APP_BUNDLE/Contents/Library/Helpers/RetraceCrashRecoveryHelper"
 fi
 
-# Sign the app bundle with ad-hoc signature and entitlements
-codesign --force --deep --sign - --entitlements "UI/Retrace.entitlements" "$APP_BUNDLE"
+# Sign the app bundle with the resolved signing identity and entitlements
+codesign --force --deep --sign "$SIGN_IDENTITY" --entitlements "UI/Retrace.entitlements" "$APP_BUNDLE"
 
 echo "✅ Build complete!"
 echo ""
