@@ -671,6 +671,65 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
         }
     }
 
+    /// Hard ceiling on a single Vision text-recognition call. Vision's internal
+    /// detector queue occasionally wedges on a semaphore and never returns
+    /// (observed in production: `VNCRImageReaderDetector` blocked indefinitely
+    /// inside the private TextRecognition framework). Without a bound, the
+    /// worker that issued the call is lost forever, and because Vision serializes
+    /// concurrent requests through a shared capacity-limited queue, each such
+    /// loss eventually blocks every other OCR worker behind it too. 20s is
+    /// ~40x the <500ms performance target, so it only fires on a genuine hang.
+    private static let ocrRequestTimeoutSeconds: TimeInterval = 20
+
+    /// Runs `handler.perform([request])` off the calling (Swift concurrency
+    /// cooperative pool) thread and bounds how long the caller waits for it.
+    /// On timeout, `request.cancel()` is issued (Vision's supported mechanism
+    /// for aborting in-flight work) and the caller is freed immediately so the
+    /// worker can move on; the abandoned call keeps running to completion on
+    /// its own dedicated queue rather than continuing to occupy a cooperative
+    /// pool thread other async work across the app depends on.
+    private static func performWithWatchdog(
+        request: VNRecognizeTextRequest,
+        handler: VNImageRequestHandler,
+        timeoutSeconds: TimeInterval
+    ) throws {
+        let doneSemaphore = DispatchSemaphore(value: 0)
+        let resultLock = NSLock()
+        var performError: Error?
+
+        let watchdogQueue = DispatchQueue(label: "processing.ocr.vision_watchdog", qos: .utility)
+        watchdogQueue.async {
+            do {
+                try autoreleasepool {
+                    try handler.perform([request])
+                }
+            } catch {
+                resultLock.lock()
+                performError = error
+                resultLock.unlock()
+            }
+            doneSemaphore.signal()
+        }
+
+        guard doneSemaphore.wait(timeout: .now() + timeoutSeconds) == .success else {
+            request.cancel()
+            Log.warning(
+                "[VisionOCR] Request exceeded \(Int(timeoutSeconds))s and was cancelled; frame will be retried",
+                category: .processing
+            )
+            throw ProcessingError.ocrFailed(
+                underlying: "Vision OCR request timed out after \(Int(timeoutSeconds))s and was cancelled"
+            )
+        }
+
+        resultLock.lock()
+        let error = performError
+        resultLock.unlock()
+        if let error {
+            throw ProcessingError.ocrFailed(underlying: error.localizedDescription)
+        }
+    }
+
     private func performRecognition(
         on image: CGImage,
         outputWidth: Int,
@@ -728,11 +787,11 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
 
             let performBaselineFootprintBytes = postSetupFootprintBytes
 
-            do {
-                try handler.perform([request])
-            } catch {
-                throw ProcessingError.ocrFailed(underlying: error.localizedDescription)
-            }
+            try Self.performWithWatchdog(
+                request: request,
+                handler: handler,
+                timeoutSeconds: Self.ocrRequestTimeoutSeconds
+            )
 
             let postPerformFootprintBytes = VisionOCRMemoryLedger.currentFootprintBytes()
             let observations = request.results ?? []
