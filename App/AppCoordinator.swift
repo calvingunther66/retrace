@@ -918,6 +918,7 @@ public actor AppCoordinator {
         // Re-enqueue frames that were processing during crash
         if let queue = await services.processingQueue {
             try await queue.requeueCrashedFrames()
+            _ = try? await queue.pruneOrphanedQueueRows()
         }
 
         if result.sessionsRecovered > 0 {

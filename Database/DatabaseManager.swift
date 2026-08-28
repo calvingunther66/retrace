@@ -3963,18 +3963,23 @@ public actor DatabaseManager: DatabaseProtocol {
     // MARK: - Processing Queue Operations
 
     /// Enqueue a frame for OCR processing
-    /// Only enqueues frames with processingStatus = 0 (pending)
+    /// Only enqueues frames with processingStatus = 0 (pending), and only if
+    /// the frame isn't already sitting in the queue. Without the NOT EXISTS
+    /// guard, a second enqueue call for a still-pending frame (e.g. a startup
+    /// backfill scan racing a live capture enqueue) inserts a duplicate row;
+    /// once the first row is dequeued the duplicate can no longer join to a
+    /// processingStatus = 0 frame and sits orphaned in processing_queue forever.
     public func enqueueFrameForProcessing(frameID: Int64, priority: Int = 0) async throws {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")
         }
 
-        // Only enqueue if processingStatus = 0 (pending)
         let sql = """
             INSERT INTO processing_queue (frameId, enqueuedAt, priority, retryCount)
             SELECT ?, ?, ?, 0
             FROM frame
-            WHERE id = ? AND processingStatus = 0;
+            WHERE id = ? AND processingStatus = 0
+              AND NOT EXISTS (SELECT 1 FROM processing_queue WHERE frameId = ?);
         """
 
         var stmt: OpaquePointer?
@@ -3988,16 +3993,61 @@ public actor DatabaseManager: DatabaseProtocol {
         sqlite3_bind_double(stmt, 2, Date().timeIntervalSince1970)
         sqlite3_bind_int(stmt, 3, Int32(priority))
         sqlite3_bind_int64(stmt, 4, frameID)
+        sqlite3_bind_int64(stmt, 5, frameID)
 
         guard sqlite3_step(stmt) == SQLITE_DONE else {
             throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
         }
 
-        // Check if any row was actually inserted
-        let changes = sqlite3_changes(db)
-        if changes == 0 {
+        guard sqlite3_changes(db) == 0 else { return }
+
+        // No row inserted: either the frame is genuinely not pending, or it
+        // was already queued. Only the former is an error - re-enqueuing an
+        // already-queued frame is a harmless no-op, not a failure.
+        let statusSql = "SELECT processingStatus FROM frame WHERE id = ?;"
+        var statusStmt: OpaquePointer?
+        defer { sqlite3_finalize(statusStmt) }
+
+        guard sqlite3_prepare_v2(db, statusSql, -1, &statusStmt, nil) == SQLITE_OK,
+              sqlite3_step(statusStmt) == SQLITE_ROW else {
             throw DatabaseError.queryFailed(query: sql, underlying: "Frame \(frameID) not eligible for processing (processingStatus != 0)")
         }
+
+        if sqlite3_column_int(statusStmt, 0) != 0 {
+            throw DatabaseError.queryFailed(query: sql, underlying: "Frame \(frameID) not eligible for processing (processingStatus != 0)")
+        }
+    }
+
+    /// Delete `processing_queue` rows that can no longer join to a pending
+    /// (`processingStatus = 0`) frame. These are orphans left behind by
+    /// duplicate enqueue calls prior to the NOT EXISTS guard above, or by any
+    /// future bug that inserts more than one row per frame; `dequeueFrameForProcessing`
+    /// only ever deletes the single row it matched, so a duplicate silently
+    /// survives every dequeue and inflates queue-depth reporting forever.
+    /// Safe to run at any time - a `DELETE` here removes bookkeeping rows only,
+    /// never frame or OCR data.
+    @discardableResult
+    public func pruneOrphanedProcessingQueueRows() async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+
+        let sql = """
+            DELETE FROM processing_queue
+            WHERE frameId IN (
+                SELECT id FROM frame WHERE processingStatus != 0
+            );
+        """
+
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK,
+              sqlite3_step(stmt) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+
+        return Int(sqlite3_changes(db))
     }
 
     /// Dequeue the next frame for processing (highest priority, oldest first)
@@ -4106,12 +4156,24 @@ public actor DatabaseManager: DatabaseProtocol {
     }
 
     /// Get the current processing queue depth
+    ///
+    /// Joins against `frame.processingStatus = 0` rather than counting raw
+    /// `processing_queue` rows: duplicate enqueue calls for a frame that's
+    /// still pending leave an orphaned row once the frame is dequeued, and
+    /// that row never gets cleaned up (it can no longer join to a
+    /// `processingStatus = 0` frame once processing starts). A raw table
+    /// count reports those orphans as backlog forever.
     public func getProcessingQueueDepth() async throws -> Int {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")
         }
 
-        let sql = "SELECT COUNT(*) FROM processing_queue;"
+        let sql = """
+            SELECT COUNT(*)
+            FROM processing_queue pq
+            INNER JOIN frame f ON f.id = pq.frameId
+            WHERE f.processingStatus = 0;
+        """
         var stmt: OpaquePointer?
         defer { sqlite3_finalize(stmt) }
 

@@ -360,17 +360,10 @@ struct DashboardContentView: View {
             updateDashboardWindowTitle()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openDashboard)) { notification in
-            let target = notification.userInfo?["target"] as? String
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedView = target == "changelog" ? .changelog : .dashboard
-            }
-            updateDashboardWindowTitle()
+            handleOpenDashboard(notification: notification)
         }
         .onReceive(NotificationCenter.default.publisher(for: .dashboardShowSettings)) { _ in
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedView = .settings
-            }
-            updateDashboardWindowTitle()
+            handleDashboardShowSettings()
         }
         .onReceive(NotificationCenter.default.publisher(for: .colorThemeDidChange)) { _ in
             appearanceRefreshTick &+= 1
@@ -379,120 +372,191 @@ struct DashboardContentView: View {
             appearanceRefreshTick &+= 1
         }
         .onReceive(NotificationCenter.default.publisher(for: .toggleSettings)) { _ in
-            // Toggle: if on settings go to dashboard, otherwise go to settings
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedView = selectedView == .settings ? .dashboard : .settings
-            }
-            updateDashboardWindowTitle()
+            handleToggleSettings()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSettings)) { _ in
-            initialSettingsTab = nil
-            initialSettingsScrollTargetID = nil
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedView = .settings
-            }
-            DashboardWindowController.shared.show()
-            updateDashboardWindowTitle()
+            handleOpenSettings()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSettingsAppearance)) { _ in
-            initialSettingsTab = nil
-            initialSettingsScrollTargetID = nil
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedView = .settings
-            }
-            DashboardWindowController.shared.show()
-            // General tab contains Appearance settings - it's the default tab
-            updateDashboardWindowTitle()
+            handleOpenSettingsAppearance()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSettingsPower)) { _ in
-            initialSettingsTab = .power
-            initialSettingsScrollTargetID = nil
-            currentSettingsTabTitle = SettingsTab.power.rawValue
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedView = .settings
-            }
-            DashboardWindowController.shared.show()
-            updateDashboardWindowTitle()
+            handleOpenSettingsPower()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSettingsTags)) { _ in
-            initialSettingsTab = .tags
-            initialSettingsScrollTargetID = nil
-            currentSettingsTabTitle = SettingsTab.tags.rawValue
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedView = .settings
-            }
-            DashboardWindowController.shared.show()
-            updateDashboardWindowTitle()
+            handleOpenSettingsTags()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSettingsPauseReminderInterval)) { _ in
-            initialSettingsTab = .capture
-            initialSettingsScrollTargetID = SettingsView.pauseReminderIntervalTargetID
-            currentSettingsTabTitle = SettingsTab.capture.rawValue
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedView = .settings
-            }
-            DashboardWindowController.shared.show()
-            updateDashboardWindowTitle()
+            handleOpenSettingsPauseReminderInterval()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSettingsPowerOCRCard)) { _ in
-            initialSettingsTab = .power
-            initialSettingsScrollTargetID = SettingsView.powerOCRCardTargetID
-            currentSettingsTabTitle = SettingsTab.power.rawValue
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedView = .settings
-            }
-            DashboardWindowController.shared.show()
-            updateDashboardWindowTitle()
+            handleOpenSettingsPowerOCRCard()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSettingsPowerOCRPriority)) { _ in
-            initialSettingsTab = .power
-            initialSettingsScrollTargetID = SettingsView.powerOCRPriorityTargetID
-            currentSettingsTabTitle = SettingsTab.power.rawValue
-            withAnimation(.easeInOut(duration: 0.2)) {
-                selectedView = .settings
-            }
-            DashboardWindowController.shared.show()
-            updateDashboardWindowTitle()
+            handleOpenSettingsPowerOCRPriority()
         }
         .onReceive(NotificationCenter.default.publisher(for: .settingsSelectedTabDidChange)) { notification in
-            guard let tab = notification.userInfo?["tab"] as? String, !tab.isEmpty else {
-                return
-            }
-            currentSettingsTabTitle = tab
-            if selectedView == .settings {
-                updateDashboardWindowTitle()
-            }
+            handleSettingsSelectedTabDidChange(notification: notification)
         }
         .onReceive(NotificationCenter.default.publisher(for: .openFeedback)) { _ in
-            showFeedbackSheet = true
-            DashboardWindowController.shared.show()
+            handleOpenFeedback()
         }
         .onReceive(NotificationCenter.default.publisher(for: .openSystemMonitor)) { _ in
+            handleOpenSystemMonitor()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toggleSystemMonitor)) { _ in
+            handleToggleSystemMonitor()
+        }
+        .sheet(isPresented: $showFeedbackSheet) {
+            FeedbackFormView()
+                .environmentObject(coordinatorWrapper)
+        }
+    }
+
+    // MARK: - Notification Handlers
+    // Extracted from the .onReceive chain above: a long chain of inline
+    // closures (particularly ones containing ternaries/enum comparisons)
+    // pushes the type-checker over its time budget in release builds
+    // ("unable to type-check this expression in reasonable time"). One
+    // statement per closure keeps each node in the SwiftUI modifier chain
+    // trivial to infer.
+
+    private func handleOpenDashboard(notification: Notification) {
+        let target = notification.userInfo?["target"] as? String
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedView = target == "changelog" ? .changelog : .dashboard
+        }
+        updateDashboardWindowTitle()
+    }
+
+    private func handleDashboardShowSettings() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedView = .settings
+        }
+        updateDashboardWindowTitle()
+    }
+
+    private func handleToggleSettings() {
+        // Toggle: if on settings go to dashboard, otherwise go to settings
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedView = selectedView == .settings ? .dashboard : .settings
+        }
+        updateDashboardWindowTitle()
+    }
+
+    private func handleOpenSettings() {
+        initialSettingsTab = nil
+        initialSettingsScrollTargetID = nil
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedView = .settings
+        }
+        DashboardWindowController.shared.show()
+        updateDashboardWindowTitle()
+    }
+
+    private func handleOpenSettingsAppearance() {
+        initialSettingsTab = nil
+        initialSettingsScrollTargetID = nil
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedView = .settings
+        }
+        DashboardWindowController.shared.show()
+        // General tab contains Appearance settings - it's the default tab
+        updateDashboardWindowTitle()
+    }
+
+    private func handleOpenSettingsPower() {
+        initialSettingsTab = .power
+        initialSettingsScrollTargetID = nil
+        currentSettingsTabTitle = SettingsTab.power.rawValue
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedView = .settings
+        }
+        DashboardWindowController.shared.show()
+        updateDashboardWindowTitle()
+    }
+
+    private func handleOpenSettingsTags() {
+        initialSettingsTab = .tags
+        initialSettingsScrollTargetID = nil
+        currentSettingsTabTitle = SettingsTab.tags.rawValue
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedView = .settings
+        }
+        DashboardWindowController.shared.show()
+        updateDashboardWindowTitle()
+    }
+
+    private func handleOpenSettingsPauseReminderInterval() {
+        initialSettingsTab = .capture
+        initialSettingsScrollTargetID = SettingsView.pauseReminderIntervalTargetID
+        currentSettingsTabTitle = SettingsTab.capture.rawValue
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedView = .settings
+        }
+        DashboardWindowController.shared.show()
+        updateDashboardWindowTitle()
+    }
+
+    private func handleOpenSettingsPowerOCRCard() {
+        initialSettingsTab = .power
+        initialSettingsScrollTargetID = SettingsView.powerOCRCardTargetID
+        currentSettingsTabTitle = SettingsTab.power.rawValue
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedView = .settings
+        }
+        DashboardWindowController.shared.show()
+        updateDashboardWindowTitle()
+    }
+
+    private func handleOpenSettingsPowerOCRPriority() {
+        initialSettingsTab = .power
+        initialSettingsScrollTargetID = SettingsView.powerOCRPriorityTargetID
+        currentSettingsTabTitle = SettingsTab.power.rawValue
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedView = .settings
+        }
+        DashboardWindowController.shared.show()
+        updateDashboardWindowTitle()
+    }
+
+    private func handleSettingsSelectedTabDidChange(notification: Notification) {
+        guard let tab = notification.userInfo?["tab"] as? String, !tab.isEmpty else {
+            return
+        }
+        currentSettingsTabTitle = tab
+        if selectedView == .settings {
+            updateDashboardWindowTitle()
+        }
+    }
+
+    private func handleOpenFeedback() {
+        showFeedbackSheet = true
+        DashboardWindowController.shared.show()
+    }
+
+    private func handleOpenSystemMonitor() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedView = .monitor
+        }
+        DashboardWindowController.shared.show()
+        updateDashboardWindowTitle()
+    }
+
+    private func handleToggleSystemMonitor() {
+        if selectedView == .monitor,
+           DashboardWindowController.shared.isVisible,
+           let window = DashboardWindowController.shared.window,
+           (window.isKeyWindow || window.attachedSheet != nil) && NSApp.isActive {
+            // Already showing monitor and frontmost — toggle monitor off by hiding window
+            DashboardWindowController.shared.hide()
+        } else {
+            // Show system monitor
             withAnimation(.easeInOut(duration: 0.2)) {
                 selectedView = .monitor
             }
             DashboardWindowController.shared.show()
             updateDashboardWindowTitle()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .toggleSystemMonitor)) { _ in
-            if selectedView == .monitor,
-               DashboardWindowController.shared.isVisible,
-               let window = DashboardWindowController.shared.window,
-               (window.isKeyWindow || window.attachedSheet != nil) && NSApp.isActive {
-                // Already showing monitor and frontmost — toggle monitor off by hiding window
-                DashboardWindowController.shared.hide()
-            } else {
-                // Show system monitor
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    selectedView = .monitor
-                }
-                DashboardWindowController.shared.show()
-                updateDashboardWindowTitle()
-            }
-        }
-        .sheet(isPresented: $showFeedbackSheet) {
-            FeedbackFormView()
-                .environmentObject(coordinatorWrapper)
         }
     }
 

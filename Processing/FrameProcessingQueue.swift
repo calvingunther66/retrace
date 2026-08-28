@@ -3103,6 +3103,18 @@ public actor FrameProcessingQueue {
 
     /// Re-enqueue frames that were processing during a crash
     /// Only re-enqueues frames whose video files are readable (finalized)
+    /// Deletes `processing_queue` rows orphaned by duplicate enqueue calls
+    /// (see `DatabaseManager.pruneOrphanedProcessingQueueRows`). Safe to call
+    /// anytime; only removes bookkeeping rows, never frame or OCR data.
+    @discardableResult
+    public func pruneOrphanedQueueRows() async throws -> Int {
+        let removed = try await databaseManager.pruneOrphanedProcessingQueueRows()
+        if removed > 0 {
+            Log.info("[Queue] Pruned \(removed) orphaned processing_queue row(s)", category: .processing)
+        }
+        return removed
+    }
+
     public func requeueCrashedFrames() async throws {
         let frameIDs = try await databaseManager.getCrashedProcessingFrameIDs()
 
