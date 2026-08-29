@@ -514,9 +514,7 @@ public actor DatabaseManager: DatabaseProtocol {
     }
 
     // MARK: - Audio Transcription Operations
-    // ⚠️ RELEASE 2 ONLY - Audio transcription methods commented out for Release 1
 
-    /*
     /// Insert audio transcription with word-level timestamps
     public func insertAudioTranscription(
         sessionID: String?,
@@ -596,7 +594,6 @@ public actor DatabaseManager: DatabaseProtocol {
         let queries = AudioTranscriptionQueries(db: db)
         return try await queries.getTranscriptionCount()
     }
-    */
 
     // MARK: - Frame Operations
 
