@@ -3,6 +3,7 @@ import Combine
 import CryptoKit
 import Shared
 import App
+import Search
 
 /// Lightweight struct for caching app info to disk
 private struct CachedAppInfo: Codable {
@@ -256,6 +257,13 @@ public class SearchViewModel: ObservableObject {
     @Published public var isSearching = false
     @Published public var isLoadingMore = false
     @Published public var error: String?
+
+    // AI Granular Q&A (OpenRouter)
+    @Published public var isAIGenerating: Bool = false
+    @Published public var aiGeneratedAnswer: String? = nil
+    @Published public var aiCitations: [OpenRouterCitation] = []
+    @Published public var aiError: String? = nil
+    @Published public var showAIAnswerPanel: Bool = false
 
     // Filters
     @Published public var selectedAppFilters: Set<String>?  // nil = all apps, empty set also means all apps
@@ -2566,11 +2574,103 @@ public class SearchViewModel: ObservableObject {
         clearSearchCache()
     }
 
+    // MARK: - OpenRouter AI Search
+
+    private var openRouterTask: Task<Void, Never>?
+
+    public func askOpenRouterAI(query: String? = nil) {
+        let question = (query ?? searchQuery).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !question.isEmpty else { return }
+
+        guard OpenRouterCredentialsManager.hasAPIKey() else {
+            aiError = "Please configure your OpenRouter API Key in Settings > AI & Models"
+            showAIAnswerPanel = true
+            return
+        }
+
+        openRouterTask?.cancel()
+        isAIGenerating = true
+        aiError = nil
+        aiGeneratedAnswer = ""
+        aiCitations = []
+        showAIAnswerPanel = true
+
+        let currentResults = Array((results?.results ?? []).prefix(30))
+        let contextFrames: [OpenRouterContextFrame] = currentResults.map { r in
+            OpenRouterContextFrame(
+                frameID: r.id.value,
+                timestamp: r.timestamp,
+                appName: r.metadata.appName ?? "Unknown",
+                windowTitle: r.metadata.windowName,
+                browserURL: r.metadata.browserURL,
+                extractedText: r.snippet.isEmpty ? r.matchedText : r.snippet
+            )
+        }
+
+        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName)
+        let selectedModel = defaults?.string(forKey: OpenRouterCredentialsManager.selectedModelDefaultsKey) ?? "anthropic/claude-3.5-sonnet"
+        let maxFrames = defaults?.integer(forKey: OpenRouterCredentialsManager.maxContextFramesDefaultsKey) ?? 25
+        let temperature = defaults?.double(forKey: "openRouterTemperature") ?? 0.2
+
+        let config = OpenRouterConfig(
+            isEnabled: true,
+            model: selectedModel,
+            maxContextFrames: maxFrames > 0 ? maxFrames : 25,
+            temperature: temperature > 0 ? temperature : 0.2
+        )
+
+        openRouterTask = Task { [weak self] in
+            let client = OpenRouterClient()
+            let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
+            let stream = client.streamAnswerQuery(
+                query: question,
+                contextFrames: contextFrames,
+                apiKey: apiKey,
+                model: config.model,
+                temperature: config.temperature
+            )
+
+            do {
+                var accumulated = ""
+                for try await token in stream {
+                    guard !Task.isCancelled else { break }
+                    accumulated += token
+                    await MainActor.run { [weak self] in
+                        self?.aiGeneratedAnswer = accumulated
+                    }
+                }
+
+                let citations = OpenRouterClient.extractCitations(from: accumulated, contextFrames: contextFrames)
+                await MainActor.run { [weak self] in
+                    self?.isAIGenerating = false
+                    self?.aiCitations = citations
+                }
+            } catch {
+                await MainActor.run { [weak self] in
+                    self?.isAIGenerating = false
+                    self?.aiError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    public func clearAIAnswer() {
+        openRouterTask?.cancel()
+        openRouterTask = nil
+        isAIGenerating = false
+        aiGeneratedAnswer = nil
+        aiCitations = []
+        aiError = nil
+        showAIAnswerPanel = false
+    }
+
     // MARK: - Cleanup
 
     /// Cancel any in-flight search and load-more tasks
     /// Call this when the search overlay is dismissed to prevent blocking
     public func cancelSearch() {
+        openRouterTask?.cancel()
+        openRouterTask = nil
         currentSearchTask?.cancel()
         currentSearchTask = nil
         currentLoadMoreTask?.cancel()

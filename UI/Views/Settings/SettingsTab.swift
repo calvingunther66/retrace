@@ -8,6 +8,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
     case privacy = "Privacy"
     case power = "Power"
     case tags = "Tags"
+    case ai = "AI & Models"
     case advanced = "Advanced"
 
     public var id: String { rawValue }
@@ -20,6 +21,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
         case .privacy: return "lock.shield"
         case .power: return "bolt.fill"
         case .tags: return "tag"
+        case .ai: return "sparkles"
         case .advanced: return "wrench.and.screwdriver"
         }
     }
@@ -32,6 +34,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
         case .privacy: return "Encryption, exclusions, and permissions"
         case .power: return "OCR processing and battery optimization"
         case .tags: return "Manage and delete tags"
+        case .ai: return "OpenRouter API, model choice, and granular search"
         case .advanced: return "Database, encoding, and developer tools"
         }
     }
@@ -44,6 +47,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
         case .privacy: return .retraceGreenGradient
         case .power: return .retraceOrangeGradient
         case .tags: return .retraceAccentGradient
+        case .ai: return .retraceAccentGradient
         case .advanced: return .retracePurpleGradient
         }
     }
@@ -62,7 +66,7 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
             return { view.resetPowerSettings() }
         case .advanced:
             return { view.resetAdvancedSettings() }
-        case .tags:
+        case .tags, .ai:
             return nil
         }
     }

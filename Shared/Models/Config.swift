@@ -428,6 +428,50 @@ public struct SearchConfig: Codable, Sendable {
     public static let `default` = SearchConfig()
 }
 
+// MARK: - OpenRouter Configuration
+
+/// Configuration for OpenRouter granular search & timeline Q&A
+public struct OpenRouterConfig: Codable, Sendable, Equatable {
+    /// Whether OpenRouter-powered granular AI search is enabled
+    public var isEnabled: Bool
+
+    /// Selected model identifier (e.g. "anthropic/claude-3.5-sonnet", "openai/gpt-4o", "meta-llama/llama-3.3-70b-instruct", "google/gemini-2.5-flash", or custom)
+    public var model: String
+
+    /// Maximum number of top OCR frame results to include in contextual synthesis
+    public var maxContextFrames: Int
+
+    /// Custom temperature setting for completions (0.0 - 2.0)
+    public var temperature: Double
+
+    public init(
+        isEnabled: Bool = false,
+        model: String = "anthropic/claude-3.5-sonnet",
+        maxContextFrames: Int = 25,
+        temperature: Double = 0.2
+    ) {
+        self.isEnabled = isEnabled
+        self.model = model
+        self.maxContextFrames = maxContextFrames
+        self.temperature = temperature
+    }
+
+    public static let `default` = OpenRouterConfig()
+
+    /// Popular model suggestions for UI dropdown picker
+    public static let popularModels: [String] = [
+        "anthropic/claude-3.5-sonnet",
+        "anthropic/claude-3.5-haiku",
+        "openai/gpt-4o",
+        "openai/gpt-4o-mini",
+        "meta-llama/llama-3.3-70b-instruct",
+        "google/gemini-2.5-flash",
+        "google/gemini-2.5-pro",
+        "deepseek/deepseek-chat",
+        "mistralai/mistral-large-2411"
+    ]
+}
+
 // MARK: - App Configuration
 
 /// Complete application configuration
@@ -437,20 +481,24 @@ public struct AppConfig: Codable, Sendable {
     public let storage: StorageConfig
     public let processing: ProcessingConfig
     public let search: SearchConfig
+    public let openRouter: OpenRouterConfig
 
     public init(
         capture: CaptureConfig = .default,
         audioCapture: AudioCaptureConfig = .default,
         storage: StorageConfig = .default,
         processing: ProcessingConfig = .default,
-        search: SearchConfig = .default
+        search: SearchConfig = .default,
+        openRouter: OpenRouterConfig = .default
     ) {
         self.capture = capture
         self.audioCapture = audioCapture
         self.storage = storage
         self.processing = processing
         self.search = search
+        self.openRouter = openRouter
     }
 
     public static let `default` = AppConfig()
 }
+

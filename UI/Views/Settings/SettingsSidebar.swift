@@ -191,6 +191,8 @@ extension SettingsView {
                             powerSettings
                         case .tags:
                             tagManagementSettings
+                        case .ai:
+                            OpenRouterSettingsView()
                         case .advanced:
                             advancedSettings
                         }
