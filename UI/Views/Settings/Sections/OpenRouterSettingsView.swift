@@ -99,6 +99,9 @@ public struct OpenRouterSettingsView: View {
                                 .padding(10)
                                 .background(Color.white.opacity(0.06))
                                 .cornerRadius(8)
+                                .onSubmit {
+                                    saveKey()
+                                }
                         } else {
                             SecureField(hasStoredKey ? "••••••••••••••••••••••••••••••••" : "sk-or-v1-...", text: $apiKeyInput)
                                 .textFieldStyle(.plain)
@@ -106,9 +109,12 @@ public struct OpenRouterSettingsView: View {
                                 .padding(10)
                                 .background(Color.white.opacity(0.06))
                                 .cornerRadius(8)
+                                .onSubmit {
+                                    saveKey()
+                                }
                         }
 
-                        Button(action: { isShowingKey.toggle() }) {
+                        Button(action: toggleKeyVisibility) {
                             Image(systemName: isShowingKey ? "eye.slash" : "eye")
                                 .foregroundColor(.retraceSecondary)
                                 .frame(width: 36, height: 36)
@@ -116,6 +122,19 @@ public struct OpenRouterSettingsView: View {
                                 .cornerRadius(8)
                         }
                         .buttonStyle(.plain)
+                        .help(isShowingKey ? "Hide API key" : "Show API key")
+
+                        if hasStoredKey || !apiKeyInput.isEmpty {
+                            Button(action: copyKey) {
+                                Image(systemName: "doc.on.doc")
+                                    .foregroundColor(.retraceSecondary)
+                                    .frame(width: 36, height: 36)
+                                    .background(Color.white.opacity(0.06))
+                                    .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Copy API key to clipboard")
+                        }
 
                         Button(action: saveKey) {
                             Text("Save")
@@ -138,15 +157,16 @@ public struct OpenRouterSettingsView: View {
                                     .cornerRadius(8)
                             }
                             .buttonStyle(.plain)
+                            .help("Delete API key from Keychain")
                         }
                     }
 
-                    if hasStoredKey && apiKeyInput.isEmpty {
+                    if hasStoredKey {
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.shield.fill")
                                 .font(.system(size: 11))
                                 .foregroundColor(.green)
-                            Text("API Key is securely stored in macOS Keychain")
+                            Text("API Key is securely saved in macOS Keychain")
                                 .font(.retraceCaption2)
                                 .foregroundColor(.retraceSecondary)
                         }
@@ -304,14 +324,31 @@ public struct OpenRouterSettingsView: View {
         }
     }
 
+    private func toggleKeyVisibility() {
+        isShowingKey.toggle()
+        if isShowingKey && apiKeyInput.isEmpty && hasStoredKey {
+            if let stored = OpenRouterCredentialsManager.getAPIKey() {
+                apiKeyInput = stored
+            }
+        }
+    }
+
+    private func copyKey() {
+        let key = apiKeyInput.isEmpty ? (OpenRouterCredentialsManager.getAPIKey() ?? "") : apiKeyInput
+        guard !key.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(key, forType: .string)
+        testStatusMessage = "API Key copied to clipboard"
+        testStatusIsError = false
+    }
+
     private func saveKey() {
         let trimmed = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         do {
             try OpenRouterCredentialsManager.saveAPIKey(trimmed)
             hasStoredKey = true
-            apiKeyInput = ""
-            testStatusMessage = "API Key saved securely!"
+            testStatusMessage = "API Key saved securely to Keychain ✓"
             testStatusIsError = false
         } catch {
             testStatusMessage = "Save failed: \(error.localizedDescription)"
@@ -324,7 +361,7 @@ public struct OpenRouterSettingsView: View {
             try OpenRouterCredentialsManager.deleteAPIKey()
             hasStoredKey = false
             apiKeyInput = ""
-            testStatusMessage = "API Key removed."
+            testStatusMessage = "API Key removed from Keychain."
             testStatusIsError = false
         } catch {
             testStatusMessage = "Delete failed: \(error.localizedDescription)"
@@ -333,8 +370,19 @@ public struct OpenRouterSettingsView: View {
     }
 
     private func testConnection() {
-        let key = apiKeyInput.isEmpty ? (OpenRouterCredentialsManager.getAPIKey() ?? "") : apiKeyInput
-        let model = selectedModel == "custom" ? customModelInput : selectedModel
+        let trimmedInput = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedInput.isEmpty {
+            saveKey()
+        }
+
+        let key = trimmedInput.isEmpty ? (OpenRouterCredentialsManager.getAPIKey() ?? "") : trimmedInput
+        let model = (selectedModel == "custom" || isCustomModel) ? customModelInput.trimmingCharacters(in: .whitespacesAndNewlines) : selectedModel
+
+        guard !key.isEmpty else {
+            testStatusMessage = "Please enter an API Key first"
+            testStatusIsError = true
+            return
+        }
 
         isTestingConnection = true
         testStatusMessage = nil
@@ -342,11 +390,11 @@ public struct OpenRouterSettingsView: View {
         Task {
             let client = OpenRouterClient()
             do {
-                let success = try await client.testConnection(apiKey: key, model: model)
+                let success = try await client.testConnection(apiKey: key, model: model.isEmpty ? "anthropic/claude-3.5-sonnet" : model)
                 await MainActor.run {
                     isTestingConnection = false
                     if success {
-                        testStatusMessage = "Connection successful (\(model))"
+                        testStatusMessage = "Connection verified successfully ✓ (\(model))"
                         testStatusIsError = false
                     } else {
                         testStatusMessage = "Connection check failed."

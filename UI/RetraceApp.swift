@@ -464,6 +464,81 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         target.populateMainAppMenu(appMenu, appName: appName)
         mainMenu.addItem(makeTopLevelMenu(appName, submenu: appMenu))
 
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(
+            makeMenuItem(
+                "Undo",
+                action: #selector(UndoManager.undo),
+                keyEquivalent: "z",
+                modifiers: [.command],
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Redo",
+                action: #selector(UndoManager.redo),
+                keyEquivalent: "Z",
+                modifiers: [.command, .shift],
+                target: nil
+            )
+        )
+        editMenu.addItem(.separator())
+        editMenu.addItem(
+            makeMenuItem(
+                "Cut",
+                action: #selector(NSText.cut(_:)),
+                keyEquivalent: "x",
+                modifiers: [.command],
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Copy",
+                action: #selector(NSText.copy(_:)),
+                keyEquivalent: "c",
+                modifiers: [.command],
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Paste",
+                action: #selector(NSText.paste(_:)),
+                keyEquivalent: "v",
+                modifiers: [.command],
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Paste and Match Style",
+                action: #selector(NSTextView.pasteAsPlainText(_:)),
+                keyEquivalent: "V",
+                modifiers: [.command, .option, .shift],
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Delete",
+                action: #selector(NSText.delete(_:)),
+                keyEquivalent: "",
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Select All",
+                action: #selector(NSText.selectAll(_:)),
+                keyEquivalent: "a",
+                modifiers: [.command],
+                target: nil
+            )
+        )
+        mainMenu.addItem(makeTopLevelMenu("Edit", submenu: editMenu))
+
         let recordingMenu = NSMenu(title: "Recording")
         recordingMenu.delegate = target
         target.populateMainMenuRecording(recordingMenu)
