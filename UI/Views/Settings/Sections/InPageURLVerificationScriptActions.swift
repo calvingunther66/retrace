@@ -300,8 +300,10 @@ extension SettingsView {
             let stderr = String(data: stderrData, encoding: .utf8) ?? ""
             let elapsedMs = (inPageURLVerificationNow() - startUptime) * 1000
 
+            // PRV-02: Do not log raw stdout which contains full URLs (tokens, query params).
+            // Log only boolean status and byte counts; stderrPreview is preserved for error diagnostics.
             Log.info(
-                "\(logPrefix) stage=osascript_finished attempt=\(attempt) scriptMode=\(scriptMode) elapsedMs=\(inPageURLFormatMilliseconds(elapsedMs)) exitCode=\(process.terminationStatus) didTimeOut=\(didTimeOut) stdoutBytes=\(stdoutData.count) stderrBytes=\(stderrData.count) stdoutPreview=\(inPageURLLogPreview(stdout)) stderrPreview=\(inPageURLLogPreview(stderr))",
+                "\(logPrefix) stage=osascript_finished attempt=\(attempt) scriptMode=\(scriptMode) elapsedMs=\(inPageURLFormatMilliseconds(elapsedMs)) exitCode=\(process.terminationStatus) didTimeOut=\(didTimeOut) stdoutBytes=\(stdoutData.count) stderrBytes=\(stderrData.count) hasStdout=\(!stdout.isEmpty) stderrPreview=\(inPageURLLogPreview(stderr))",
                 category: .ui
             )
 

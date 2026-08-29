@@ -1,4 +1,4 @@
-module llama {
+module CLlama {
     header "include/llama/llama.h"
     header "include/llama/ggml.h"
     export *

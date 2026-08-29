@@ -219,7 +219,28 @@ public enum MasterKeyManager {
             throw MasterKeyManagerError.invalidRecoveryPhraseChecksum
         }
 
-        return Data(keyData)
+        let result = Data(keyData)
+        // SEC-03: Validate that derived key data passes an AES-GCM self-test round trip
+        try validateKeySelfTest(result)
+        return result
+    }
+
+    /// SEC-03: Validates that keyData can successfully execute an AES-GCM encryption/decryption round trip.
+    private static func validateKeySelfTest(_ keyData: Data) throws {
+        guard keyData.count == keyByteCount else {
+            throw MasterKeyManagerError.invalidKeyLength(keyData.count)
+        }
+        let symKey = SymmetricKey(data: keyData)
+        let canary = Data("retrace-master-key-self-test".utf8)
+        do {
+            let sealed = try AES.GCM.seal(canary, using: symKey)
+            let decrypted = try AES.GCM.open(sealed, using: symKey)
+            guard decrypted == canary else {
+                throw MasterKeyManagerError.invalidRecoveryPhraseChecksum
+            }
+        } catch {
+            throw MasterKeyManagerError.invalidRecoveryPhraseChecksum
+        }
     }
 
     public static func recoveryPhrase(fromRecoveryText text: String) throws -> String {

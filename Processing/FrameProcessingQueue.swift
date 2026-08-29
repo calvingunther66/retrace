@@ -1247,15 +1247,15 @@ public actor FrameProcessingQueue {
         let indexedText = phraseRedactionResult.sanitizedText
         let hasRedactedNodes = !phraseRedactionResult.redactedCombinedNodeOrders.isEmpty
 
-        let docid = try await search.index(
-            text: indexedText,
-            segmentId: frameRef.segmentID.value,
-            frameId: frameID
-        )
-
-        // Insert OCR nodes for both main and chrome regions so any FTS hit can be highlighted.
+        // DAT-01: Insert OCR nodes BEFORE indexing into FTS so the safe failure direction is:
+        //   • If insertNodes fails → FTS never written → frame stays processingStatus=0 → re-queued on restart ✓
+        //   • If FTS index fails  → nodes already written → frame stays processingStatus=0 → re-queued on restart ✓
+        // The previous ordering (FTS first, nodes second) created "ghost" FTS hits with no bounding boxes
+        // when the app crashed or insertNodes failed after search.index() succeeded.
+        // NOTE: A fully atomic cross-actor transaction is not possible without funnelling both writes
+        // through a single DatabaseManager method; this reordering minimises the blast radius.
         let hasAnyOCRRegions = !indexedText.regions.isEmpty || !indexedText.chromeRegions.isEmpty
-        if hasAnyOCRRegions && (docid > 0 || hasRedactedNodes) {
+        if hasAnyOCRRegions && hasRedactedNodes {
             // Delete any existing nodes first to prevent duplicates
             // (can happen if frame is reprocessed without going through reprocessOCR)
             try await databaseManager.deleteNodes(frameID: FrameID(value: frameID))
@@ -1290,6 +1290,59 @@ public actor FrameProcessingQueue {
             }
 
             // Use videoSegment we already fetched above (no redundant query)
+            try await databaseManager.insertNodes(
+                frameID: FrameID(value: frameID),
+                nodes: nodeData,
+                encryptedTexts: phraseRedactionResult.encryptedRedactedTexts,
+                frameWidth: videoSegment.width,
+                frameHeight: videoSegment.height
+            )
+        }
+
+        // FTS indexing runs after nodes are safely persisted.
+        let docid: Int64
+        if hasAnyOCRRegions || !indexedText.isEmpty {
+            docid = try await search.index(
+                text: indexedText,
+                segmentId: frameRef.segmentID.value,
+                frameId: frameID
+            )
+        } else {
+            docid = 0
+        }
+        _ = docid  // Used below in the redacted-nodes check; kept to preserve any future callers.
+
+        // Insert nodes for non-redacted frames (only FTS docid needed for the guard check above).
+        if hasAnyOCRRegions && !hasRedactedNodes && docid > 0 {
+            try await databaseManager.deleteNodes(frameID: FrameID(value: frameID))
+
+            var nodeData: [(textOffset: Int, textLength: Int, bounds: CGRect, windowIndex: Int?)] = []
+            nodeData.reserveCapacity(indexedText.regions.count + indexedText.chromeRegions.count)
+
+            var mainOffset = 0
+            for region in indexedText.regions {
+                let textLength = region.text.count
+                nodeData.append((
+                    textOffset: mainOffset,
+                    textLength: textLength,
+                    bounds: region.bounds,
+                    windowIndex: nil
+                ))
+                mainOffset += textLength + 1
+            }
+
+            var chromeOffset = indexedText.fullText.count
+            for region in indexedText.chromeRegions {
+                let textLength = region.text.count
+                nodeData.append((
+                    textOffset: chromeOffset,
+                    textLength: textLength,
+                    bounds: region.bounds,
+                    windowIndex: nil
+                ))
+                chromeOffset += textLength + 1
+            }
+
             try await databaseManager.insertNodes(
                 frameID: FrameID(value: frameID),
                 nodes: nodeData,

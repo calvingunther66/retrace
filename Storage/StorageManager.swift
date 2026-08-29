@@ -1470,13 +1470,14 @@ public actor StorageManager: StorageProtocol {
     public func getTotalStorageUsed(includeRewind: Bool = false) async throws -> Int64 {
         var totalSize: Int64 = 0
 
-        // Retrace storage: chunks/ folder + retrace.db
+        // Retrace storage: chunks/ folder + retrace.db (including WAL/SHM)
         let retraceChunksURL = storageRootURL.appendingPathComponent("chunks", isDirectory: true)
         let retraceDbURL = storageRootURL.appendingPathComponent("retrace.db")
         let retraceChunksSize = calculateFolderSize(at: retraceChunksURL)
         totalSize += retraceChunksSize
 
-        totalSize += logicalFileSizeIfPresent(at: retraceDbURL)
+        // STO-01: Include database file and its associated -wal and -shm files
+        totalSize += databaseAndAuxiliaryFilesSize(at: retraceDbURL)
 
         // Rewind storage: only include if enabled
         if includeRewind {
@@ -1486,7 +1487,7 @@ public actor StorageManager: StorageProtocol {
             let rewindChunksSize = calculateFolderSize(at: rewindChunksURL)
             totalSize += rewindChunksSize
 
-            totalSize += logicalFileSizeIfPresent(at: rewindDbURL)
+            totalSize += databaseAndAuxiliaryFilesSize(at: rewindDbURL)
         }
 
         return totalSize
@@ -1612,6 +1613,16 @@ public actor StorageManager: StorageProtocol {
             return 0
         }
         return Int64(fileSize)
+    }
+
+    /// STO-01: Calculates combined size of a SQLite database and its companion -wal and -shm files.
+    private func databaseAndAuxiliaryFilesSize(at dbURL: URL) -> Int64 {
+        var total: Int64 = logicalFileSizeIfPresent(at: dbURL)
+        let walURL = URL(fileURLWithPath: dbURL.path + "-wal")
+        let shmURL = URL(fileURLWithPath: dbURL.path + "-shm")
+        total += logicalFileSizeIfPresent(at: walURL)
+        total += logicalFileSizeIfPresent(at: shmURL)
+        return total
     }
 
     public func getAvailableDiskSpace() async throws -> Int64 {

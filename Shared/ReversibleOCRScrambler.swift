@@ -248,6 +248,19 @@ public enum ReversibleOCRScrambler {
             blockHeight: blockHeight,
             secret: secret
         )
+
+        // SEC-02: For descrambling (inverse == true), unmask the pixel keystream BEFORE
+        // reversing the block permutation.
+        if inverse {
+            applyPixelKeystream(
+                patch: &patch,
+                width: width,
+                height: height,
+                bytesPerRow: bytesPerRow,
+                seed: seed
+            )
+        }
+
         let permutation = shuffledIndices(count: blockCount, seed: seed)
         let mapping: [Int]
         if inverse {
@@ -298,6 +311,43 @@ public enum ReversibleOCRScrambler {
         }
 
         patch = output
+
+        // SEC-02: For scrambling (inverse == false), mask the pixel keystream AFTER
+        // permuting blocks.
+        if !inverse {
+            applyPixelKeystream(
+                patch: &patch,
+                width: width,
+                height: height,
+                bytesPerRow: bytesPerRow,
+                seed: seed
+            )
+        }
+    }
+
+    private static func applyPixelKeystream(
+        patch: inout Data,
+        width: Int,
+        height: Int,
+        bytesPerRow: Int,
+        seed: UInt64
+    ) {
+        var generator = SplitMix64(state: seed ^ 0xA0761D6478BD642F)
+        patch.withUnsafeMutableBytes { raw in
+            guard let base = raw.baseAddress else { return }
+            let ptr = base.assumingMemoryBound(to: UInt8.self)
+            for y in 0..<height {
+                let rowOffset = y * bytesPerRow
+                for x in 0..<width {
+                    let pixelOffset = rowOffset + (x * 4)
+                    let key = generator.next()
+                    // XOR Blue, Green, Red (keep Alpha intact at offset + 3)
+                    ptr[pixelOffset] ^= UInt8(key & 0xFF)
+                    ptr[pixelOffset + 1] ^= UInt8((key >> 8) & 0xFF)
+                    ptr[pixelOffset + 2] ^= UInt8((key >> 16) & 0xFF)
+                }
+            }
+        }
     }
 
     private static func textProtectionKey(

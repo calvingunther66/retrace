@@ -4,11 +4,14 @@ import AppKit
 /// Tracks session lock/screensaver transitions published via distributed notifications.
 final class ScreenLockStateMonitor: @unchecked Sendable {
     private let distributedCenter = DistributedNotificationCenter.default()
+    private let workspaceCenter = NSWorkspace.shared.notificationCenter
     private let stateLock = NSLock()
-    private var observerTokens: [NSObjectProtocol] = []
+    private var distributedObserverTokens: [NSObjectProtocol] = []
+    private var workspaceObserverTokens: [NSObjectProtocol] = []
     private var isObserving = false
     private var isScreenLocked = false
     private var isScreenSaverRunning = false
+    private var isDisplayAsleep = false
 
     private static let screenLockedNotification = Notification.Name("com.apple.screenIsLocked")
     private static let screenUnlockedNotification = Notification.Name("com.apple.screenIsUnlocked")
@@ -21,7 +24,7 @@ final class ScreenLockStateMonitor: @unchecked Sendable {
         guard !isObserving else { return }
         isObserving = true
 
-        observerTokens = [
+        distributedObserverTokens = [
             distributedCenter.addObserver(
                 forName: Self.screenLockedNotification,
                 object: nil,
@@ -52,6 +55,24 @@ final class ScreenLockStateMonitor: @unchecked Sendable {
                 self?.setScreenSaverRunning(false)
             }
         ]
+
+        // CAP-02: Observe display sleep and wake notifications to pause capture when screens sleep
+        workspaceObserverTokens = [
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.screensDidSleepNotification,
+                object: nil,
+                queue: nil
+            ) { [weak self] _ in
+                self?.setDisplayAsleep(true)
+            },
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.screensDidWakeNotification,
+                object: nil,
+                queue: nil
+            ) { [weak self] _ in
+                self?.setDisplayAsleep(false)
+            }
+        ]
     }
 
     func stop() {
@@ -59,13 +80,20 @@ final class ScreenLockStateMonitor: @unchecked Sendable {
         defer { stateLock.unlock() }
         guard isObserving else { return }
 
-        for token in observerTokens {
+        for token in distributedObserverTokens {
             distributedCenter.removeObserver(token)
         }
-        observerTokens.removeAll()
+        distributedObserverTokens.removeAll()
+
+        for token in workspaceObserverTokens {
+            workspaceCenter.removeObserver(token)
+        }
+        workspaceObserverTokens.removeAll()
+
         isObserving = false
         isScreenLocked = false
         isScreenSaverRunning = false
+        isDisplayAsleep = false
     }
 
     func captureBlockReason() -> String? {
@@ -77,6 +105,9 @@ final class ScreenLockStateMonitor: @unchecked Sendable {
         }
         if isScreenSaverRunning {
             return "screensaver-active"
+        }
+        if isDisplayAsleep {
+            return "display-asleep"
         }
         return nil
     }
@@ -90,6 +121,12 @@ final class ScreenLockStateMonitor: @unchecked Sendable {
     private func setScreenSaverRunning(_ value: Bool) {
         stateLock.lock()
         isScreenSaverRunning = value
+        stateLock.unlock()
+    }
+
+    private func setDisplayAsleep(_ value: Bool) {
+        stateLock.lock()
+        isDisplayAsleep = value
         stateLock.unlock()
     }
 }

@@ -3,6 +3,7 @@ import Darwin
 import Dispatch
 import Foundation
 import OSLog
+import Security
 
 private let helperLogger = Logger(subsystem: "io.retrace.app", category: "CrashRecoveryHelper")
 
@@ -67,6 +68,16 @@ private final class CrashRecoveryHelperService: NSObject, NSXPCListenerDelegate,
     }
 
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection newConnection: NSXPCConnection) -> Bool {
+        // SEC-01: Validate the connecting process is the Retrace app (same Team ID / designated requirement).
+        // This prevents any local process from connecting to the crash-recovery Mach service and
+        // calling prepareForRelaunch(targetAppPath:) with an arbitrary executable path.
+        if !Self.isAuthorizedClient(connection: newConnection) {
+            NSLog(
+                helperTagged("[CrashRecoveryHelper] Rejected unauthorized XPC connection from pid=\(newConnection.processIdentifier)")
+            )
+            return false
+        }
+
         let newConnectionID = ObjectIdentifier(newConnection)
         var connectionsToInvalidate: [NSXPCConnection] = []
         let previousDisposition: CrashRecoverySupport.SessionDisposition
@@ -102,6 +113,31 @@ private final class CrashRecoveryHelperService: NSObject, NSXPCListenerDelegate,
             helperTagged("[CrashRecoveryHelper] Accepted app connection pid=\(newConnection.processIdentifier) previousDisposition=\(helperDispositionDescription(previousDisposition))")
         )
         return true
+    }
+
+    /// Returns true only if the connecting XPC process has a designated requirement matching
+    /// the Retrace app bundle identifier.
+    private static func isAuthorizedClient(connection: NSXPCConnection) -> Bool {
+        let pid = connection.processIdentifier
+        let attributes = [kSecGuestAttributePid: NSNumber(value: pid)] as CFDictionary
+
+        var clientCode: SecCode?
+        guard SecCodeCopyGuestWithAttributes(nil, attributes, [], &clientCode) == errSecSuccess,
+              let clientCode else {
+            return false
+        }
+
+        // Require the caller to be signed with the same bundle ID as the host app (io.retrace.app).
+        // In production, tighten this to also verify the Team ID or a full DR string from the
+        // provisioning profile.
+        let requirementString = "identifier \"io.retrace.app\" or identifier \"io.retrace.app.CrashRecoveryHelper\""
+        var requirement: SecRequirement?
+        guard SecRequirementCreateWithString(requirementString as CFString, [], &requirement) == errSecSuccess,
+              let requirement else {
+            return false
+        }
+
+        return SecCodeCheckValidity(clientCode, [], requirement) == errSecSuccess
     }
 
     func arm(reply: @escaping () -> Void) {

@@ -1,5 +1,5 @@
 import Foundation
-import llama
+import CLlama
 import Shared
 
 /// Local embedding service using Nomic Embed v1.5 via llama.cpp

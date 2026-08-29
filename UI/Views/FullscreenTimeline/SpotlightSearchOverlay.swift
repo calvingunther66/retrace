@@ -163,6 +163,16 @@ public struct SpotlightSearchOverlay: View {
                                 .frame(height: SpotlightSearchLayoutMetrics.filterBarReservedHeight)
                                 .allowsHitTesting(false)
 
+                            if viewModel.showAIAnswerPanel {
+                                OpenRouterAIAnswerView(viewModel: viewModel) { citation in
+                                    if let match = viewModel.results?.results.first(where: { $0.id.value == citation.frameID }) {
+                                        onResultSelected(match, viewModel.searchQuery)
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.top, 12)
+                            }
+
                             if hasResults {
                                 // Small gap before divider to maintain visual spacing below filter bar
                                 Color.clear.frame(height: SpotlightSearchLayoutMetrics.filterBarResultsGap)
@@ -455,6 +465,36 @@ public struct SpotlightSearchOverlay: View {
                         height: SpotlightSearchLayoutMetrics.searchControlButtonSize
                     )
             }
+
+            // Ask AI button (triggers OpenRouter synthesis)
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    isExpanded = true
+                }
+                viewModel.askOpenRouterAI()
+            }) {
+                ZStack {
+                    if viewModel.showAIAnswerPanel {
+                        Circle()
+                            .fill(LinearGradient.retraceAccentGradient.opacity(0.3))
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(LinearGradient.retraceAccentGradient)
+                    } else {
+                        Circle()
+                            .fill(Color.white.opacity(0.1))
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.white.opacity(0.6))
+                    }
+                }
+                .frame(
+                    width: SpotlightSearchLayoutMetrics.searchControlButtonSize,
+                    height: SpotlightSearchLayoutMetrics.searchControlButtonSize
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Ask Retrace AI (OpenRouter)")
 
             // Filter button (expands to show filters)
             Button(action: {

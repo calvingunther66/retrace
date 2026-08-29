@@ -104,7 +104,7 @@ public final class SQLiteConnection: DatabaseConnection, @unchecked Sendable {
     }
 
     public func beginTransaction() throws {
-        try execute(sql: "BEGIN TRANSACTION")
+        try execute(sql: "BEGIN IMMEDIATE TRANSACTION")
     }
 
     public func commit() throws {
@@ -168,7 +168,7 @@ public final class SQLCipherConnection: DatabaseConnection, @unchecked Sendable 
     }
 
     public func beginTransaction() throws {
-        try execute(sql: "BEGIN TRANSACTION")
+        try execute(sql: "BEGIN IMMEDIATE TRANSACTION")
     }
 
     public func commit() throws {

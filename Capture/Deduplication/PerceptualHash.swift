@@ -4,14 +4,14 @@ import Shared
 
 /// Perceptual hashing implementation using difference hash (dHash)
 /// Used for fast image similarity comparison
-struct PerceptualHash: Sendable {
+public struct PerceptualHash: Sendable {
 
     // MARK: - Hash Computation
 
     /// Compute a 64-bit perceptual hash for a frame using difference hash (dHash)
     /// - Parameter frame: The frame to hash
     /// - Returns: 64-bit hash value
-    static func computeHash(for frame: CapturedFrame) -> UInt64 {
+    public static func computeHash(for frame: CapturedFrame) -> UInt64 {
         // Resize to 9x8 (we need 9 cols to compute 8 differences per row)
         let resizedWidth = 9
         let resizedHeight = 8
@@ -49,7 +49,7 @@ struct PerceptualHash: Sendable {
     ///   - hash1: First hash
     ///   - hash2: Second hash
     /// - Returns: Similarity score from 0.0 (completely different) to 1.0 (identical)
-    static func computeSimilarity(hash1: UInt64, hash2: UInt64) -> Double {
+    public static func computeSimilarity(hash1: UInt64, hash2: UInt64) -> Double {
         // XOR to find differing bits
         let xor = hash1 ^ hash2
 
@@ -113,29 +113,5 @@ struct PerceptualHash: Sendable {
         }
 
         return output
-    }
-
-    /// Alternative: Resize using vImage for better quality (slower)
-    /// This could be used for more accurate hashing if needed
-    /// - Note: Currently unimplemented, returns nil
-    private static func resizeToGrayscaleVImage(
-        imageData: Data,
-        width: Int,
-        height: Int,
-        bytesPerRow: Int,
-        targetWidth: Int,
-        targetHeight: Int
-    ) -> [UInt8]? {
-        // Uncommenting this implementation would require:
-        // 1. Converting BGRA to grayscale format
-        // 2. Using vImageScale_Planar8 for the resize operation
-        // For now, we use the faster nearest-neighbor approach above
-
-        // Example structure (currently unused):
-        // var sourceBuffer = vImage_Buffer(...)
-        // var destData = [UInt8](...)
-        // var destBuffer = vImage_Buffer(...)
-
-        return nil
     }
 }

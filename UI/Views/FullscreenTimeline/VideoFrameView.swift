@@ -44,6 +44,7 @@ struct VideoFrameView: NSViewRepresentable {
                 actualVideoPath = pathWithExtension
             } else {
                 Log.error("[VideoFrameView] Video file does not exist: \(videoInfo.videoPath)", category: .app)
+                Self.cleanupPlayerView(playerView)
                 return
             }
         }

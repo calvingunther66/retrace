@@ -101,6 +101,10 @@ for fw in Sparkle; do
     fi
 done
 
+# Copy vendor dynamic libraries (Whisper & Llama)
+cp Vendors/whisper/lib/*.dylib "$APP_BUNDLE/Contents/Frameworks/" 2>/dev/null || true
+cp Vendors/llama/lib/*.dylib "$APP_BUNDLE/Contents/Frameworks/" 2>/dev/null || true
+
 # Copy Info.plist with variable substitution (fixes $(MARKETING_VERSION) bug)
 sed -e "s/\$(MARKETING_VERSION)/$MARKETING_VERSION/g" \
     -e "s/\$(CURRENT_PROJECT_VERSION)/$BUILD_NUMBER/g" \
@@ -153,9 +157,12 @@ else
     echo "   after every rebuild until that identity is set up. See local/docs."
 fi
 
-# Sign frameworks first (required before signing the app)
+# Sign frameworks and dylibs first (required before signing the app)
 for fw in "$APP_BUNDLE/Contents/Frameworks/"*.framework; do
     [ -d "$fw" ] && codesign --force --sign "$SIGN_IDENTITY" "$fw"
+done
+for lib in "$APP_BUNDLE/Contents/Frameworks/"*.dylib; do
+    [ -f "$lib" ] && codesign --force --sign "$SIGN_IDENTITY" "$lib"
 done
 
 # Sign nested helper executables before the containing app.

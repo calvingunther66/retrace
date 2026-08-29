@@ -36,49 +36,44 @@ public actor PermissionMonitor {
 
     // MARK: - Cached Permission Status
 
-    /// Cached accessibility permission status (updated by monitoring loop)
-    /// Using nonisolated(unsafe) for fast access without actor hop
-    private nonisolated(unsafe) var _cachedAccessibilityStatus: Bool = false
-    private nonisolated(unsafe) var _cachedScreenRecordingStatus: Bool = false
-    private nonisolated(unsafe) var _hasCachedStatus: Bool = false
+    /// CON-01: Synchronized cache for nonisolated permission queries.
+    private let statusCache = PermissionStatusCache()
 
     // MARK: - Permission Checking (Safe Wrappers)
 
-    /// Check accessibility permission without prompting
-    /// Returns cached value for performance - updated every 2 seconds by monitor
+    /// Check accessibility permission without prompting.
+    /// Returns cached value for performance — updated every 2 seconds by the monitor.
     public nonisolated func hasAccessibilityPermission() -> Bool {
-        // If we have a cached status, use it (fast path)
-        if _hasCachedStatus {
-            return _cachedAccessibilityStatus
+        let (hasCached, cached) = statusCache.getAccessibility()
+        if hasCached {
+            return cached
         }
-        // First call or monitoring not started - do actual check
+        // First call or monitoring not started — do actual check.
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
         let result = AXIsProcessTrustedWithOptions(options as CFDictionary)
-        _cachedAccessibilityStatus = result
-        _hasCachedStatus = true
+        statusCache.setAccessibility(result)
         return result
     }
 
-    /// Check screen recording permission
-    /// Returns cached value for performance - updated every 2 seconds by monitor
+    /// Check screen recording permission.
+    /// Returns cached value for performance — updated every 2 seconds by the monitor.
     public nonisolated func hasScreenRecordingPermission() -> Bool {
-        // If we have a cached status, use it (fast path)
-        if _hasCachedStatus {
-            return _cachedScreenRecordingStatus
+        let (hasCached, cached) = statusCache.getScreenRecording()
+        if hasCached {
+            return cached
         }
-        // First call or monitoring not started - do actual check
+        // First call or monitoring not started — do actual check.
         let result = CGPreflightScreenCaptureAccess()
-        _cachedScreenRecordingStatus = result
-        _hasCachedStatus = true
+        statusCache.setScreenRecording(result)
         return result
     }
 
-    /// Force refresh the cached permission status (call after permission changes)
+    /// Force refresh the cached permission status (call after permission changes).
     public nonisolated func refreshCachedStatus() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
-        _cachedAccessibilityStatus = AXIsProcessTrustedWithOptions(options as CFDictionary)
-        _cachedScreenRecordingStatus = CGPreflightScreenCaptureAccess()
-        _hasCachedStatus = true
+        let ax = AXIsProcessTrustedWithOptions(options as CFDictionary)
+        let sr = CGPreflightScreenCaptureAccess()
+        statusCache.updateBoth(accessibility: ax, screenRecording: sr)
     }
 
     // MARK: - Safe AX API Wrappers
@@ -225,9 +220,7 @@ public actor PermissionMonitor {
         lastAccessibilityStatus = axStatus
         lastScreenRecordingStatus = screenStatus
         lastListenEventAccessStatus = listenEventStatus
-        _cachedAccessibilityStatus = axStatus
-        _cachedScreenRecordingStatus = screenStatus
-        _hasCachedStatus = true
+        statusCache.updateBoth(accessibility: axStatus, screenRecording: screenStatus)
 
         Log.info(
             "[PermissionMonitor] Starting permission monitoring (AX: \(lastAccessibilityStatus), Screen: \(lastScreenRecordingStatus), Listen: \(lastListenEventAccessStatus))",
@@ -263,10 +256,8 @@ public actor PermissionMonitor {
         let currentScreen = CGPreflightScreenCaptureAccess()
         let currentListenEventAccess = CGPreflightListenEventAccess()
 
-        // Update cached values
-        _cachedAccessibilityStatus = currentAX
-        _cachedScreenRecordingStatus = currentScreen
-        _hasCachedStatus = true
+        // Update cached values (CON-01: thread-safe cache update)
+        statusCache.updateBoth(accessibility: currentAX, screenRecording: currentScreen)
 
         // Check if accessibility was revoked
         if lastAccessibilityStatus && !currentAX {
@@ -323,5 +314,47 @@ public actor PermissionMonitor {
     /// Force an immediate permission check (useful before sensitive operations)
     public func forceCheck() async {
         await checkPermissionChanges()
+    }
+}
+
+/// CON-01: Thread-safe synchronized cache for permission queries across actor and nonisolated contexts.
+private final class PermissionStatusCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cachedAccessibility: Bool = false
+    private var cachedScreenRecording: Bool = false
+    private var hasCached: Bool = false
+
+    func getAccessibility() -> (hasCached: Bool, value: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (hasCached, cachedAccessibility)
+    }
+
+    func setAccessibility(_ value: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        cachedAccessibility = value
+        hasCached = true
+    }
+
+    func getScreenRecording() -> (hasCached: Bool, value: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (hasCached, cachedScreenRecording)
+    }
+
+    func setScreenRecording(_ value: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        cachedScreenRecording = value
+        hasCached = true
+    }
+
+    func updateBoth(accessibility: Bool, screenRecording: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        cachedAccessibility = accessibility
+        cachedScreenRecording = screenRecording
+        hasCached = true
     }
 }

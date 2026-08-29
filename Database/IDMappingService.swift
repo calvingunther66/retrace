@@ -78,33 +78,75 @@ public actor IDMappingService {
 
     // MARK: - Bulk Operations
 
-    /// Remove old mappings for cleanup
+    /// Remove old mappings for cleanup (both from SQLite and in-memory caches).
+    ///
+    /// MEM-01: The previous implementation deleted rows from `uuid_mappings` but never
+    /// removed the corresponding entries from the four in-memory dictionaries, causing
+    /// unbounded dictionary growth during long-running capture sessions.
     public func purgeMappings(olderThan date: Date) throws {
         let timestamp = Int64(date.timeIntervalSince1970 * 1000)
-        let sql = "DELETE FROM uuid_mappings WHERE created_at < ?;"
 
-        var statement: OpaquePointer?
-        defer {
-            sqlite3_finalize(statement)
+        // 1. Collect the db_ids that are about to be purged so we can evict them from cache.
+        let selectSQL = "SELECT entity_type, db_id FROM uuid_mappings WHERE created_at < ?;"
+        var selectStatement: OpaquePointer?
+        defer { sqlite3_finalize(selectStatement) }
+
+        guard sqlite3_prepare_v2(db, selectSQL, -1, &selectStatement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(
+                query: selectSQL,
+                underlying: String(cString: sqlite3_errmsg(db))
+            )
+        }
+        sqlite3_bind_int64(selectStatement, 1, timestamp)
+
+        var purgedFrameIDs: [Int64] = []
+        var purgedSegmentIDs: [Int64] = []
+        while sqlite3_step(selectStatement) == SQLITE_ROW {
+            let entityType = String(cString: sqlite3_column_text(selectStatement, 0))
+            let dbID = sqlite3_column_int64(selectStatement, 1)
+            if entityType == "frame" {
+                purgedFrameIDs.append(dbID)
+            } else if entityType == "segment" {
+                purgedSegmentIDs.append(dbID)
+            }
         }
 
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+        // 2. Delete from SQLite.
+        let deleteSQL = "DELETE FROM uuid_mappings WHERE created_at < ?;"
+        var deleteStatement: OpaquePointer?
+        defer { sqlite3_finalize(deleteStatement) }
+
+        guard sqlite3_prepare_v2(db, deleteSQL, -1, &deleteStatement, nil) == SQLITE_OK else {
             throw DatabaseError.queryFailed(
-                query: sql,
+                query: deleteSQL,
+                underlying: String(cString: sqlite3_errmsg(db))
+            )
+        }
+        sqlite3_bind_int64(deleteStatement, 1, timestamp)
+
+        guard sqlite3_step(deleteStatement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(
+                query: deleteSQL,
                 underlying: String(cString: sqlite3_errmsg(db))
             )
         }
 
-        sqlite3_bind_int64(statement, 1, timestamp)
-
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw DatabaseError.queryFailed(
-                query: sql,
-                underlying: String(cString: sqlite3_errmsg(db))
-            )
+        // 3. Evict purged entries from in-memory caches so dictionaries don't grow forever.
+        for dbID in purgedFrameIDs {
+            if let uuid = frameIntToUUID.removeValue(forKey: dbID) {
+                frameUUIDToInt.removeValue(forKey: uuid)
+            }
+        }
+        for dbID in purgedSegmentIDs {
+            if let uuid = segmentIntToUUID.removeValue(forKey: dbID) {
+                segmentUUIDToInt.removeValue(forKey: uuid)
+            }
         }
 
-        Log.debug("[IDMappingService] Purged old mappings before \(date)", category: .database)
+        Log.debug(
+            "[IDMappingService] Purged old mappings before \(date) — evicted \(purgedFrameIDs.count) frame, \(purgedSegmentIDs.count) segment entries from cache",
+            category: .database
+        )
     }
 
     /// Get statistics about mapping cache

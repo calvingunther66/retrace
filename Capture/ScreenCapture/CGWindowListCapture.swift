@@ -1016,17 +1016,18 @@ public actor CGWindowListCapture {
         Log.info("[Filtering] Included window IDs: \(includedWindowIDs.prefix(10))...", category: .capture)
         Log.info("[Filtering] Excluded window IDs: \(excludedWindowIDs)", category: .capture)
 
-        // Log details about included windows
+        // Log details about included windows (PRV-01: redact raw window names to protect privacy)
         for windowInfo in windowList {
             guard let windowID = windowInfo[kCGWindowNumber as String] as? CGWindowID else { continue }
             if includedWindowIDs.contains(windowID) {
-                let name = windowInfo[kCGWindowName as String] as? String ?? "(no name)"
+                let name = windowInfo[kCGWindowName as String] as? String ?? ""
+                let safeName = name.isEmpty ? "(no name)" : "hash:\(abs(name.hashValue % 100000))"
                 let owner = windowInfo[kCGWindowOwnerName as String] as? String ?? "(no owner)"
                 let layer = windowInfo[kCGWindowLayer as String] as? Int ?? -1
                 let bounds = windowInfo[kCGWindowBounds as String] as? [String: Any]
                 let alpha = windowInfo[kCGWindowAlpha as String] as? Double ?? -1
                 let onScreen = windowInfo[kCGWindowIsOnscreen as String] as? Bool ?? false
-                Log.debug("[Filtering] Including window \(windowID): '\(name)' from \(owner), layer=\(layer), alpha=\(alpha), onScreen=\(onScreen), bounds=\(bounds ?? [:])", category: .capture)
+                Log.debug("[Filtering] Including window \(windowID): '\(safeName)' from \(owner), layer=\(layer), alpha=\(alpha), onScreen=\(onScreen), bounds=\(bounds ?? [:])", category: .capture)
             }
         }
 
@@ -1057,13 +1058,14 @@ public actor CGWindowListCapture {
             let singleArray: CFArray = [NSNumber(value: windowID)] as CFArray
             if CGImage(
                 windowListFromArrayScreenBounds: displayBounds,
-                windowArray: singleArray,
+                windowArray: displayBounds.isEmpty ? singleArray : singleArray,
                 imageOption: [.bestResolution]
             ) == nil {
                 let info = windowList.first { ($0[kCGWindowNumber as String] as? CGWindowID) == windowID }
-                let name = info?[kCGWindowName as String] as? String ?? "(no name)"
+                let name = info?[kCGWindowName as String] as? String ?? ""
+                let safeName = name.isEmpty ? "(no name)" : "hash:\(abs(name.hashValue % 100000))"
                 let owner = info?[kCGWindowOwnerName as String] as? String ?? "(no owner)"
-                Log.error("[Filtering] Window \(windowID) FAILS individually: '\(name)' from \(owner)", category: .capture)
+                Log.error("[Filtering] Window \(windowID) FAILS individually: '\(safeName)' from \(owner)", category: .capture)
             }
         }
 
