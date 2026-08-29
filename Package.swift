@@ -74,7 +74,13 @@ let package = Package(
         ),
         .testTarget(
             name: "DatabaseTests",
-            dependencies: ["Database", "Shared"],
+            dependencies: [
+                "Database",
+                "Shared",
+                "Storage",
+                "Processing",
+                "Search"
+            ],
             path: "Database/Tests",
             exclude: [
                 "_future"  // Release 2+ tests
