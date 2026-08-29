@@ -1158,6 +1158,8 @@ public actor FrameProcessingQueue {
                     // Apply rate limiting delay after successful processing
                     if minDelayBetweenFramesNs > 0 {
                         try? await Task.sleep(for: .nanoseconds(Int64(minDelayBetweenFramesNs)), clock: .continuous)
+                    } else {
+                        await Task.yield()
                     }
 
                 } catch {

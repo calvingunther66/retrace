@@ -876,58 +876,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         MainThreadWatchdog.shared.setAutoQuitHandler { blockedSeconds in
             Task.detached(priority: .userInitiated) {
                 let blockedFor = String(format: "%.1f", blockedSeconds)
-
-                let displayCount = Self.activeDisplayCount()
-                if displayCount <= 0 {
-                    let displayStateDescription = displayCount == 0 ? "0 active displays" : "display probe failed"
-                    Log.warning(
-                        "[Watchdog] Auto-quit suppressed: \(displayStateDescription) (darkwake/sleep transition). blocked=\(blockedFor)s",
-                        category: .ui
-                    )
-                    MainThreadWatchdog.shared.suspendAutoQuit(
-                        for: Self.watchdogWakeGracePeriodSeconds,
-                        reason: "\(displayStateDescription) (darkwake/sleep transition)"
-                    )
-                    EmergencyDiagnostics.capture(trigger: "watchdog_auto_quit_suppressed_no_display")
-                    return
-                }
-
-                Log.critical(
-                    "[Watchdog] Auto-quit threshold reached (\(blockedFor)s). Capturing diagnostics and attempting automatic relaunch.",
+                Log.warning(
+                    "[Watchdog] Main thread unresponsive for \(blockedFor)s. Capturing diagnostic sample.",
                     category: .ui
                 )
 
                 let hangSamplePath = await CrashRecoveryManager.captureWatchdogHangSample(
-                    trigger: "watchdog_auto_quit"
+                    trigger: "watchdog_hang_detected"
                 )
-                if hangSamplePath != nil {
-                    Log.info("[Watchdog] Helper captured watchdog hang sample for watchdog report merge", category: .ui)
-                } else {
-                    Log.warning("[Watchdog] Helper hang sample was unavailable before auto-quit", category: .ui)
-                }
-
                 EmergencyDiagnostics.capture(
-                    trigger: "watchdog_auto_quit",
+                    trigger: "watchdog_hang_detected",
                     supplementalReportPaths: hangSamplePath.map { [$0] } ?? [],
                     cleanupSupplementalReports: true
                 )
-
-                let relaunchDecision = CrashRecoverySupport.evaluateAndRecordCrashAutoRestart()
-                guard relaunchDecision.shouldRelaunch else {
-                    Log.critical(
-                        "[Watchdog] Auto-relaunch suppressed to prevent restart loop (\(relaunchDecision.recentCount) relaunches in last 5 minutes). Exiting without relaunch.",
-                        category: .ui
-                    )
-                    Darwin.exit(0)
-                }
-
-                // Ensure we still terminate if relaunch scheduling fails unexpectedly.
-                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 3.0) {
-                    Log.critical("[Watchdog] Relaunch did not complete after auto-quit trigger. Force exiting.", category: .ui)
-                    Darwin.exit(0)
-                }
-
-                AppRelaunch.relaunchForCrashRecovery()
             }
         }
     }
