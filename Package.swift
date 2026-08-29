@@ -2,14 +2,14 @@
 import PackageDescription
 
 // MARK: - Whisper.cpp Path Configuration (Bundled)
-// ⚠️ RELEASE 2 ONLY - Audio transcription dependencies
-// Uncomment these for Release 2 (January 1st) when audio features are re-enabled
+let whisperPath = "Vendors/whisper"
+let whisperIncludePath = whisperPath + "/include"
+let whisperLibPath = whisperPath + "/lib"
 
-/// Use bundled whisper.cpp library from Vendors directory
-/// This makes the project self-contained - no external dependencies needed for building
-// let whisperPath = "Vendors/whisper"
-// let whisperIncludePath = whisperPath + "/include"
-// let whisperLibPath = whisperPath + "/lib"
+// MARK: - Llama.cpp Path Configuration (Bundled)
+let llamaPath = "Vendors/llama"
+let llamaIncludePath = llamaPath + "/include/llama"
+let llamaLibPath = llamaPath + "/lib"
 
 // MARK: - Package Definition
 
@@ -34,12 +34,7 @@ let package = Package(
         .executable(name: "QueryRewindApps", targets: ["QueryRewindApps"]),
     ],
     dependencies: [
-        // NOTE: Dependencies are bundled locally in Vendors/ or will be downloaded at runtime
-        // ⚠️ RELEASE 2 ONLY:
-        // whisper.cpp - bundled in Vendors/whisper/
-        // Models (*.bin, *.gguf) - downloaded at runtime on first launch
-
-        // SQLCipher for reading encrypted Rewind database
+        // SQLCipher for reading encrypted Rewind database and encrypted storage
         .package(url: "https://github.com/skiptools/swift-sqlcipher.git", exact: "1.7.0"),
         // Sparkle for auto-updates
         .package(url: "https://github.com/sparkle-project/Sparkle.git", exact: "2.8.1"),
@@ -47,6 +42,16 @@ let package = Package(
         .package(url: "https://github.com/batmac/SwiftyChrono.git", revision: "e1bf3bde0f09112909157360b6bf39302f10ae5f")
     ],
     targets: [
+        // MARK: - Native C/C++ Libraries
+        .systemLibrary(
+            name: "CWhisper",
+            path: "Vendors/whisper"
+        ),
+        .systemLibrary(
+            name: "CLlama",
+            path: "Vendors/llama"
+        ),
+
         // MARK: - Shared models and protocols
         .target(
             name: "Shared",
@@ -55,9 +60,6 @@ let package = Package(
         ),
 
         // MARK: - Database module
-        // NOTE: Uses SQLCipher instead of system SQLite3 because Migration module
-        // requires SQLCipher for Rewind database, and we can't mix both in one app.
-        // SQLCipher works with unencrypted databases too (just don't set PRAGMA key).
         .target(
             name: "Database",
             dependencies: [
@@ -68,8 +70,7 @@ let package = Package(
             exclude: [
                 "Tests",
                 "README.md",
-                "AGENTS.md",
-                "PROGRESS.md"
+                "AGENTS.md"
             ]
         ),
         .testTarget(
@@ -83,9 +84,8 @@ let package = Package(
             ],
             path: "Database/Tests",
             exclude: [
-                "_future"  // Release 2+ tests
+                "_future"
             ]
-            // ⚠️ RELEASE 2 ONLY - Whisper linker settings removed for Release 1
         ),
 
         // MARK: - Storage module
@@ -96,15 +96,13 @@ let package = Package(
             exclude: [
                 "Tests",
                 "README.md",
-                "AGENTS.md",
-                "PROGRESS.md"
+                "AGENTS.md"
             ]
         ),
         .testTarget(
             name: "StorageTests",
             dependencies: ["Storage", "Shared"],
             path: "Storage/Tests"
-            // ⚠️ RELEASE 2 ONLY - Whisper linker settings removed for Release 1
         ),
 
         // MARK: - Capture module
@@ -115,16 +113,13 @@ let package = Package(
             exclude: [
                 "Tests",
                 "README.md",
-                "AGENTS.md",
-                "PROGRESS.md"
+                "AGENTS.md"
             ]
         ),
         .testTarget(
             name: "CaptureTests",
             dependencies: ["Capture", "Shared"],
             path: "Capture/Tests"
-            // ⚠️ RELEASE 2 ONLY - Whisper linker settings removed for Release 1
-            // ⚠️ RELEASE 2 ONLY - Audio/Tests excluded for Release 1
         ),
 
         // MARK: - Processing module
@@ -134,45 +129,101 @@ let package = Package(
                 "Shared",
                 "Database",
                 "Storage",
-                "Search"
+                "Search",
+                "CWhisper"
             ],
             path: "Processing",
             exclude: [
                 "Tests",
                 "README.md",
-                "AGENTS.md",
-                "PROGRESS.md"
+                "AGENTS.md"
+            ],
+            cSettings: [
+                .unsafeFlags([
+                    "-I" + whisperIncludePath,
+                    "-I" + whisperIncludePath + "/ggml"
+                ])
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L" + whisperLibPath,
+                    "-lwhisper",
+                    "-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks",
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"
+                ]),
+                .linkedFramework("Accelerate"),
+                .linkedFramework("CoreML"),
+                .linkedFramework("Metal")
             ]
-            // ⚠️ RELEASE 2 ONLY - Whisper cSettings and linkerSettings removed for Release 1
-            // Re-add Accelerate, CoreML, Metal frameworks when audio transcription is re-enabled
         ),
         .testTarget(
             name: "ProcessingTests",
             dependencies: ["Processing", "Shared", "Database", "Storage"],
-            path: "Processing/Tests"
-            // ⚠️ RELEASE 2 ONLY - Whisper cSettings and linkerSettings removed for Release 1
-            // ⚠️ RELEASE 2 ONLY - Audio/Tests excluded for Release 1
+            path: "Processing/Tests",
+            cSettings: [
+                .unsafeFlags([
+                    "-I" + whisperIncludePath,
+                    "-I" + whisperIncludePath + "/ggml"
+                ])
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L" + whisperLibPath,
+                    "-lwhisper"
+                ]),
+                .linkedFramework("Accelerate"),
+                .linkedFramework("CoreML"),
+                .linkedFramework("Metal")
+            ]
         ),
 
         // MARK: - Search module
         .target(
             name: "Search",
             dependencies: [
-                "Shared"
+                "Shared",
+                "Database",
+                "CLlama"
             ],
             path: "Search",
             exclude: [
                 "Tests",
-                "VectorSearchTODO",  // Exclude vector search implementation
                 "README.md",
-                "AGENTS.md",
-                "PROGRESS.md"
+                "AGENTS.md"
+            ],
+            cSettings: [
+                .unsafeFlags([
+                    "-I" + llamaIncludePath
+                ])
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L" + llamaLibPath,
+                    "-lllama",
+                    "-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks",
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"
+                ]),
+                .linkedFramework("Accelerate"),
+                .linkedFramework("Metal")
             ]
         ),
         .testTarget(
             name: "SearchTests",
             dependencies: ["Search", "Shared", "Database"],
-            path: "Search/Tests"
+            path: "Search/Tests",
+            cSettings: [
+                .unsafeFlags([
+                    "-I" + llamaIncludePath
+                ])
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L" + llamaLibPath,
+                    "-lllama"
+                ]),
+                .linkedFramework("Accelerate"),
+                .linkedFramework("Metal")
+            ]
         ),
 
         // MARK: - Migration module
@@ -185,8 +236,7 @@ let package = Package(
             path: "Migration",
             exclude: [
                 "README.md",
-                "AGENTS.md",
-                "PROGRESS.md"
+                "AGENTS.md"
             ]
         ),
 
@@ -207,8 +257,20 @@ let package = Package(
             exclude: [
                 "Tests",
                 "README.md"
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L" + whisperLibPath,
+                    "-lwhisper",
+                    "-L" + llamaLibPath,
+                    "-lllama",
+                    "-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks",
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"
+                ]),
+                .linkedFramework("Accelerate"),
+                .linkedFramework("CoreML"),
+                .linkedFramework("Metal")
             ]
-            // ⚠️ RELEASE 2 ONLY - Whisper cSettings and linkerSettings removed for Release 1
         ),
         .testTarget(
             name: "AppTests",
@@ -217,8 +279,18 @@ let package = Package(
                 "Database",
                 "Shared"
             ],
-            path: "App/Tests"
-            // ⚠️ RELEASE 2 ONLY - Whisper cSettings and linkerSettings removed for Release 1
+            path: "App/Tests",
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L" + whisperLibPath,
+                    "-lwhisper",
+                    "-L" + llamaLibPath,
+                    "-lllama"
+                ]),
+                .linkedFramework("Accelerate"),
+                .linkedFramework("CoreML"),
+                .linkedFramework("Metal")
+            ]
         ),
 
         // MARK: - Crash recovery support
@@ -257,8 +329,20 @@ let package = Package(
             ],
             resources: [
                 .process("Assets.xcassets")
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-L" + whisperLibPath,
+                    "-lwhisper",
+                    "-L" + llamaLibPath,
+                    "-lllama",
+                    "-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks",
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"
+                ]),
+                .linkedFramework("Accelerate"),
+                .linkedFramework("CoreML"),
+                .linkedFramework("Metal")
             ]
-            // ⚠️ RELEASE 2 ONLY - Whisper cSettings and linkerSettings removed for Release 1
         ),
         .executableTarget(
             name: "RetraceCrashRecoveryHelper",
@@ -292,7 +376,6 @@ let package = Package(
             name: "RetraceTests",
             dependencies: ["Retrace", "CrashRecoverySupport", "Shared", "App"],
             path: "UI/Tests"
-            // ⚠️ RELEASE 2 ONLY - Whisper cSettings and linkerSettings removed for Release 1
         ),
     ]
 )

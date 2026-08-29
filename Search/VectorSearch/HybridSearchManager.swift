@@ -143,9 +143,9 @@ public actor HybridSearchManager: SearchProtocol {
     }
 
     /// Index text with both FTS and semantic embeddings
-    public func index(text: ExtractedText) async throws {
+    public func index(text: ExtractedText, segmentId: Int64, frameId: Int64) async throws -> Int64 {
         // Index in FTS
-        try await ftsManager.index(text: text)
+        let docId = try await ftsManager.index(text: text, segmentId: segmentId, frameId: frameId)
 
         // Generate and store embedding if model is loaded
         if await embeddingService.isModelLoaded {
@@ -153,13 +153,15 @@ public actor HybridSearchManager: SearchProtocol {
                 text: text.fullText,
                 type: .document
             )
-            try await vectorStore.addVector(frameID: text.frameID, vector: embedding)
+            try await vectorStore.addVector(frameID: FrameID(value: frameId), vector: embedding)
 
             Log.debug(
-                "Indexed text and embedding for frame \(text.frameID.stringValue.prefix(8))",
+                "Indexed text and embedding for frame \(FrameID(value: frameId).stringValue.prefix(8))",
                 category: .search
             )
         }
+
+        return docId
     }
 
     /// Remove from both indexes
@@ -275,7 +277,7 @@ public actor HybridSearchManager: SearchProtocol {
 
                     let result = SearchResult(
                         id: semanticResult.frameID,
-                        timestamp: semanticResult.timestamp,
+                        timestamp: semanticResult.timestamp ?? frame.timestamp,
                         snippet: "(Semantic match)",
                         matchedText: "",
                         relevanceScore: hybridScore,
@@ -301,59 +303,5 @@ public actor HybridSearchManager: SearchProtocol {
 
         // Sort by hybrid score
         return mergedResults.sorted { $0.relevanceScore > $1.relevanceScore }
-    }
-}
-
-// MARK: - Hybrid Search Configuration
-
-public struct HybridSearchConfig: Sendable {
-    /// Weight for FTS results (0-1)
-    public let ftsWeight: Double
-
-    /// Weight for semantic results (0-1)
-    public let semanticWeight: Double
-
-    /// RRF k parameter (higher = more conservative fusion)
-    public let rrf_k: Int
-
-    public init(
-        ftsWeight: Double = 0.6,
-        semanticWeight: Double = 0.4,
-        rrf_k: Int = 60
-    ) {
-        self.ftsWeight = ftsWeight
-        self.semanticWeight = semanticWeight
-        self.rrf_k = rrf_k
-    }
-
-    /// Default balanced configuration
-    public static let `default` = HybridSearchConfig(
-        ftsWeight: 0.6,
-        semanticWeight: 0.4,
-        rrf_k: 60
-    )
-
-    /// FTS-heavy configuration (more weight on keyword matching)
-    public static let ftsHeavy = HybridSearchConfig(
-        ftsWeight: 0.8,
-        semanticWeight: 0.2,
-        rrf_k: 60
-    )
-
-    /// Semantic-heavy configuration (more weight on meaning)
-    public static let semanticHeavy = HybridSearchConfig(
-        ftsWeight: 0.3,
-        semanticWeight: 0.7,
-        rrf_k: 60
-    )
-}
-
-// MARK: - Extension to EmbeddingProtocol for typed embeddings
-
-extension EmbeddingProtocol {
-    /// Generate embedding with type specification
-    public func embed(text: String, type: EmbeddingTextType) async throws -> [Float] {
-        // Default implementation - override in LocalEmbeddingService for Nomic-specific logic
-        return try await embed(text: text)
     }
 }

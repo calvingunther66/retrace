@@ -1,5 +1,4 @@
 import Foundation
-import Shared
 
 // MARK: - Embedding Types
 
@@ -77,5 +76,74 @@ public enum EmbeddingError: Error, Sendable {
         case .modelNotLoaded:
             return "Embedding model is not loaded"
         }
+    }
+}
+
+// MARK: - Hybrid Search Configuration
+
+public struct HybridSearchConfig: Sendable {
+    /// Weight for FTS results (0-1)
+    public let ftsWeight: Double
+
+    /// Weight for semantic results (0-1)
+    public let semanticWeight: Double
+
+    /// RRF k parameter (higher = more conservative fusion)
+    public let rrf_k: Int
+
+    public init(
+        ftsWeight: Double = 0.6,
+        semanticWeight: Double = 0.4,
+        rrf_k: Int = 60
+    ) {
+        self.ftsWeight = ftsWeight
+        self.semanticWeight = semanticWeight
+        self.rrf_k = rrf_k
+    }
+
+    public static let `default` = HybridSearchConfig(
+        ftsWeight: 0.6,
+        semanticWeight: 0.4,
+        rrf_k: 60
+    )
+
+    public static let ftsHeavy = HybridSearchConfig(
+        ftsWeight: 0.8,
+        semanticWeight: 0.2,
+        rrf_k: 60
+    )
+
+    public static let semanticHeavy = HybridSearchConfig(
+        ftsWeight: 0.3,
+        semanticWeight: 0.7,
+        rrf_k: 60
+    )
+}
+
+/// A semantic search result with similarity score
+public struct SemanticSearchResult: Sendable, Identifiable {
+    public let frameID: FrameID
+    public let similarity: Float
+    public let appName: String?
+    public let windowTitle: String?
+    public let timestamp: Date?
+    public let snippet: String?
+
+    public var id: Int64 { frameID.value }
+
+    public init(
+        frameID: FrameID,
+        similarity: Float,
+        appName: String? = nil,
+        windowTitle: String? = nil,
+        timestamp: Date? = nil,
+        snippet: String? = nil
+    ) {
+        self.frameID = frameID
+        self.similarity = similarity
+        self.appName = appName
+        self.windowTitle = windowTitle
+        self.timestamp = timestamp
+        self.snippet = snippet
     }
 }

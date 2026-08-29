@@ -56,15 +56,18 @@ public struct SearchStatistics: Sendable {
     public let totalDocuments: Int
     public let totalSearches: Int
     public let averageSearchTimeMs: Double
+    public let vectorCount: Int?
 
     public init(
         totalDocuments: Int,
         totalSearches: Int,
-        averageSearchTimeMs: Double
+        averageSearchTimeMs: Double,
+        vectorCount: Int? = nil
     ) {
         self.totalDocuments = totalDocuments
         self.totalSearches = totalSearches
         self.averageSearchTimeMs = averageSearchTimeMs
+        self.vectorCount = vectorCount
     }
 }
 
