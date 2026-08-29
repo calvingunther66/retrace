@@ -446,6 +446,9 @@ public actor DatabaseManager: DatabaseProtocol {
             throw DatabaseError.connectionFailed(underlying: errorMsg)
         }
         inMemorySharedConnection?.setConnection(db)
+        if let db = db {
+            sqlite3_busy_timeout(db, 5_000)
+        }
         Log.debug("[DatabaseManager] Database opened successfully", category: .database)
         SQLiteRuntimeDiagnostics.log(label: "DatabaseManager/open", db: db)
 
@@ -4032,10 +4035,13 @@ public actor DatabaseManager: DatabaseProtocol {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")
         }
 
+        // DAT-04: Prune rows where frame no longer exists OR is no longer pending (processingStatus != 0)
         let sql = """
             DELETE FROM processing_queue
-            WHERE frameId IN (
-                SELECT id FROM frame WHERE processingStatus != 0
+            WHERE NOT EXISTS (
+                SELECT 1 FROM frame
+                WHERE frame.id = processing_queue.frameId
+                  AND frame.processingStatus = 0
             );
         """
 

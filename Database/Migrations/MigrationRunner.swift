@@ -113,8 +113,8 @@ actor MigrationRunner {
     private func runMigration(_ migration: Migration) async throws {
         let version = migration.version
 
-        // Begin transaction
-        try executeSQL("BEGIN TRANSACTION;")
+        // Begin transaction (DAT-03: IMMEDIATE acquires write lock up front to prevent WAL busy conflicts)
+        try executeSQL("BEGIN IMMEDIATE TRANSACTION;")
 
         do {
             // Run the migration
