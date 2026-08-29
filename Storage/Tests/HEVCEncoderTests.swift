@@ -83,7 +83,7 @@ final class HEVCEncoderTests: XCTestCase {
         let tuning = HEVCEncoder.compressionTuning(
             width: 5120,
             height: 2880,
-            config: .default
+            config: VideoEncoderConfig(quality: 0.5)
         )
 
         XCTAssertEqual(tuning.averageBitRate, 13_235_327)
