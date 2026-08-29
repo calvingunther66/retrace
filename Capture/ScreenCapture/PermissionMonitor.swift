@@ -36,49 +36,71 @@ public actor PermissionMonitor {
 
     // MARK: - Cached Permission Status
 
-    /// Cached accessibility permission status (updated by monitoring loop)
-    /// Using nonisolated(unsafe) for fast access without actor hop
-    private nonisolated(unsafe) var _cachedAccessibilityStatus: Bool = false
-    private nonisolated(unsafe) var _cachedScreenRecordingStatus: Bool = false
-    private nonisolated(unsafe) var _hasCachedStatus: Bool = false
+    /// Lock that protects the three cached status fields below.
+    /// CON-01: The cached status fields are written by the background monitoring Task and read
+    /// from arbitrary nonisolated call-sites. Using nonisolated(unsafe) without a lock is an
+    /// unsafe data race; an NSLock provides the necessary write/read serialisation with
+    /// negligible overhead for the polling interval in use.
+    private let _cacheLock = NSLock()
+
+    /// Backing storage — must only be accessed while holding `_cacheLock`.
+    private var _cachedAccessibilityStatusRaw: Bool = false
+    private var _cachedScreenRecordingStatusRaw: Bool = false
+    private var _hasCachedStatusRaw: Bool = false
 
     // MARK: - Permission Checking (Safe Wrappers)
 
-    /// Check accessibility permission without prompting
-    /// Returns cached value for performance - updated every 2 seconds by monitor
+    /// Check accessibility permission without prompting.
+    /// Returns cached value for performance — updated every 2 seconds by the monitor.
     public nonisolated func hasAccessibilityPermission() -> Bool {
-        // If we have a cached status, use it (fast path)
-        if _hasCachedStatus {
-            return _cachedAccessibilityStatus
+        _cacheLock.lock()
+        let hasCached = _hasCachedStatusRaw
+        let cached = _cachedAccessibilityStatusRaw
+        _cacheLock.unlock()
+
+        if hasCached {
+            return cached
         }
-        // First call or monitoring not started - do actual check
+        // First call or monitoring not started — do actual check.
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
         let result = AXIsProcessTrustedWithOptions(options as CFDictionary)
-        _cachedAccessibilityStatus = result
-        _hasCachedStatus = true
+        _cacheLock.lock()
+        _cachedAccessibilityStatusRaw = result
+        _hasCachedStatusRaw = true
+        _cacheLock.unlock()
         return result
     }
 
-    /// Check screen recording permission
-    /// Returns cached value for performance - updated every 2 seconds by monitor
+    /// Check screen recording permission.
+    /// Returns cached value for performance — updated every 2 seconds by the monitor.
     public nonisolated func hasScreenRecordingPermission() -> Bool {
-        // If we have a cached status, use it (fast path)
-        if _hasCachedStatus {
-            return _cachedScreenRecordingStatus
+        _cacheLock.lock()
+        let hasCached = _hasCachedStatusRaw
+        let cached = _cachedScreenRecordingStatusRaw
+        _cacheLock.unlock()
+
+        if hasCached {
+            return cached
         }
-        // First call or monitoring not started - do actual check
+        // First call or monitoring not started — do actual check.
         let result = CGPreflightScreenCaptureAccess()
-        _cachedScreenRecordingStatus = result
-        _hasCachedStatus = true
+        _cacheLock.lock()
+        _cachedScreenRecordingStatusRaw = result
+        _hasCachedStatusRaw = true
+        _cacheLock.unlock()
         return result
     }
 
-    /// Force refresh the cached permission status (call after permission changes)
+    /// Force refresh the cached permission status (call after permission changes).
     public nonisolated func refreshCachedStatus() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
-        _cachedAccessibilityStatus = AXIsProcessTrustedWithOptions(options as CFDictionary)
-        _cachedScreenRecordingStatus = CGPreflightScreenCaptureAccess()
-        _hasCachedStatus = true
+        let ax = AXIsProcessTrustedWithOptions(options as CFDictionary)
+        let sr = CGPreflightScreenCaptureAccess()
+        _cacheLock.lock()
+        _cachedAccessibilityStatusRaw = ax
+        _cachedScreenRecordingStatusRaw = sr
+        _hasCachedStatusRaw = true
+        _cacheLock.unlock()
     }
 
     // MARK: - Safe AX API Wrappers
@@ -225,9 +247,11 @@ public actor PermissionMonitor {
         lastAccessibilityStatus = axStatus
         lastScreenRecordingStatus = screenStatus
         lastListenEventAccessStatus = listenEventStatus
-        _cachedAccessibilityStatus = axStatus
-        _cachedScreenRecordingStatus = screenStatus
-        _hasCachedStatus = true
+        _cacheLock.lock()
+        _cachedAccessibilityStatusRaw = axStatus
+        _cachedScreenRecordingStatusRaw = screenStatus
+        _hasCachedStatusRaw = true
+        _cacheLock.unlock()
 
         Log.info(
             "[PermissionMonitor] Starting permission monitoring (AX: \(lastAccessibilityStatus), Screen: \(lastScreenRecordingStatus), Listen: \(lastListenEventAccessStatus))",
@@ -263,10 +287,12 @@ public actor PermissionMonitor {
         let currentScreen = CGPreflightScreenCaptureAccess()
         let currentListenEventAccess = CGPreflightListenEventAccess()
 
-        // Update cached values
-        _cachedAccessibilityStatus = currentAX
-        _cachedScreenRecordingStatus = currentScreen
-        _hasCachedStatus = true
+        // Update cached values under lock (CON-01: prevent data race with nonisolated readers)
+        _cacheLock.lock()
+        _cachedAccessibilityStatusRaw = currentAX
+        _cachedScreenRecordingStatusRaw = currentScreen
+        _hasCachedStatusRaw = true
+        _cacheLock.unlock()
 
         // Check if accessibility was revoked
         if lastAccessibilityStatus && !currentAX {

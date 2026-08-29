@@ -53,8 +53,12 @@ public struct FrameDeduplicator: DeduplicationProtocol {
             let totalPixels = frame.width * frame.height
             let step = max(1, totalPixels / sampleSize)
 
-            for i in stride(from: 0, to: totalPixels, by: step).prefix(sampleSize) {
-                let offset = i * 4
+            for linearIdx in stride(from: 0, to: totalPixels, by: step).prefix(sampleSize) {
+                // CAP-01: Compute row/col from the linear index, then apply bytesPerRow
+                // to correctly address padded image buffers.
+                let row = linearIdx / frame.width
+                let col = linearIdx % frame.width
+                let offset = (row * frame.bytesPerRow) + (col * 4)
                 if offset + 2 < frame.imageData.count {
                     let r = UInt64(pixels[offset + 2])
                     let g = UInt64(pixels[offset + 1])
@@ -104,8 +108,9 @@ public struct FrameDeduplicator: DeduplicationProtocol {
 
                 for row in stride(from: 0, to: frame1.height, by: stepY) {
                     for col in stride(from: 0, to: frame1.width, by: stepX) {
-                        let pixelIndex = row * frame1.width + col
-                        let offset = pixelIndex * 4
+                        // CAP-01: Use bytesPerRow instead of width * 4 to correctly handle
+                        // padded row strides (common for CGImage / IOSurface-backed buffers).
+                        let offset = (row * frame1.bytesPerRow) + (col * 4)
 
                         if offset + 2 < frame1.imageData.count && offset + 2 < frame2.imageData.count {
                             let r1 = pixels1[offset + 2]
