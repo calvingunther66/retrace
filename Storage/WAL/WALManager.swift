@@ -31,6 +31,7 @@ public actor WALManager {
     private let walRootURL: URL
     private var frameOffsetIndexCache: [Int64: WALFrameOffsetIndex] = [:]
     private var frameIDOffsetIndexCache: [Int64: WALFrameIDOffsetIndex] = [:]
+    private var writeHandlesByVideoID: [Int64: FileHandle] = [:]
     private var debugRawReadOffsetsByVideoID: [Int64: [UInt64]] = [:]
     private static let eagerReadSafetyLimitBytes: Int64 = 512 * 1024 * 1024
     private static let discardableQuarantinePrefix = "quarantined_segment_"
@@ -129,14 +130,20 @@ public actor WALManager {
 
     /// Append a frame to the WAL
     public func appendFrame(_ frame: CapturedFrame, to session: inout WALSession) async throws {
-        // Open file handle for appending
-        guard let fileHandle = FileHandle(forWritingAtPath: session.framesURL.path) else {
-            throw StorageError.fileWriteFailed(
-                path: session.framesURL.path,
-                underlying: "Cannot open file for appending"
-            )
+        // PERF-02: Reuse open FileHandle across frame appends instead of reopening per frame
+        let fileHandle: FileHandle
+        if let existing = writeHandlesByVideoID[session.videoID.value] {
+            fileHandle = existing
+        } else {
+            guard let newHandle = FileHandle(forWritingAtPath: session.framesURL.path) else {
+                throw StorageError.fileWriteFailed(
+                    path: session.framesURL.path,
+                    underlying: "Cannot open file for appending"
+                )
+            }
+            writeHandlesByVideoID[session.videoID.value] = newHandle
+            fileHandle = newHandle
         }
-        defer { try? fileHandle.close() }
 
         do {
             // Seek to end
@@ -1292,6 +1299,10 @@ public actor WALManager {
     private func clearSessionCaches(videoIDValue: Int64) {
         frameOffsetIndexCache.removeValue(forKey: videoIDValue)
         frameIDOffsetIndexCache.removeValue(forKey: videoIDValue)
+        if let handle = writeHandlesByVideoID.removeValue(forKey: videoIDValue) {
+            try? handle.synchronize()
+            try? handle.close()
+        }
     }
 
     private func readOptionalString(
