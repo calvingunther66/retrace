@@ -116,12 +116,10 @@ private final class CrashRecoveryHelperService: NSObject, NSXPCListenerDelegate,
     }
 
     /// Returns true only if the connecting XPC process has a designated requirement matching
-    /// the Retrace app bundle identifier. Uses the connection's audit token so the check
-    /// cannot be spoofed by a malicious process setting its own display name.
+    /// the Retrace app bundle identifier.
     private static func isAuthorizedClient(connection: NSXPCConnection) -> Bool {
-        var auditToken = connection.auditToken
-        let tokenData = withUnsafeBytes(of: &auditToken) { Data($0) }
-        let attributes = [kSecGuestAttributeAudit: tokenData] as CFDictionary
+        let pid = connection.processIdentifier
+        let attributes = [kSecGuestAttributePid: NSNumber(value: pid)] as CFDictionary
 
         var clientCode: SecCode?
         guard SecCodeCopyGuestWithAttributes(nil, attributes, [], &clientCode) == errSecSuccess,
