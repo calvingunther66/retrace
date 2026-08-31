@@ -10,6 +10,44 @@ public final class OpenRouterClient: Sendable {
         self.session = session
     }
 
+    // MARK: - Error Parsing
+
+    /// Extracts the human-readable error message from an OpenRouter JSON error response.
+    /// OpenRouter returns: `{"error": {"code": 429, "message": "...", "metadata": {...}}}`
+    private static func parseErrorMessage(from data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let error = json["error"] as? [String: Any],
+              let message = error["message"] as? String else {
+            return nil
+        }
+        return message
+    }
+
+    /// Builds a user-friendly error description for a given HTTP status code and optional parsed message.
+    private static func friendlyError(statusCode: Int, parsedMessage: String?, model: String? = nil) -> String {
+        let modelHint = model.map { " (\($0))" } ?? ""
+        switch statusCode {
+        case 401:
+            return "Invalid API key. Please check your OpenRouter key and try again."
+        case 402:
+            return "Insufficient credits on your OpenRouter account. Add credits at openrouter.ai/credits."
+        case 403:
+            return "Access denied. Your API key may not have permission for this model\(modelHint)."
+        case 429:
+            let detail = parsedMessage ?? "The selected model\(modelHint) is temporarily overloaded."
+            return "Rate limited — \(detail) Try again in a moment or switch to a different model."
+        case 502, 503:
+            return "The upstream model provider\(modelHint) is temporarily unavailable. Try again shortly or select a different model."
+        case 408:
+            return "Request timed out. The model\(modelHint) may be overloaded — try again or switch models."
+        default:
+            if let parsed = parsedMessage, !parsed.isEmpty {
+                return "OpenRouter error (\(statusCode)): \(parsed)"
+            }
+            return "OpenRouter returned an unexpected error (HTTP \(statusCode))."
+        }
+    }
+
     // MARK: - Validation
 
     /// Tests whether the provided API key and model work correctly.
@@ -17,41 +55,54 @@ public final class OpenRouterClient: Sendable {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else {
             throw NSError(domain: "OpenRouterClient", code: 401, userInfo: [
-                NSLocalizedDescriptionKey: "API key is empty"
+                NSLocalizedDescriptionKey: "API key is empty. Please enter your OpenRouter API key."
             ])
         }
 
-        var request = URLRequest(url: baseURL)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("https://retrace.app", forHTTPHeaderField: "HTTP-Referer")
-        request.setValue("Retrace AI Search", forHTTPHeaderField: "X-Title")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 15
+        // Allow one retry on rate limit (429) with a short backoff
+        for attempt in 0..<2 {
+            var request = URLRequest(url: baseURL)
+            request.httpMethod = "POST"
+            request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
+            request.setValue("https://retrace.app", forHTTPHeaderField: "HTTP-Referer")
+            request.setValue("Retrace AI Search", forHTTPHeaderField: "X-Title")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.timeoutInterval = 15
 
-        let payload: [String: Any] = [
-            "model": model,
-            "messages": [
-                ["role": "user", "content": "ping"]
-            ],
-            "max_tokens": 5
-        ]
+            let payload: [String: Any] = [
+                "model": model,
+                "messages": [
+                    ["role": "user", "content": "ping"]
+                ],
+                "max_tokens": 5
+            ]
 
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            return false
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return false
+            }
+
+            if httpResponse.statusCode == 200 {
+                return true
+            }
+
+            // On 429, retry once after a short backoff
+            if httpResponse.statusCode == 429, attempt == 0 {
+                Log.info("[OpenRouter] Test connection rate-limited (429), retrying in 2s...", category: .search)
+                try await Task.sleep(for: .seconds(2), clock: .continuous)
+                continue
+            }
+
+            let parsedMessage = Self.parseErrorMessage(from: data)
+            let friendly = Self.friendlyError(statusCode: httpResponse.statusCode, parsedMessage: parsedMessage, model: model)
+            throw NSError(domain: "OpenRouterClient", code: httpResponse.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: friendly
+            ])
         }
 
-        if httpResponse.statusCode == 200 {
-            return true
-        }
-
-        let errorMessage = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
-        throw NSError(domain: "OpenRouterClient", code: httpResponse.statusCode, userInfo: [
-            NSLocalizedDescriptionKey: "OpenRouter returned status \(httpResponse.statusCode): \(errorMessage)"
-        ])
+        return false
     }
 
     // MARK: - Granular Search & Q&A Synthesis
@@ -113,9 +164,10 @@ public final class OpenRouterClient: Sendable {
         }
 
         guard httpResponse.statusCode == 200 else {
-            let errorText = String(data: data, encoding: .utf8) ?? "Status \(httpResponse.statusCode)"
+            let parsedMessage = Self.parseErrorMessage(from: data)
+            let friendly = Self.friendlyError(statusCode: httpResponse.statusCode, parsedMessage: parsedMessage, model: model)
             throw NSError(domain: "OpenRouterClient", code: httpResponse.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: "OpenRouter API error (\(httpResponse.statusCode)): \(errorText)"
+                NSLocalizedDescriptionKey: friendly
             ])
         }
 
@@ -216,8 +268,21 @@ public final class OpenRouterClient: Sendable {
                     }
 
                     guard httpResponse.statusCode == 200 else {
+                        // Collect error body from stream for proper error parsing
+                        var errorBodyChunks: [UInt8] = []
+                        for try await byte in bytes {
+                            errorBodyChunks.append(byte)
+                            if errorBodyChunks.count > 4096 { break } // Cap error body read
+                        }
+                        let errorData = Data(errorBodyChunks)
+                        let parsedMessage = OpenRouterClient.parseErrorMessage(from: errorData)
+                        let friendly = OpenRouterClient.friendlyError(
+                            statusCode: httpResponse.statusCode,
+                            parsedMessage: parsedMessage,
+                            model: model
+                        )
                         continuation.finish(throwing: NSError(domain: "OpenRouterClient", code: httpResponse.statusCode, userInfo: [
-                            NSLocalizedDescriptionKey: "OpenRouter returned status \(httpResponse.statusCode)"
+                            NSLocalizedDescriptionKey: friendly
                         ]))
                         return
                     }

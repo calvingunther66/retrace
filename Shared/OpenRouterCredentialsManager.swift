@@ -49,11 +49,17 @@ public enum OpenRouterCredentialsManager {
         return keyString
     }
 
-    /// Checks if an API key is stored (checks defaults cache flag or query).
+    /// Checks if an API key is stored (verified against Keychain, not just UserDefaults).
     public static func hasAPIKey(defaults: UserDefaults? = nil) -> Bool {
         if getAPIKey() != nil { return true }
+        // If Keychain lookup failed but UserDefaults still claims a key exists,
+        // clear the stale flag to prevent phantom-key state (e.g. after Keychain reset).
         let defaults = defaults ?? (UserDefaults(suiteName: settingsSuiteName) ?? .standard)
-        return defaults.bool(forKey: hasKeyDefaultsKey)
+        if defaults.bool(forKey: hasKeyDefaultsKey) {
+            defaults.set(false, forKey: hasKeyDefaultsKey)
+            Log.warning("[OpenRouterCredentials] Keychain empty but hasKey flag was true – cleared stale flag", category: .app)
+        }
+        return false
     }
 
     /// Saves or updates the OpenRouter API key in Keychain.

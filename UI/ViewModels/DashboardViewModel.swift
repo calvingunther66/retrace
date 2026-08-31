@@ -193,6 +193,13 @@ public class DashboardViewModel: ObservableObject {
     @Published public var ocrIsPaused: Bool = false
     @Published public var powerSource: String = "unknown"
 
+    // OCR stall recovery ("Restart OCR" banner)
+    @Published public var ocrDegraded: Bool = false
+    @Published public var ocrRestartInFlight: Bool = false
+    /// Set when a restart attempt didn't clear the degraded state within the grace period —
+    /// tells the UI to offer a full relaunch instead of retrying the in-process restart again.
+    @Published public var ocrRestartLikelyRequiresRelaunch: Bool = false
+
     // Permission warnings
     @Published public var showAccessibilityWarning = false
     @Published public var showScreenRecordingWarning = false
@@ -234,6 +241,9 @@ public class DashboardViewModel: ObservableObject {
     private var lastTrackedCrashBannerIdentifier: String?
     private var lastTrackedWALFailureBannerFileName: String?
     private var lastTrackedStorageHealthBannerSignature: String?
+    private var lastOCRProgressTotalProcessed: Int?
+    private var lastOCRProgressChangedAt: Date = Date()
+    private var lastOCRQueueDepth: Int = 0
     private var lastTrackedUnexpectedRecordingStopSignature: String?
     private var isAutoRefreshInFlight = false
     private static let defaultAppUsageRangeDays = 7
@@ -359,18 +369,52 @@ public class DashboardViewModel: ObservableObject {
         recordingPauseRemainingSeconds = menuBarManager.timedPauseRemainingSeconds
     }
 
-    private func updateQueueStatus() async {
-        if let stats = await coordinator.getQueueStatistics() {
-            ocrQueueDepth = stats.ocrQueueDepth
-            ocrTotalProcessed = stats.totalProcessed
-        }
+    /// How long the OCR queue can have a backlog with zero completions before it's treated
+    /// as stalled (as opposed to just working through a normal burst). The Vision circuit
+    /// breaker only trips when workers are actively hanging inside Vision — a pipeline that's
+    /// stalled because its worker count silently dropped to zero (no active calls, so no
+    /// timeouts, so the breaker never trips) produces exactly this symptom instead: a
+    /// growing backlog with no throughput. This is the independent signal that catches it.
+    private static let ocrStallThreshold: TimeInterval = 4 * 60
 
+    private func updateQueueStatus() async {
         let powerState = coordinator.getCurrentPowerState()
         ocrIsPaused = powerState.isPaused
         switch powerState.source {
         case .ac: powerSource = "AC"
         case .battery: powerSource = "Battery"
         case .unknown: powerSource = "Unknown"
+        }
+
+        guard let stats = await coordinator.getQueueStatistics() else { return }
+        ocrQueueDepth = stats.ocrQueueDepth
+        ocrTotalProcessed = stats.totalProcessed
+
+        let now = Date()
+        // A backlog reappearing after being empty starts a fresh stall clock, rather than
+        // being measured against whenever the last completion happened to occur — which
+        // could be arbitrarily long ago (e.g. after an idle stretch with nothing to
+        // process) and would otherwise make the very next tick with a backlog look like
+        // an instant stall.
+        if lastOCRQueueDepth == 0 && stats.ocrQueueDepth > 0 {
+            lastOCRProgressChangedAt = now
+        }
+        lastOCRQueueDepth = stats.ocrQueueDepth
+        if lastOCRProgressTotalProcessed != stats.totalProcessed {
+            lastOCRProgressTotalProcessed = stats.totalProcessed
+            lastOCRProgressChangedAt = now
+        }
+        let isStalled = stats.ocrQueueDepth > 0
+            && !ocrIsPaused
+            && now.timeIntervalSince(lastOCRProgressChangedAt) >= Self.ocrStallThreshold
+
+        // Don't clobber "still stuck after restart" messaging while a restart is in flight —
+        // restartOCR() owns ocrDegraded/ocrRestartLikelyRequiresRelaunch during that window.
+        if !ocrRestartInFlight {
+            ocrDegraded = stats.isOCRDegraded || isStalled
+            if !ocrDegraded {
+                ocrRestartLikelyRequiresRelaunch = false
+            }
         }
     }
 
@@ -493,6 +537,55 @@ public class DashboardViewModel: ObservableObject {
         lastTrackedStorageHealthBannerSignature = nil
     }
 
+    /// "Restart OCR" action: recovers a stalled OCR pipeline without restarting the app.
+    /// Waits out a grace window afterward to see whether Vision's circuit breaker re-trips —
+    /// if it does, the underlying wedge is still there and a full relaunch is needed
+    /// (`relaunchAppForOCRRecovery()`), since that's process-global framework state this
+    /// app can't reset on its own.
+    public func restartOCR() async {
+        guard !ocrRestartInFlight else { return }
+        ocrRestartInFlight = true
+        ocrRestartLikelyRequiresRelaunch = false
+        defer { ocrRestartInFlight = false }
+
+        let processedBeforeRestart = ocrTotalProcessed
+
+        do {
+            try await coordinator.restartOCRPipeline()
+        } catch {
+            Log.error("[DashboardViewModel] OCR restart failed: \(error.localizedDescription)", category: .ui)
+        }
+
+        // Worst case is 2 consecutive 20s Vision watchdog timeouts before the breaker
+        // re-trips; wait that out before reporting whether it actually recovered.
+        try? await Task.sleep(for: .seconds(25), clock: .continuous)
+
+        if let stats = await coordinator.getQueueStatistics() {
+            ocrQueueDepth = stats.ocrQueueDepth
+            ocrTotalProcessed = stats.totalProcessed
+            if stats.totalProcessed != lastOCRProgressTotalProcessed {
+                lastOCRProgressTotalProcessed = stats.totalProcessed
+                lastOCRProgressChangedAt = Date()
+            }
+
+            // Recovered only if the breaker didn't re-trip AND frames actually moved (or
+            // there was nothing queued to move, in which case throughput can't prove
+            // anything either way and the breaker flag is all we have).
+            let madeProgress = stats.totalProcessed != processedBeforeRestart || stats.ocrQueueDepth == 0
+            let stillDegraded = stats.isOCRDegraded || !madeProgress
+            ocrDegraded = stillDegraded
+            ocrRestartLikelyRequiresRelaunch = stillDegraded
+        }
+    }
+
+    /// Relaunches the app to recover from an OCR wedge that survived `restartOCR()`.
+    /// User-initiated only (button click) — the automatic version of this was removed
+    /// because it caused a restart loop; a single manual action has no such risk.
+    public func relaunchAppForOCRRecovery() {
+        Log.warning("[DashboardViewModel] Relaunching app for OCR recovery (user-initiated)", category: .ui)
+        AppRelaunch.relaunch()
+    }
+
     public func dismissRecentCrashReport() {
         acknowledgeRecentCrashReport(action: "dismissed")
     }
@@ -563,6 +656,12 @@ public class DashboardViewModel: ObservableObject {
         )
         recordStorageHealthBannerAction("debug_triggered", state: state)
         presentStorageHealthBanner(state)
+    }
+
+    func showDebugOCRDegradedBanner(requiresRelaunch: Bool) {
+        ocrRestartInFlight = false
+        ocrDegraded = true
+        ocrRestartLikelyRequiresRelaunch = requiresRelaunch
     }
 
     private func presentStorageHealthBanner(_ state: StorageHealthBannerState) {

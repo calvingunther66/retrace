@@ -68,6 +68,8 @@ retrace/
 │   ├── AppPaths.swift           # Application path configuration
 │   ├── BGRAImageUtilities.swift # Shared BGRA conversion + patch extraction helpers
 │   ├── MasterKeyManager.swift   # Keychain-backed master key creation + recovery phrase export
+│   ├── OpenRouterCredentialsManager.swift # Keychain-backed OpenRouter API key management
+│   ├── ResourcePressureMonitor.swift # Reactive system memory, thermal, and footprint resource guard
 │   ├── ReversibleOCRScrambler.swift # Deterministic reversible OCR patch scrambling + text protection
 │   ├── Models/                  # Data types used across modules
 │   │   ├── Frame.swift          # FrameID, CapturedFrame, VideoSegment

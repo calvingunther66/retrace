@@ -2610,13 +2610,17 @@ public class SearchViewModel: ObservableObject {
         let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName)
         let selectedModel = defaults?.string(forKey: OpenRouterCredentialsManager.selectedModelDefaultsKey) ?? "anthropic/claude-3.5-sonnet"
         let maxFrames = defaults?.integer(forKey: OpenRouterCredentialsManager.maxContextFramesDefaultsKey) ?? 25
-        let temperature = defaults?.double(forKey: "openRouterTemperature") ?? 0.2
+        // `UserDefaults.double(forKey:)` returns 0.0 for an absent key (not nil), so `?? 0.2`
+        // only fires if `defaults` itself is nil — it can't distinguish "never set" from
+        // "explicitly set to 0". Read via `.object(forKey:)` so an unset key actually falls
+        // through to the 0.2 default instead of silently becoming deterministic (temp 0).
+        let temperature = (defaults?.object(forKey: "openRouterTemperature") as? Double) ?? 0.2
 
         let config = OpenRouterConfig(
             isEnabled: true,
             model: selectedModel,
             maxContextFrames: maxFrames > 0 ? maxFrames : 25,
-            temperature: temperature > 0 ? temperature : 0.2
+            temperature: temperature >= 0 ? temperature : 0.2
         )
 
         openRouterTask = Task { [weak self] in

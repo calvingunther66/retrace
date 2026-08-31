@@ -13,11 +13,37 @@ public actor AppLifecycle {
     // State change observers
     private var stateObservers: [(AppState) -> Void] = []
 
+    // Memory pressure monitoring
+    private var memoryPressureSource: DispatchSourceMemoryPressure?
+
     // MARK: - Initialization
 
     public init(coordinator: AppCoordinator) {
         self.coordinator = coordinator
         Log.info("AppLifecycle initialized", category: .app)
+    }
+
+    /// Sets up the system memory pressure dispatch source.
+    /// Must be called after initialization to wire low-memory events.
+    public func setupMemoryPressureMonitor() {
+        guard memoryPressureSource == nil else { return }
+
+        let source = DispatchSource.makeMemoryPressureSource(
+            eventMask: [.warning, .critical],
+            queue: DispatchQueue.global(qos: .utility)
+        )
+        source.setEventHandler { [weak self] in
+            guard let self else { return }
+            let event = source.data
+            let level = event.contains(.critical) ? "critical" : "warning"
+            Log.warning("[AppLifecycle] System memory pressure: \(level)", category: .app)
+            Task {
+                try? await self.handleLowMemory()
+            }
+        }
+        source.resume()
+        memoryPressureSource = source
+        Log.info("[AppLifecycle] Memory pressure monitor active", category: .app)
     }
 
     // MARK: - State Transitions
@@ -34,6 +60,7 @@ public actor AppLifecycle {
 
         do {
             try await coordinator.initialize()
+            setupMemoryPressureMonitor()
             await transition(to: .ready)
             Log.info("Application ready", category: .app)
         } catch {
@@ -138,13 +165,34 @@ public actor AppLifecycle {
         Log.info("Application entered foreground", category: .app)
     }
 
-    /// Handle low memory warning
+    /// Handle low memory warning — flush caches and reduce memory footprint
     public func handleLowMemory() async throws {
-        Log.warning("Low memory warning received", category: .app)
+        Log.warning("[AppLifecycle] Low memory warning received — flushing caches", category: .app)
 
-        // Run maintenance to free up resources
+        // Clear in-memory credential caches
+        OpenRouterCredentialsManager.clearMemoryCache()
+
+        // Run database maintenance to free up resources (WAL checkpoint, temp table cleanup)
         if currentState == .running || currentState == .paused {
             try await coordinator.runDatabaseMaintenance()
+        }
+
+        // Log current memory diagnostic for troubleshooting
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        if result == KERN_SUCCESS {
+            let footprintMB = Double(info.phys_footprint) / (1024 * 1024)
+            let residentMB = Double(info.resident_size) / (1024 * 1024)
+            let compressedMB = Double(info.compressed) / (1024 * 1024)
+            Log.info(
+                "[AppLifecycle] Post-cleanup memory: footprint=\(String(format: "%.1f", footprintMB))MB resident=\(String(format: "%.1f", residentMB))MB compressed=\(String(format: "%.1f", compressedMB))MB",
+                category: .app
+            )
         }
     }
 

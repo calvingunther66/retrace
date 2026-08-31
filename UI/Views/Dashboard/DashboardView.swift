@@ -378,6 +378,7 @@ public struct DashboardView: View {
             || crashRecoveryBannerModel.state != nil
             || viewModel.unexpectedRecordingStop != nil
             || viewModel.storageHealthBanner != nil
+            || viewModel.ocrDegraded
             || viewModel.recentWALFailureCrash != nil
             || viewModel.recentCrashReport != nil
     }
@@ -489,6 +490,19 @@ public struct DashboardView: View {
                             state: storageHealthBanner,
                             onDismiss: {
                                 viewModel.dismissStorageHealthBanner()
+                            }
+                        )
+                    }
+
+                    if viewModel.ocrDegraded {
+                        OCRDegradedBanner(
+                            restartInFlight: viewModel.ocrRestartInFlight,
+                            likelyRequiresRelaunch: viewModel.ocrRestartLikelyRequiresRelaunch,
+                            onRestart: {
+                                Task { await viewModel.restartOCR() }
+                            },
+                            onRelaunch: {
+                                viewModel.relaunchAppForOCRRecovery()
                             }
                         )
                     }
@@ -2158,6 +2172,12 @@ public struct DashboardView: View {
                             shouldStop: true
                         )
                     }
+                    Button("Show OCR Degraded Banner") {
+                        viewModel.showDebugOCRDegradedBanner(requiresRelaunch: false)
+                    }
+                    Button("Show OCR Degraded Banner (Needs Relaunch)") {
+                        viewModel.showDebugOCRDegradedBanner(requiresRelaunch: true)
+                    }
                     Divider()
                     if let debugLaunchOnboarding {
                         Button("Relaunch Onboarding") {
@@ -2652,6 +2672,62 @@ private struct StorageHealthBanner: View {
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(accentColor.opacity(0.28), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - OCR Degraded Banner
+
+private struct OCRDegradedBanner: View {
+    let restartInFlight: Bool
+    let likelyRequiresRelaunch: Bool
+    let onRestart: () -> Void
+    let onRelaunch: () -> Void
+
+    private var messageText: String {
+        if restartInFlight {
+            return "Restarting OCR…"
+        }
+        if likelyRequiresRelaunch {
+            return "OCR is still stuck after restarting — text capture won't recover until the app is relaunched."
+        }
+        return "OCR has stopped responding (repeated hangs in the system text-recognition engine). Screenshots keep capturing, but text search won't be up to date until this recovers."
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "text.viewfinder")
+                .foregroundColor(.orange)
+                .font(.retraceTitle3)
+
+            Text(messageText)
+                .font(.retraceCaption)
+                .foregroundColor(.primary)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
+
+            Spacer(minLength: 12)
+
+            if restartInFlight {
+                ProgressView()
+                    .scaleEffect(0.6)
+            } else if likelyRequiresRelaunch {
+                Button("Relaunch App", action: onRelaunch)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            } else {
+                Button("Restart OCR", action: onRestart)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(Color.orange.opacity(0.16))
+        .cornerRadius(8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.orange.opacity(0.28), lineWidth: 1)
         )
     }
 }

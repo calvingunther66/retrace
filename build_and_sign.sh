@@ -179,22 +179,23 @@ echo "📍 App bundle location: $APP_BUNDLE"
 echo "   Version: $MARKETING_VERSION ($BUILD_NUMBER) · $GIT_COMMIT"
 echo ""
 
+# See local/docs for why a plain AppleEvent quit (not pkill) is preferred here.
+source "$(dirname "$0")/scripts/quit_app_gracefully.sh"
+
 # Check if app is already in Applications
 if [ -d "/Applications/$APP_NAME.app" ]; then
     echo "📲 Found existing app in /Applications/, updating in place..."
     echo "   This preserves your permissions settings."
 
-    # Kill the app if running
-    pkill -x "$APP_NAME" 2>/dev/null || true
+    quit_running_app_gracefully "$APP_NAME"
 
     # Replace the app
     rm -rf "/Applications/$APP_NAME.app"
     cp -r "$APP_BUNDLE" /Applications/
 
     echo "✅ Updated /Applications/$APP_NAME.app"
-    echo ""
-    echo "To run:"
-    echo "  open /Applications/$APP_NAME.app"
+    echo "🚀 Relaunching..."
+    open "/Applications/$APP_NAME.app"
 else
     echo "💡 For persistent permissions during development, install to /Applications/:"
     echo "   cp -r $APP_BUNDLE /Applications/ && open /Applications/$APP_NAME.app"

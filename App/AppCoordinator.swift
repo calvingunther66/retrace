@@ -563,9 +563,9 @@ public actor AppCoordinator {
     private var hasCompletedCrashRecoverySinceLaunch = false
     private var orphanedFrameRecoveryTask: Task<Void, Never>?
 
-    // Periodic task to finalize orphaned videos (processingState stuck at 1)
     private var orphanedVideoCleanupTask: Task<Void, Never>?
     private var dbStorageSnapshotTask: Task<Void, Never>?
+    private var resourcePressureObservationTask: Task<Void, Never>?
     private var lastLoggedDBStorageSnapshot: DBStorageSnapshotLogState?
     private static let pipelineMemoryLogInterval: TimeInterval = 5.0
     private static let memoryLedgerSummaryIntervalSeconds: TimeInterval = 30
@@ -776,6 +776,9 @@ public actor AppCoordinator {
 
         // Apply power-aware OCR settings
         await applyPowerSettings()
+
+        // Start system-wide resource pressure monitoring (thermal, memory, footprint)
+        startResourcePressureObservation()
 
         // Start periodic orphaned video cleanup (runs every 60s)
         startOrphanedVideoCleanup()
@@ -1347,6 +1350,7 @@ public actor AppCoordinator {
         // Stop periodic cleanup tasks
         stopOrphanedFrameRecovery()
         stopOrphanedVideoCleanup()
+        stopResourcePressureObservation()
         stopDBStorageSnapshotTask()
         await recordDBStorageSnapshot(reason: "shutdown")
         await timelineStillDiskWriter.shutdown()
@@ -1572,6 +1576,31 @@ public actor AppCoordinator {
     private func stopOrphanedVideoCleanup() {
         orphanedVideoCleanupTask?.cancel()
         orphanedVideoCleanupTask = nil
+    }
+
+    // MARK: - Resource Pressure Observation
+
+    private func startResourcePressureObservation() {
+        resourcePressureObservationTask?.cancel()
+        ResourcePressureMonitor.shared.start()
+
+        resourcePressureObservationTask = Task { [weak self] in
+            for await level in ResourcePressureMonitor.shared.pressureStream {
+                guard let self, !Task.isCancelled else { break }
+                if level == .critical {
+                    Log.warning("[AppCoordinator] Critical resource pressure — purging caches and running maintenance", category: .app)
+                    await self.purgeVideoDecodingCaches(reason: "resourcePressureCritical")
+                    OpenRouterCredentialsManager.clearMemoryCache()
+                    try? await self.runDatabaseMaintenance()
+                }
+            }
+        }
+        Log.info("[AppCoordinator] Resource pressure observation started", category: .app)
+    }
+
+    private func stopResourcePressureObservation() {
+        resourcePressureObservationTask?.cancel()
+        resourcePressureObservationTask = nil
     }
 
     // MARK: - DB Storage Snapshot Sampling
@@ -3140,6 +3169,16 @@ public actor AppCoordinator {
             return nil
         }
         return await queue.getStatistics()
+    }
+
+    /// User-initiated OCR pipeline restart ("Restart OCR" button) — recovers from a stalled
+    /// OCR pipeline without restarting the whole app. See
+    /// `FrameProcessingQueue.restartOCRPipeline()` for what this does and its limits.
+    public func restartOCRPipeline() async throws {
+        guard let queue = await services.processingQueue else {
+            throw ProcessingError.ocrFailed(underlying: "Processing queue is not available")
+        }
+        try await queue.restartOCRPipeline()
     }
 
     /// Get current power state for monitoring display
