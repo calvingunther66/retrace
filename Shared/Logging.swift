@@ -26,6 +26,7 @@ public enum Log {
         case database = "Database"
         case processing = "Processing"
         case search = "Search"
+        case migration = "Migration"
         case ui = "UI"
 
         fileprivate var logger: Logger {
@@ -1540,6 +1541,555 @@ public final class MainThreadWatchdog: @unchecked Sendable {
             semaphore.signal()
         }
 
+
         return semaphore.wait(timeout: .now() + timeout) == .success
+    }
+}
+
+// MARK: - Structured Error Context Logging
+
+extension Log {
+
+    /// Detailed structured context captured from a thrown error.
+    /// Logged alongside the human-readable message so errors are queryable in the log file.
+    public struct ErrorContext: Sendable {
+        /// Swift type name (e.g. `DatabaseError`, `StorageError`)
+        public let typeName: String
+        /// Module-level error code from `RetraceError` (e.g. `DB_001`), or `nil`
+        public let errorCode: String?
+        /// `localizedDescription` of the top-level error
+        public let description: String
+        /// Cause chain, innermost first (from `NSError.underlyingErrors`)
+        public let causes: [String]
+        /// Non-sensitive user-info keys from `NSError` (values are omitted for privacy)
+        public let userInfoKeys: [String]
+
+        public init(from error: Error) {
+            self.typeName = String(reflecting: type(of: error))
+            if let retraceError = error as? (any RetraceError) {
+                self.errorCode = retraceError.errorCode
+            } else {
+                self.errorCode = nil
+            }
+            self.description = error.localizedDescription
+
+            // Walk the underlying error chain (NSError-compatible)
+            var causes: [String] = []
+            let nsErr = error as NSError
+            func collectCauses(_ err: NSError) {
+                let underlying = err.userInfo[NSUnderlyingErrorKey] as? NSError
+                    ?? err.userInfo["NSDebugDescription"].flatMap { _ in nil }
+                for nested in err.underlyingErrors {
+                    causes.append(nested.localizedDescription)
+                    collectCauses(nested as NSError)
+                }
+                if let underlying {
+                    causes.append(underlying.localizedDescription)
+                    collectCauses(underlying)
+                }
+            }
+            collectCauses(nsErr)
+            self.causes = causes
+
+            // Record key names but not values (may contain sensitive data)
+            self.userInfoKeys = nsErr.userInfo.keys
+                .map { "\($0)" }
+                .filter { $0 != NSUnderlyingErrorKey && $0 != "NSDebugDescription" }
+                .sorted()
+        }
+
+        /// Compact one-line representation for log output
+        public var logLine: String {
+            var parts: [String] = []
+            parts.append("type=\(typeName)")
+            if let code = errorCode { parts.append("code=\(code)") }
+            parts.append("description=\"\(description)\"")
+            if !causes.isEmpty {
+                let causeSummary = causes.prefix(3).joined(separator: " ← ")
+                parts.append("causes=\"\(causeSummary)\"")
+            }
+            if !userInfoKeys.isEmpty {
+                parts.append("userInfoKeys=[\(userInfoKeys.joined(separator: ","))]")
+            }
+            return parts.joined(separator: " ")
+        }
+    }
+
+    /// Log an error with full structured context: type name, error code, cause chain, and
+    /// user-info keys. Use this instead of `Log.error("\(error)")` for actionable diagnostics.
+    public static func error(
+        _ message: String,
+        context error: Error,
+        category: Category = .app,
+        file: String = #file,
+        function: String = #function,
+        line: Int = #line
+    ) {
+        let ctx = ErrorContext(from: error)
+        let fullMessage = "\(message) | \(ctx.logLine)"
+        let logger = category.logger
+        logger.error("\(fullMessage, privacy: .public)")
+        if printToConsole {
+            printFormatted(level: "❌ ERROR", message: fullMessage, category: category, file: file, line: line)
+        }
+    }
+
+    /// Log a critical/fault with full structured context.
+    public static func critical(
+        _ message: String,
+        context error: Error,
+        category: Category = .app,
+        file: String = #file,
+        function: String = #function,
+        line: Int = #line
+    ) {
+        let ctx = ErrorContext(from: error)
+        let fullMessage = "\(message) | \(ctx.logLine)"
+        let logger = category.logger
+        logger.critical("\(fullMessage, privacy: .public)")
+        if printToConsole {
+            printFormatted(level: "🔥 CRITICAL", message: fullMessage, category: category, file: file, line: line)
+        }
+    }
+}
+
+// MARK: - Error Frequency Guard
+
+/// Rate-limiter for repetitive error messages that would otherwise flood the log.
+///
+/// Logs the first occurrence immediately, then at the 10th, 100th, and 1000th
+/// occurrences, and emits a periodic summary every 60 seconds.
+///
+/// Usage:
+/// ```swift
+/// private let ocrErrorGuard = ErrorFrequencyGuard(key: "ocr.frame.failed")
+/// // ... in frame loop:
+/// ocrErrorGuard.log("OCR failed", category: .processing, error: error)
+/// ```
+public final class ErrorFrequencyGuard: @unchecked Sendable {
+    private let key: String
+    private let summaryInterval: TimeInterval
+    private let lock = NSLock()
+    private var count: Int = 0
+    private var lastSummaryAt: Date?
+    private var lastLoggedCount: Int = 0
+
+    public init(key: String, summaryInterval: TimeInterval = 60) {
+        self.key = key
+        self.summaryInterval = summaryInterval
+    }
+
+    /// Log an error, suppressing repeats unless it crosses a log threshold.
+    public func log(
+        _ message: String,
+        category: Log.Category = .app,
+        error: Error? = nil,
+        file: String = #file,
+        function: String = #function,
+        line: Int = #line
+    ) {
+        lock.lock()
+        count += 1
+        let currentCount = count
+        let now = Date()
+        let timeSinceSummary = lastSummaryAt.map { now.timeIntervalSince($0) } ?? .infinity
+        let isLogThreshold = currentCount == 1
+            || currentCount == 10
+            || currentCount == 100
+            || currentCount == 1000
+            || currentCount.isMultiple(of: 10_000)
+        let isSummaryDue = timeSinceSummary >= summaryInterval && currentCount > lastLoggedCount
+        let shouldLog = isLogThreshold || isSummaryDue
+        if shouldLog {
+            lastLoggedCount = currentCount
+            if isSummaryDue { lastSummaryAt = now }
+        }
+        lock.unlock()
+
+        guard shouldLog else { return }
+
+        let prefix = currentCount == 1 ? "" : "[×\(currentCount)] "
+        if let error {
+            Log.error(
+                "\(prefix)[FreqGuard:\(key)] \(message)",
+                context: error,
+                category: category,
+                file: file,
+                function: function,
+                line: line
+            )
+        } else {
+            Log.error(
+                "\(prefix)[FreqGuard:\(key)] \(message)",
+                category: category,
+                file: file,
+                function: function,
+                line: line
+            )
+        }
+    }
+
+    /// Log a warning under frequency guard.
+    public func warn(
+        _ message: String,
+        category: Log.Category = .app,
+        file: String = #file,
+        function: String = #function,
+        line: Int = #line
+    ) {
+        lock.lock()
+        count += 1
+        let currentCount = count
+        let now = Date()
+        let timeSinceSummary = lastSummaryAt.map { now.timeIntervalSince($0) } ?? .infinity
+        let isLogThreshold = currentCount == 1
+            || currentCount == 10
+            || currentCount == 100
+            || currentCount == 1000
+            || currentCount.isMultiple(of: 10_000)
+        let isSummaryDue = timeSinceSummary >= summaryInterval && currentCount > lastLoggedCount
+        let shouldLog = isLogThreshold || isSummaryDue
+        if shouldLog {
+            lastLoggedCount = currentCount
+            if isSummaryDue { lastSummaryAt = now }
+        }
+        lock.unlock()
+
+        guard shouldLog else { return }
+
+        let prefix = currentCount == 1 ? "" : "[×\(currentCount)] "
+        Log.warning(
+            "\(prefix)[FreqGuard:\(key)] \(message)",
+            category: category,
+            file: file,
+            function: function,
+            line: line
+        )
+    }
+
+    /// Reset the counter (e.g. after a successful recovery).
+    public func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        count = 0
+        lastLoggedCount = 0
+        lastSummaryAt = nil
+    }
+
+    /// Current occurrence count (read-only snapshot).
+    public var occurrenceCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+}
+
+// MARK: - Structured Event Logging
+
+extension Log {
+
+    /// Log a structured lifecycle event. These lines are prefixed with `[EVENT]` so they
+    /// can be grepped independently from regular log entries.
+    ///
+    /// Example output:
+    /// ```
+    /// [2026-08-31T...] [INFO] [App] RetraceApp.swift:42 - [EVENT] event=pipeline.start category=App key1=val1 key2=val2
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - name: Dot-separated event identifier (e.g. `pipeline.start`, `permission.granted`)
+    ///   - category: Log category
+    ///   - metadata: Additional key-value pairs to attach (values must be safe to log)
+    public static func event(
+        _ name: String,
+        category: Category = .app,
+        metadata: [String: String] = [:],
+        file: String = #file,
+        function: String = #function,
+        line: Int = #line
+    ) {
+        var parts = ["[EVENT]", "event=\(name)", "category=\(category.rawValue)"]
+        for (key, value) in metadata.sorted(by: { $0.key < $1.key }) {
+            // Sanitise value: replace quotes and newlines
+            let sanitised = value
+                .replacingOccurrences(of: "\"", with: "'")
+                .replacingOccurrences(of: "\n", with: "↵")
+            parts.append("\(key)=\(sanitised)")
+        }
+        let message = parts.joined(separator: " ")
+        info(message, category: category, file: file, function: function, line: line)
+    }
+}
+
+// MARK: - Async Task Logging Context
+
+/// A logging context propagated through `@TaskLocal` storage across actor hops.
+///
+/// Attach a context at the start of a user-initiated operation, and all log calls
+/// within that operation's task tree will include the operation name and trace ID.
+///
+/// Usage:
+/// ```swift
+/// await AsyncTaskContext.$current.withValue(
+///     LoggingContext(operationName: "search", traceID: AsyncTaskContext.makeTraceID())
+/// ) {
+///     // all Log.* calls inside here can access AsyncTaskContext.current
+///     await performSearch(query: query)
+/// }
+/// ```
+public struct LoggingContext: Sendable {
+    /// High-level operation name (e.g. `search`, `pipeline.start`, `crash_recovery`)
+    public let operationName: String
+    /// Short unique identifier (8-char UUID prefix) for correlating related log lines
+    public let traceID: String
+    /// When the operation was enqueued (for queue-wait latency tracking)
+    public let enqueuedAt: CFAbsoluteTime
+
+    public init(operationName: String, traceID: String, enqueuedAt: CFAbsoluteTime = CFAbsoluteTimeGetCurrent()) {
+        self.operationName = operationName
+        self.traceID = traceID
+        self.enqueuedAt = enqueuedAt
+    }
+
+    /// Elapsed milliseconds since the context was created
+    public var elapsedMs: Double {
+        max(0, (CFAbsoluteTimeGetCurrent() - enqueuedAt) * 1000)
+    }
+}
+
+public enum AsyncTaskContext {
+    /// Current logging context, if one has been attached to this task tree.
+    @TaskLocal public static var current: LoggingContext?
+
+    /// Generate a short trace ID (first 8 chars of a UUID).
+    public static func makeTraceID() -> String {
+        String(UUID().uuidString.prefix(8))
+    }
+
+    /// Convenience: run `body` with a new logging context attached.
+    @discardableResult
+    public static func withContext<T>(
+        operationName: String,
+        traceID: String? = nil,
+        body: () async throws -> T
+    ) async rethrows -> T {
+        let ctx = LoggingContext(
+            operationName: operationName,
+            traceID: traceID ?? makeTraceID()
+        )
+        return try await $current.withValue(ctx) {
+            try await body()
+        }
+    }
+}
+
+// MARK: - Crash Signal Handler
+
+/// Installs POSIX signal handlers that write a fatal crash breadcrumb to `retrace.log`
+/// before the process terminates, so crash events are visible in the persistent log file
+/// alongside the last log entries before the crash.
+///
+/// **Must be called once at app startup** before any async work starts.
+/// The handlers use only async-signal-safe primitives (`write(2)`, `fsync(2)`, `raise(3)`).
+///
+/// After writing the breadcrumb the handler resets to `SIG_DFL` and re-raises, so the
+/// OS crash reporter (Console.app > Crash Reports) still captures the full stack trace.
+public enum CrashSignalHandler {
+
+    // Pre-opened raw file descriptor for async-signal-safe writes during crash.
+    // Opened at install time; never closed (OS reclaims on exit).
+    nonisolated(unsafe) private static var logFD: Int32 = -1
+    nonisolated(unsafe) private static var isInstalled = false
+
+    private static let handledSignals: [Int32] = [SIGSEGV, SIGABRT, SIGBUS, SIGILL, SIGFPE]
+
+    /// Install crash signal handlers. Call once early in `applicationDidFinishLaunching`.
+    public static func install() {
+        guard !isInstalled else { return }
+        isInstalled = true
+
+        // Open the retrace log file for raw-fd writes (O_APPEND is async-signal-safe)
+        let path = Log.logFilePath
+        logFD = open(path, O_WRONLY | O_APPEND | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
+        if logFD < 0 {
+            Log.warning("[CrashSignalHandler] Could not open log file fd — crash breadcrumbs will be unavailable: \(path)", category: .app)
+        }
+
+        for sig in handledSignals {
+            // SIG_DFL auto-reset after first delivery lets re-raise terminate the process.
+            // We capture nothing in the closure body — all state is via static vars.
+            signal(sig) { receivedSig in
+                // ── async-signal-safe region ─────────────────────────────────────
+                let fd = CrashSignalHandler.logFD
+                if fd >= 0 {
+                    CrashSignalHandler.writeBreadcrumb(fd, receivedSig)
+                }
+                // Reset to default handler then re-raise so the OS crash reporter fires
+                Darwin.signal(receivedSig, SIG_DFL)
+                Darwin.raise(receivedSig)
+                // ─────────────────────────────────────────────────────────────────
+            }
+        }
+
+        let sigNames = handledSignals.map { Self.sigName($0) }.joined(separator: ", ")
+        Log.info("[CrashSignalHandler] Installed handlers for: \(sigNames). Breadcrumbs → \(path)", category: .app)
+    }
+
+    /// Uninstall all handlers (restore `SIG_DFL`). Rarely needed; mainly for testing.
+    public static func uninstall() {
+        guard isInstalled else { return }
+        for sig in handledSignals {
+            Darwin.signal(sig, SIG_DFL)
+        }
+        isInstalled = false
+        Log.info("[CrashSignalHandler] Handlers uninstalled", category: .app)
+    }
+
+    // Async-signal-safe breadcrumb writer — uses only write(2) and fsync(2).
+    // No Swift runtime, no malloc, no ObjC messaging.
+    nonisolated(unsafe) static let writeBreadcrumb: @convention(c) (Int32, Int32) -> Void = { fd, sig in
+        // Helper: write a C string literal (stored in binary — no allocation)
+        func w(_ s: StaticString) {
+            s.withUTF8Buffer { buf in
+                _ = Darwin.write(fd, buf.baseAddress, buf.count)
+            }
+        }
+        w("\n[FATAL] signal=")
+        switch sig {
+        case SIGSEGV: w("SIGSEGV")
+        case SIGABRT: w("SIGABRT")
+        case SIGBUS:  w("SIGBUS")
+        case SIGILL:  w("SIGILL")
+        case SIGFPE:  w("SIGFPE")
+        default:      w("UNKNOWN")
+        }
+        w(" process=Retrace — fatal crash. Full stack in Console.app > Crash Reports.\n")
+        _ = Darwin.fsync(fd)
+    }
+
+    private static func sigName(_ sig: Int32) -> String {
+        switch sig {
+        case SIGSEGV: return "SIGSEGV"
+        case SIGABRT: return "SIGABRT"
+        case SIGBUS:  return "SIGBUS"
+        case SIGILL:  return "SIGILL"
+        case SIGFPE:  return "SIGFPE"
+        default:      return "SIG\(sig)"
+        }
+    }
+}
+
+// MARK: - Launch Diagnostic Reporter
+
+/// Writes a structured startup snapshot to `retrace.log` once per launch.
+///
+/// The snapshot captures system state at the moment the app finishes initializing,
+/// making it easy to correlate bugs with environment conditions (OS, memory, DB size).
+///
+/// Call `LaunchDiagnosticReporter.report(databasePath:)` once coordinator is ready.
+public enum LaunchDiagnosticReporter {
+
+    private static let subsection = "[LAUNCH-DIAG]"
+    nonisolated(unsafe) private static var hasReported = false
+    private static let reportLock = NSLock()
+
+    /// Write the launch diagnostic snapshot. Idempotent — only runs once per process.
+    ///
+    /// - Parameter databasePath: Path to the primary SQLite database (for size reporting).
+    public static func report(databasePath: String? = nil) {
+        reportLock.lock()
+        guard !hasReported else {
+            reportLock.unlock()
+            return
+        }
+        hasReported = true
+        reportLock.unlock()
+
+        // ── App identity ──────────────────────────────────────────────────────
+        let bundle = Bundle.main
+        let appVersion   = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let buildNumber  = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        let gitCommit    = bundle.object(forInfoDictionaryKey: "RetraceGitCommit") as? String ?? "?"
+        let gitBranch    = bundle.object(forInfoDictionaryKey: "RetraceGitBranch") as? String ?? "?"
+        let buildDate    = bundle.object(forInfoDictionaryKey: "RetraceBuildDate") as? String ?? "?"
+        let isDevBuild   = bundle.object(forInfoDictionaryKey: "RetraceIsDevBuild") as? Bool ?? false
+
+        // ── System ────────────────────────────────────────────────────────────
+        let processInfo = ProcessInfo.processInfo
+        let osVersion    = processInfo.operatingSystemVersionString
+        let hostName     = Host.current().localizedName ?? "unknown"
+        let cpuCount     = processInfo.processorCount
+        let physMemGB    = Double(processInfo.physicalMemory) / (1024 * 1024 * 1024)
+
+        // ── Hardware model (chip identifier) ─────────────────────────────────
+        let hardwareModel = Self.readHardwareModel()
+
+        // ── Process memory footprint at launch ────────────────────────────────
+        let footprintMB = Self.processFootprintMB()
+
+        // ── Database file sizes ───────────────────────────────────────────────
+        var dbSizeDesc = "n/a"
+        if let dbPath = databasePath, !dbPath.contains(":memory:") {
+            let expandedPath = NSString(string: dbPath).expandingTildeInPath
+            let attrs = try? FileManager.default.attributesOfItem(atPath: expandedPath)
+            if let bytes = attrs?[.size] as? Int64 {
+                dbSizeDesc = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+            }
+            // Also report WAL size
+            let walPath = expandedPath + "-wal"
+            let walAttrs = try? FileManager.default.attributesOfItem(atPath: walPath)
+            if let walBytes = walAttrs?[.size] as? Int64, walBytes > 0 {
+                dbSizeDesc += " (WAL: \(ByteCountFormatter.string(fromByteCount: walBytes, countStyle: .file)))"
+            }
+        }
+
+        // ── Log file info ──────────────────────────────────────────────────────
+        let logPath = Log.logFilePath
+        let logAttrs = try? FileManager.default.attributesOfItem(atPath: logPath)
+        let logSizeDesc: String
+        if let bytes = logAttrs?[.size] as? Int64 {
+            logSizeDesc = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        } else {
+            logSizeDesc = "new"
+        }
+
+        // ── Compose and write ─────────────────────────────────────────────────
+        let separator = String(repeating: "─", count: 60)
+        Log.info("""
+            \(subsection) \(separator)
+            \(subsection) Retrace v\(appVersion) (\(buildNumber)) [\(isDevBuild ? "DEV" : "RELEASE")]
+            \(subsection) commit=\(gitCommit) branch=\(gitBranch) built=\(buildDate)
+            \(subsection) macOS=\(osVersion)
+            \(subsection) hardware=\(hardwareModel) host=\(hostName) cpus=\(cpuCount) physMem=\(String(format: "%.1f", physMemGB))GB
+            \(subsection) processFootprint=\(footprintMB) db=\(dbSizeDesc) logFile=\(logSizeDesc) @ \(logPath)
+            \(subsection) \(separator)
+            """,
+            category: .app
+        )
+    }
+
+    // MARK: - Private Helpers
+
+    private static func readHardwareModel() -> String {
+        // sysctl hw.model returns e.g. "Mac14,3" on Apple Silicon Macs
+        var size = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        guard size > 0 else { return "unknown" }
+        var buffer = [CChar](repeating: 0, count: size)
+        sysctlbyname("hw.model", &buffer, &size, nil, 0)
+        return String(cString: buffer)
+    }
+
+    private static func processFootprintMB() -> String {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return "unknown" }
+        let mb = Double(info.phys_footprint) / (1024 * 1024)
+        return String(format: "%.1fMB", mb)
     }
 }

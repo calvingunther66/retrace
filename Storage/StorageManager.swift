@@ -154,7 +154,11 @@ fileprivate func rollbackInterruptedSegmentRewriteIfNeededOnDisk(
 
 fileprivate func removeItemIfExistsOnDisk(at url: URL) {
     guard FileManager.default.fileExists(atPath: url.path) else { return }
-    try? FileManager.default.removeItem(at: url)
+    do {
+        try FileManager.default.removeItem(at: url)
+    } catch {
+        Log.warning("[StorageManager] Failed to remove item at \(url.path): \(error.localizedDescription)", category: .storage)
+    }
 }
 
 fileprivate actor SegmentRewriteExecutor {

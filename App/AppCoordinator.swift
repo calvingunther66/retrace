@@ -788,6 +788,18 @@ public actor AppCoordinator {
         // Log auto-start state for debugging
         let shouldAutoStart = Self.shouldAutoStartRecording()
         Log.info("Auto-start recording check: shouldAutoStartRecording=\(shouldAutoStart)", category: .app)
+
+        // Write structured launch diagnostic snapshot (once per process)
+        LaunchDiagnosticReporter.report(databasePath: AppPaths.databasePath)
+
+        Log.event(
+            "coordinator.initialized",
+            category: .app,
+            metadata: [
+                "autoStart": "\(shouldAutoStart)",
+                "walReady": "\(await services.storage.isWALReady())"
+            ]
+        )
     }
 
     func runCrashRecoveryForTesting() async throws {
@@ -1818,7 +1830,11 @@ public actor AppCoordinator {
                                 // DON'T clear pendingFrames here - they still need to be marked readable
                                 // when the fragment actually flushes to disk.
                                 for bufferedFrame in state.pendingFrames {
-                                    try? await processingQueue.enqueue(frameID: bufferedFrame.frameID)
+                                    do {
+                                        try await processingQueue.enqueue(frameID: bufferedFrame.frameID)
+                                    } catch {
+                                        Log.error("[Pipeline] Failed to enqueue buffered frame \(bufferedFrame.frameID) during timeline flush", context: error, category: .app)
+                                    }
                                 }
                             }
                         }

@@ -50,6 +50,7 @@ public actor SearchManager: SearchProtocol {
 
     public func search(query: SearchQuery) async throws -> SearchResults {
         guard isInitialized else {
+            Log.error("[SearchManager] Search attempted before search manager is initialized", category: .search)
             throw SearchError.indexNotReady
         }
 
@@ -58,7 +59,10 @@ public actor SearchManager: SearchProtocol {
         // Validate query
         let validationErrors = queryParser.validate(query: query)
         if !validationErrors.isEmpty {
-            throw SearchError.invalidQuery(reason: validationErrors.first?.message ?? "Invalid query")
+            let reason = validationErrors.first?.message ?? "Invalid query"
+            let error = SearchError.invalidQuery(reason: reason)
+            Log.warning("[SearchManager] Invalid search query '\(query.text)': \(reason)", category: .search)
+            throw error
         }
 
         // Parse query

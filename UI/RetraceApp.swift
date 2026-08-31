@@ -352,6 +352,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func finishApplicationLaunch() {
+        // Install crash signal handlers first — before any async work —
+        // so SIGSEGV/SIGABRT breadcrumbs appear in retrace.log at time of crash.
+        CrashSignalHandler.install()
+
         CrashRecoveryManager.shared.armAtLaunch()
         // Configure app appearance
         configureAppearance()
