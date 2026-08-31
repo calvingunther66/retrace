@@ -210,6 +210,14 @@ public struct SearchResult: Codable, Sendable, Identifiable {
         }
     }
 
+    /// Which index produced this result: local OCR text, an AI-generated visual description,
+    /// or both (OCR text matched, and the frame also has a semantic description on file).
+    public enum MatchSource: String, Codable, Sendable {
+        case ocr
+        case semantic
+        case both
+    }
+
     public let id: FrameID
     public let timestamp: Date
     public let snippet: String       // Text snippet with match highlighted
@@ -223,6 +231,10 @@ public struct SearchResult: Codable, Sendable, Identifiable {
     public let videoFrameRate: Double?    // Video frame rate for precise seek
     public var source: FrameSource        // Which data source this result came from
     public let highlightNode: HighlightNode?
+    /// Which text index actually matched the query. Optional (not defaulted to `.ocr` at the
+    /// stored-property level) so synthesized `Decodable` treats a missing key as `nil` instead
+    /// of failing to decode pre-existing on-disk search result caches that predate this field.
+    public var matchSource: MatchSource?
 
     public init(
         id: FrameID,
@@ -237,7 +249,8 @@ public struct SearchResult: Codable, Sendable, Identifiable {
         videoPath: String? = nil,
         videoFrameRate: Double? = nil,
         source: FrameSource = .native,
-        highlightNode: HighlightNode? = nil
+        highlightNode: HighlightNode? = nil,
+        matchSource: MatchSource? = .ocr
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -252,6 +265,7 @@ public struct SearchResult: Codable, Sendable, Identifiable {
         self.videoFrameRate = videoFrameRate
         self.source = source
         self.highlightNode = highlightNode
+        self.matchSource = matchSource
     }
 }
 

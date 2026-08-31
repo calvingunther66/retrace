@@ -8,6 +8,12 @@ public struct OpenRouterSettingsView: View {
     @AppStorage(OpenRouterCredentialsManager.maxContextFramesDefaultsKey, store: settingsStore) private var maxContextFrames: Double = 25
     @AppStorage("openRouterTemperature", store: settingsStore) private var temperature: Double = 0.2
 
+    @AppStorage(OpenRouterCredentialsManager.semanticIndexingEnabledDefaultsKey, store: settingsStore) private var isSemanticIndexingEnabled: Bool = false
+    @AppStorage(OpenRouterCredentialsManager.webSSHIntegrationEnabledDefaultsKey, store: settingsStore) private var isWebSSHIntegrationEnabled: Bool = false
+    @AppStorage(OpenRouterCredentialsManager.indexingModelDefaultsKey, store: settingsStore) private var indexingModel: String = OpenRouterCredentialsManager.defaultIndexingModel
+    @State private var customIndexingModelInput: String = ""
+    @State private var isCustomIndexingModel: Bool = false
+
     @State private var apiKeyInput: String = ""
     @State private var hasStoredKey: Bool = false
     @State private var isShowingKey: Bool = false
@@ -310,9 +316,100 @@ public struct OpenRouterSettingsView: View {
             .padding(16)
             .background(Color.white.opacity(0.04))
             .cornerRadius(12)
+
+            // AI Visual Semantic Indexing
+            VStack(alignment: .leading, spacing: 16) {
+                Toggle(isOn: $isSemanticIndexingEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Enable AI Visual Indexing")
+                            .font(.retraceHeadline)
+                            .foregroundColor(.retracePrimary)
+                        Text("Sends downscaled screenshots to an AI vision model via OpenRouter so search can match on visual content like icons, diagrams, and images — not just OCR text. Runs slowly in the background (self-limited to ~600 backfill requests/day). Screenshots from apps excluded from OCR are never sent.")
+                            .font(.retraceCaption2)
+                            .foregroundColor(.retraceSecondary.opacity(0.8))
+                    }
+                }
+                .toggleStyle(.switch)
+
+                if isSemanticIndexingEnabled {
+                    Divider().opacity(0.1)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Indexing Model (must support image input)")
+                            .font(.retraceCaptionMedium)
+                            .foregroundColor(.retraceSecondary)
+
+                        Picker("", selection: $indexingModel) {
+                            Text("NVIDIA Nemotron 3 Nano Omni (free, vision)").tag(OpenRouterCredentialsManager.defaultIndexingModel)
+                            Text("Custom Model...").tag("custom")
+                        }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .onChange(of: indexingModel) { newValue in
+                            isCustomIndexingModel = (newValue == "custom")
+                        }
+
+                        if isCustomIndexingModel || indexingModel != OpenRouterCredentialsManager.defaultIndexingModel {
+                            HStack {
+                                TextField("Enter a vision-capable OpenRouter model slug", text: $customIndexingModelInput)
+                                    .textFieldStyle(.plain)
+                                    .font(.system(.body, design: .monospaced))
+                                    .padding(10)
+                                    .background(Color.white.opacity(0.06))
+                                    .cornerRadius(8)
+
+                                Button("Apply") {
+                                    let trimmed = customIndexingModelInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    if !trimmed.isEmpty {
+                                        indexingModel = trimmed
+                                    }
+                                }
+                                .font(.retraceCaptionMedium)
+                                .foregroundColor(.retracePrimary)
+                                .padding(.horizontal, 12)
+                                .frame(height: 36)
+                                .background(Color.white.opacity(0.08))
+                                .cornerRadius(8)
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.top, 4)
+                        }
+                    }
+                }
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.04))
+            .cornerRadius(12)
+
+            // WebSSH Terminal Integration
+            VStack(alignment: .leading, spacing: 12) {
+                Toggle(isOn: $isWebSSHIntegrationEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(.orange)
+                            Text("Enable WebSSH Terminal Integration")
+                                .font(.retraceHeadline)
+                                .foregroundColor(.retracePrimary)
+                        }
+                        Text("Lets AI search read your WebSSH terminal sessions and, with your explicit approval on every single command, run commands in them. A confirmation dialog always appears before any command executes — text you merely viewed on screen can never run a command on its own. Off by default; only enable this if you understand the risk.")
+                            .font(.retraceCaption2)
+                            .foregroundColor(.retraceSecondary.opacity(0.8))
+                    }
+                }
+                .toggleStyle(.switch)
+            }
+            .padding(16)
+            .background(Color.white.opacity(0.04))
+            .cornerRadius(12)
         }
         .onAppear {
             loadKeyStatus()
+            isCustomIndexingModel = (indexingModel != OpenRouterCredentialsManager.defaultIndexingModel)
+            if isCustomIndexingModel {
+                customIndexingModelInput = indexingModel
+            }
         }
     }
 

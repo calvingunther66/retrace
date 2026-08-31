@@ -2577,6 +2577,34 @@ public class SearchViewModel: ObservableObject {
     // MARK: - OpenRouter AI Search
 
     private var openRouterTask: Task<Void, Never>?
+    private let webSSHClient = WebSSHMCPClient()
+
+    /// Set when the model proposes a `Terminal_Session_Send_Command` call and is awaiting
+    /// explicit user approval. The AI-answer view shows a confirmation dialog bound to this;
+    /// nothing executes on a real SSH session until `approvePendingCommand()` is called.
+    @Published public var pendingCommandConfirmation: PendingCommandConfirmation?
+    private var pendingCommandContinuation: CheckedContinuation<Bool, Never>?
+
+    public func approvePendingCommand() {
+        pendingCommandContinuation?.resume(returning: true)
+        pendingCommandContinuation = nil
+        pendingCommandConfirmation = nil
+    }
+
+    public func denyPendingCommand() {
+        pendingCommandContinuation?.resume(returning: false)
+        pendingCommandContinuation = nil
+        pendingCommandConfirmation = nil
+    }
+
+    /// Called from `OpenRouterClient`'s tool-calling loop (off the main actor) whenever it
+    /// proposes sending a command. Suspends until the user approves or denies via the dialog.
+    private func awaitCommandConfirmation(_ confirmation: PendingCommandConfirmation) async -> Bool {
+        await withCheckedContinuation { continuation in
+            self.pendingCommandContinuation = continuation
+            self.pendingCommandConfirmation = confirmation
+        }
+    }
 
     public func askOpenRouterAI(query: String? = nil) {
         let question = (query ?? searchQuery).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2623,6 +2651,39 @@ public class SearchViewModel: ObservableObject {
             temperature: temperature >= 0 ? temperature : 0.2
         )
 
+        let webSSHEnabled = defaults?.bool(forKey: OpenRouterCredentialsManager.webSSHIntegrationEnabledDefaultsKey) ?? false
+
+        if webSSHEnabled {
+            openRouterTask = Task { [weak self] in
+                guard let self else { return }
+                let client = OpenRouterClient()
+                let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
+                do {
+                    let response = try await client.answerQueryWithTools(
+                        query: question,
+                        contextFrames: contextFrames,
+                        apiKey: apiKey,
+                        model: config.model,
+                        temperature: config.temperature,
+                        webSSHClient: self.webSSHClient,
+                        confirmSendCommand: { [weak self] confirmation in
+                            guard let self else { return false }
+                            return await self.awaitCommandConfirmation(confirmation)
+                        }
+                    )
+                    guard !Task.isCancelled else { return }
+                    self.aiGeneratedAnswer = response.answer
+                    self.aiCitations = response.citations
+                    self.isAIGenerating = false
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    self.isAIGenerating = false
+                    self.aiError = error.localizedDescription
+                }
+            }
+            return
+        }
+
         openRouterTask = Task { [weak self] in
             let client = OpenRouterClient()
             let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
@@ -2666,6 +2727,9 @@ public class SearchViewModel: ObservableObject {
         aiCitations = []
         aiError = nil
         showAIAnswerPanel = false
+        // A dangling continuation would leak the tool-calling Task forever awaiting a reply
+        // that will never come — treat closing the panel as an implicit denial.
+        denyPendingCommand()
     }
 
     // MARK: - Cleanup

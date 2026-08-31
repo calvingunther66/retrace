@@ -104,7 +104,7 @@ public actor SearchManager: SearchProtocol {
             )
         }
 
-        // Execute FTS search
+        // Execute FTS search (local OCR text — the primary, higher-fidelity index)
         let ftsMatches = try await ftsEngine.search(
             query: searchableColumnsFTSQuery,
             filters: filters,
@@ -112,15 +112,52 @@ public actor SearchManager: SearchProtocol {
             offset: query.offset
         )
 
+        // Also search the AI-generated visual-description index — but only on the first page.
+        // OCR and semantic are two independent FTS indexes each paginated by their own
+        // rank-ordered offset; merging both on every page would duplicate/skip frames across
+        // pages once offset > 0 (there's no way to express "page 2 of the merged, re-ranked
+        // set" as an offset into either individual index). Restricting the merge to offset==0
+        // means later pages fall back to OCR-only, which is a real limitation (semantic-only
+        // matches beyond page 1 won't surface) but a correct one, rather than a subtly broken
+        // "correct-looking" merge on every page.
+        var semanticMatches: [FTSMatch] = []
+        if query.offset == 0 {
+            let semanticFTSQuery = Self.buildSemanticFTSQuery(for: parsed)
+            do {
+                semanticMatches = try await ftsEngine.searchSemantic(
+                    query: semanticFTSQuery,
+                    filters: filters,
+                    limit: query.limit,
+                    offset: 0
+                )
+            } catch {
+                // Semantic index is an additive enhancement — never let it break OCR search.
+                Log.warning("[SearchManager] Semantic search failed, continuing with OCR-only results: \(error.localizedDescription)", category: .search)
+                semanticMatches = []
+            }
+        }
+
+        // Merge: OCR matches win on conflict (already have a searchable snippet); semantic-only
+        // matches fill in frames OCR search missed entirely. Truncate back to the requested
+        // page size — the merge can otherwise exceed `query.limit`.
+        var seenFrameIDs = Set(ftsMatches.map(\.frameID))
+        var mergedMatches: [(match: FTSMatch, matchSource: SearchResult.MatchSource)] =
+            ftsMatches.map { ($0, .ocr) }
+        for match in semanticMatches where !seenFrameIDs.contains(match.frameID) {
+            guard mergedMatches.count < query.limit else { break }
+            mergedMatches.append((match, .semantic))
+            seenFrameIDs.insert(match.frameID)
+        }
+
         // Convert FTS matches to SearchResults
         var results: [SearchResult] = []
-        for match in ftsMatches {
+        for (match, matchSource) in mergedMatches {
             // Get frame reference to get segment info
             if let frame = try await database.getFrame(id: match.frameID) {
                 // ⚠️ RELEASE 2 ONLY - Use simple matched text extraction for Release 1
                 let matchedText = match.snippet.components(separatedBy: " ").prefix(5).joined(separator: " ")
 
-                Log.debug("[SearchManager] Creating SearchResult: frameID=\(match.frameID.value), videoID=\(match.videoID.value), frameIndex=\(match.frameIndex), snippet='\(match.snippet.prefix(50))...'", category: .search)
+                Log.debug("[SearchManager] Creating SearchResult: frameID=\(match.frameID.value), videoID=\(match.videoID.value), frameIndex=\(match.frameIndex), snippet='\(match.snippet.prefix(50))...', matchSource=\(matchSource)", category: .search)
 
                 let result = SearchResult(
                     id: match.frameID,
@@ -136,7 +173,8 @@ public actor SearchManager: SearchProtocol {
                     ),
                     segmentID: frame.segmentID,
                     videoID: match.videoID,
-                    frameIndex: match.frameIndex
+                    frameIndex: match.frameIndex,
+                    matchSource: matchSource
                 )
                 results.append(result)
             }
@@ -316,6 +354,25 @@ public actor SearchManager: SearchProtocol {
             let excludedToken = excluded.contains(where: \.isWhitespace) ? "\"\(escaped)\"" : escaped
             let excludedScope = "((text:(\(excludedToken))) OR (otherText:(\(excludedToken))))"
             query = "(\(query) NOT \(excludedScope))"
+        }
+
+        return query
+    }
+
+    /// Build an FTS query for the semantic (AI description) index. Unlike
+    /// `buildScopedFTSQuery`, this is NOT column-scoped — `semanticRanking` has a single
+    /// `description` column, so a `text:`/`otherText:` prefix (valid only on the OCR table)
+    /// would be a malformed FTS5 column reference here.
+    static func buildSemanticFTSQuery(for parsed: ParsedQuery) -> String {
+        let includeQuery = buildIncludeFTSQuery(for: parsed)
+        let trimmedInclude = includeQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedInclude.isEmpty else { return includeQuery }
+
+        var query = trimmedInclude
+        for excluded in parsed.excludedTerms {
+            let escaped = QueryTokenizer.sanitizeFTSTerm(excluded)
+            let excludedToken = excluded.contains(where: \.isWhitespace) ? "\"\(escaped)\"" : escaped
+            query = "(\(query) NOT \(excludedToken))"
         }
 
         return query

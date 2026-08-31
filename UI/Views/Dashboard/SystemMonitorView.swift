@@ -50,6 +50,8 @@ public struct SystemMonitorView: View {
                         VStack(alignment: .leading, spacing: 20) {
                             processingPipelinesSection(isCompactLayout: isCompactLayout)
 
+                            semanticIndexingSection
+
                             processResourceSummarySection(isCompactLayout: isCompactLayout)
 
                             // Future sections placeholder
@@ -768,6 +770,95 @@ public struct SystemMonitorView: View {
                 ocrProcessingSection
             }
             .padding(16)
+        }
+        .background(Color.white.opacity(0.02))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        )
+    }
+
+    private var semanticIndexingSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles")
+                    .font(.retraceHeadline)
+                    .foregroundColor(.retraceSecondary)
+
+                Text("AI Visual Indexing")
+                    .font(.retraceHeadline)
+                    .foregroundColor(.retracePrimary)
+
+                Spacer()
+
+                if let stats = viewModel.semanticIndexStats {
+                    statusBadge(
+                        text: stats.isEnabled ? "Running" : "Off",
+                        color: stats.isEnabled ? .green : .retraceSecondary
+                    )
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 12)
+
+            Divider()
+                .background(Color.white.opacity(0.06))
+
+            Group {
+                if let stats = viewModel.semanticIndexStats {
+                    if stats.isEnabled {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text("\(stats.indexed) / \(stats.eligibleTotal) frames indexed")
+                                    .font(.retraceCaption)
+                                    .foregroundColor(.retracePrimary)
+                                Spacer()
+                                Text("\(Int(stats.fractionComplete * 100))%")
+                                    .font(.retraceCaption2)
+                                    .foregroundColor(.retraceSecondary)
+                            }
+
+                            GeometryReader { proxy in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Color.white.opacity(0.08))
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(LinearGradient.retraceAccentGradient)
+                                        .frame(width: proxy.size.width * stats.fractionComplete)
+                                }
+                            }
+                            .frame(height: 6)
+
+                            Text("Backfill: \(stats.backfillRequestsToday) / \(stats.dailyBackfillBudget) requests used today · resets at UTC midnight")
+                                .font(.retraceCaption2)
+                                .foregroundColor(.retraceSecondary.opacity(0.8))
+                        }
+                        .padding(16)
+                    } else {
+                        HStack(spacing: 8) {
+                            Text("AI Visual Indexing is off — enable it in ")
+                                .font(.retraceCaption2)
+                                .foregroundColor(.retraceSecondary)
+                            + Text("Settings")
+                                .font(.retraceCaption2)
+                                .foregroundColor(.retraceAccent)
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            NotificationCenter.default.post(name: NSNotification.Name("OpenSettingsAI"), object: nil)
+                        }
+                        .padding(16)
+                    }
+                } else {
+                    Text("Loading…")
+                        .font(.retraceCaption2)
+                        .foregroundColor(.retraceSecondary)
+                        .padding(16)
+                }
+            }
         }
         .background(Color.white.opacity(0.02))
         .cornerRadius(12)
@@ -1645,6 +1736,7 @@ protocol SystemMonitorDataProviding: AnyObject {
         pendingCount: Int
     )?
     func getCurrentPowerState() -> (source: PowerStateMonitor.PowerSource, isPaused: Bool)
+    func getSemanticIndexStatistics() async -> SemanticIndexStatistics?
     var isSystemMonitorRecordingActive: Bool { get }
 }
 
@@ -1682,6 +1774,7 @@ class SystemMonitorViewModel: ObservableObject {
     @Published var pauseOnBatterySetting: Bool = false
     @Published var pauseOnLowPowerModeSetting: Bool = false
     @Published var isRecordingActive: Bool = false
+    @Published var semanticIndexStats: SemanticIndexStatistics? = nil
 
     // Chart data
     @Published private var ocrHistoryState = ActivityPipelineHistory(windowMinutes: 30)
@@ -1987,6 +2080,8 @@ class SystemMonitorViewModel: ObservableObject {
         ocrProcessingLevel = min(max(powerSettings.processingLevel, 1), 5)
         pauseOnBatterySetting = powerSettings.pauseOnBattery
         pauseOnLowPowerModeSetting = powerSettings.pauseOnLowPowerMode
+
+        semanticIndexStats = await dataProvider.getSemanticIndexStatistics()
     }
 
     #if DEBUG

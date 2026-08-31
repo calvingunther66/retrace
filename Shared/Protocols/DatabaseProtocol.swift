@@ -258,6 +258,14 @@ public protocol FTSProtocol: Actor {
     /// Get match count for a query (for pagination)
     func getMatchCount(query: String, filters: SearchFilters) async throws -> Int
 
+    /// Search the AI-generated visual-description index (separate from OCR text search).
+    func searchSemantic(
+        query: String,
+        filters: SearchFilters,
+        limit: Int,
+        offset: Int
+    ) async throws -> [FTSMatch]
+
     /// Rebuild the FTS index (maintenance operation)
     func rebuildIndex() async throws
 

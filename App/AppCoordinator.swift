@@ -1490,6 +1490,12 @@ public actor AppCoordinator {
             Log.warning("[AppCoordinator] processingQueue is nil, cannot apply power config", category: .app)
         }
 
+        // Keep the semantic indexer's app-exclusion policy in lockstep with OCR's, so a
+        // screenshot upload can never happen for an app the user excluded from OCR.
+        await services.semanticIndexer.updateAppFilterPolicy(
+            AppFilterPolicy(excludedBundleIDs: excludedBundleIDs, includedBundleIDs: includedBundleIDs)
+        )
+
         Log.info(
             "[AppCoordinator] Applied power settings: ocrEnabled=\(ocrEnabled), level=\(processingLevel), workers=\(workerCount), priority=\(taskPriority), maxFPS=\(maxFPS), preferBgProcessing=\(preferBackground), pauseOnBattery=\(pauseOnBattery), pauseOnLowPowerMode=\(pauseOnLowPowerMode), isLowPowerModeEnabled=\(isLowPowerModeEnabled), power=\(powerSource)",
             category: .app
@@ -3249,6 +3255,31 @@ public actor AppCoordinator {
         return (
             queueDepth: queueDepth,
             pendingCount: queueDepth
+        )
+    }
+
+    /// Get current AI visual semantic-indexing progress for the System Monitor.
+    public func getSemanticIndexStatistics() async -> SemanticIndexStatistics? {
+        guard let progress = try? await services.database.getSemanticIndexProgress() else {
+            return nil
+        }
+
+        // Same UTC-day boundary SemanticIndexer uses for its own budget accounting, so the
+        // number shown here always matches what actually governs throttling.
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        let dayStartMs = Int64(utcCalendar.startOfDay(for: Date()).timeIntervalSince1970 * 1000)
+        let requestsToday = (try? await services.database.countBackfillSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
+
+        let defaults = UserDefaults(suiteName: "io.retrace.app") ?? .standard
+        let isEnabled = defaults.bool(forKey: OpenRouterCredentialsManager.semanticIndexingEnabledDefaultsKey)
+
+        return SemanticIndexStatistics(
+            indexed: progress.indexed,
+            eligibleTotal: progress.eligibleTotal,
+            backfillRequestsToday: requestsToday,
+            dailyBackfillBudget: 600,
+            isEnabled: isEnabled
         )
     }
 

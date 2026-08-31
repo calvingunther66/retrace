@@ -31,6 +31,7 @@ public actor ServiceContainer {
     public let modelManager: ModelManager
     nonisolated public let onboardingManager: OnboardingManager
     public let retentionManager: RetentionManager
+    public let semanticIndexer: SemanticIndexer
     public var dataAdapter: DataAdapter?
     public var processingQueue: FrameProcessingQueue?
 
@@ -143,6 +144,12 @@ public actor ServiceContainer {
             search: search
         )
 
+        // AI visual semantic indexer (opt-in; enabled state read from Settings at loop start)
+        self.semanticIndexer = SemanticIndexer(
+            database: database,
+            storage: storage
+        )
+
         Log.info("ServiceContainer created", category: .app)
     }
 
@@ -218,6 +225,12 @@ public actor ServiceContainer {
             database: database,
             storage: storage,
             search: search
+        )
+
+        // AI visual semantic indexer (opt-in; enabled state read from Settings at loop start)
+        self.semanticIndexer = SemanticIndexer(
+            database: database,
+            storage: storage
         )
 
         Log.info("ServiceContainer created (in-memory mode)", category: .app)
@@ -357,6 +370,10 @@ public actor ServiceContainer {
         // 10. Start retention manager (runs periodic cleanup based on user settings)
         await retentionManager.start()
         Log.info("✓ Retention manager started", category: .app)
+
+        // 10b. Start semantic indexer (opt-in; polls but no-ops unless enabled in Settings)
+        await semanticIndexer.start()
+        Log.info("✓ Semantic indexer started", category: .app)
 
         // Capture is initialized when startCapture() is called
 
@@ -674,6 +691,10 @@ public actor ServiceContainer {
         // Stop retention manager
         await retentionManager.stop()
         Log.info("✓ Retention manager stopped", category: .app)
+
+        // Stop semantic indexer
+        await semanticIndexer.stop()
+        Log.info("✓ Semantic indexer stopped", category: .app)
 
         // Shutdown DataAdapter (disconnects all sources)
         await dataAdapter?.shutdown()

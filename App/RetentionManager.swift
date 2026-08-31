@@ -407,6 +407,23 @@ public actor RetentionManager {
         }
 
         let whereClause = conditions.joined(separator: " AND ")
+
+        // Clean up the semantic (AI visual description) index for frames about to be deleted,
+        // BEFORE deleting the frame rows — semantic_doc_frame/semanticRanking have no FK to
+        // frame, so this must happen first or those rows become permanently orphaned.
+        let frameIDSubquery = """
+            SELECT f.id FROM frame f
+            JOIN segment s ON f.segmentId = s.id
+            WHERE \(whereClause)
+            """
+        try deleteSemanticIndexRows(
+            db: db,
+            frameIDSubquery: frameIDSubquery,
+            cutoffMs: cutoffMs,
+            excludingApps: excludingApps,
+            excludingTagIds: excludingTagIds
+        )
+
         let sql = """
             DELETE FROM frame WHERE id IN (
                 SELECT f.id FROM frame f
@@ -442,6 +459,51 @@ public actor RetentionManager {
         }
 
         return Int(sqlite3_changes(db))
+    }
+
+    /// Deletes `semanticRanking`/`semantic_doc_frame` rows for frames matching `frameIDSubquery`.
+    /// Runs each DELETE as its own prepared statement (each needs the full bind sequence again,
+    /// since they're independent statements sharing the same WHERE clause text).
+    private func deleteSemanticIndexRows(
+        db: OpaquePointer,
+        frameIDSubquery: String,
+        cutoffMs: Int64,
+        excludingApps: Set<String>,
+        excludingTagIds: Set<Int64>
+    ) throws {
+        func bindAndExecute(sql: String) throws {
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+
+            guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+                throw RetentionError.queryFailed(String(cString: sqlite3_errmsg(db)))
+            }
+
+            var bindIndex: Int32 = 1
+            sqlite3_bind_int64(statement, bindIndex, cutoffMs)
+            bindIndex += 1
+            for bundleID in excludingApps {
+                sqlite3_bind_text(statement, bindIndex, bundleID, -1, SQLITE_TRANSIENT)
+                bindIndex += 1
+            }
+            for tagId in excludingTagIds {
+                sqlite3_bind_int64(statement, bindIndex, tagId)
+                bindIndex += 1
+            }
+
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw RetentionError.queryFailed(String(cString: sqlite3_errmsg(db)))
+            }
+        }
+
+        try bindAndExecute(sql: """
+            DELETE FROM semanticRanking WHERE rowid IN (
+                SELECT docid FROM semantic_doc_frame WHERE frameId IN (\(frameIDSubquery))
+            );
+            """)
+        try bindAndExecute(sql: """
+            DELETE FROM semantic_doc_frame WHERE frameId IN (\(frameIDSubquery));
+            """)
     }
 
     /// Delete app segments (sessions) older than the cutoff date, excluding protected apps/tags/hidden
