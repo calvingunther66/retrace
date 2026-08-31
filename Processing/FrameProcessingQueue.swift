@@ -493,6 +493,13 @@ public actor FrameProcessingQueue {
 
     private let config: ProcessingQueueConfig
     private var workers: [Task<Void, Never>] = []
+    /// Last worker count requested via `updatePowerConfig`. `workers.count` alone isn't a
+    /// reliable restart target: if the pipeline is stalled *because* workers dropped to
+    /// zero (e.g. every worker got wedged and cancelled out without being replaced), restarting
+    /// from `workers.count` would silently re-launch the pipeline with 0-1 workers instead of
+    /// the configured count. Defaults to `config.workerCount` so a restart before the first
+    /// `updatePowerConfig` call still has a sane target.
+    private var lastConfiguredWorkerCount: Int
     private var isRunning = false
     private var memoryReportTask: Task<Void, Never>?
 
@@ -577,6 +584,7 @@ public actor FrameProcessingQueue {
         self.processing = processing
         self.search = search
         self.config = config
+        self.lastConfiguredWorkerCount = config.workerCount
     }
 
     // MARK: - Power Configuration
@@ -602,6 +610,7 @@ public actor FrameProcessingQueue {
         self.currentPowerSource = currentPowerSource
         self.ocrExcludedBundleIDs = excludedBundleIDs
         self.ocrIncludedBundleIDs = includedBundleIDs
+        self.lastConfiguredWorkerCount = workerCount
 
         // Convert FPS to nanosecond delay (0 = unlimited)
         if maxFPS > 0 {
@@ -1158,6 +1167,8 @@ public actor FrameProcessingQueue {
                     // Apply rate limiting delay after successful processing
                     if minDelayBetweenFramesNs > 0 {
                         try? await Task.sleep(for: .nanoseconds(Int64(minDelayBetweenFramesNs)), clock: .continuous)
+                    } else {
+                        await Task.yield()
                     }
 
                 } catch {
@@ -3238,6 +3249,49 @@ public actor FrameProcessingQueue {
         }
     }
 
+    // MARK: - OCR Pipeline Restart (user-initiated recovery)
+
+    /// User-initiated recovery for a stalled OCR pipeline, without restarting the whole app.
+    ///
+    /// This is a best-effort reset of everything on *our* side of the pipeline: it cannot
+    /// unwedge Vision's own internal `VNControlledCapacityTasksQueue` if that's genuinely
+    /// stuck (that's process-global framework state; see `VisionOCR.resetCircuitBreaker()`).
+    /// If the wedge is still present, new OCR attempts will simply re-trip the circuit
+    /// breaker within one more timeout cycle (~20-40s) — callers should check
+    /// `VisionOCR.isPermanentlyDegraded` shortly after calling this and, if still true,
+    /// tell the user a full relaunch is required.
+    public func restartOCRPipeline() async throws {
+        Log.warning("[Queue] Restarting OCR pipeline (user-initiated)", category: .processing)
+
+        VisionOCR.resetCircuitBreaker()
+
+        if isPausedForMemoryPressure {
+            isPausedForMemoryPressure = false
+            Log.info("[Queue] Cleared memory-pressure pause as part of OCR restart", category: .processing)
+        }
+
+        // Workers that are wedged inside a blocking Vision call can't be forcibly killed
+        // (Task.cancel() is cooperative and that call has no cancellation checkpoint), but
+        // performWithWatchdog's own timeout still bounds how long they occupy their slot, so
+        // replacing them is safe — the old Task simply exits on its next checkpoint instead
+        // of being interrupted mid-call.
+        //
+        // Deliberately uses lastConfiguredWorkerCount, not workers.count: if the stall is
+        // itself a worker count that dropped to 0 (every worker wedged and its Task exited
+        // without being replaced), restarting from workers.count would silently re-launch
+        // the pipeline with 0-1 workers instead of the configured count.
+        let desiredWorkerCount = max(lastConfiguredWorkerCount, 1)
+        restartWorkers(count: desiredWorkerCount)
+
+        // Frames a wedged worker claimed (processingStatus == .processing) before the restart
+        // would otherwise sit stranded forever; this is the same recovery startup already runs
+        // after a crash, safe to re-run anytime.
+        try await requeueCrashedFrames()
+        try await pruneOrphanedQueueRows()
+
+        Log.info("[Queue] OCR pipeline restart complete (\(desiredWorkerCount) worker(s))", category: .processing)
+    }
+
     /// Check if an error indicates an unrecoverable video file issue
     /// These errors (damaged/missing files) won't be fixed by retrying
     private func isUnrecoverableVideoError(_ error: Error) -> Bool {
@@ -3305,7 +3359,9 @@ public actor FrameProcessingQueue {
             totalProcessed: totalProcessed,
             totalRewritten: totalRewritten,
             totalFailed: totalFailed,
-            workerCount: workers.count
+            workerCount: workers.count,
+            isOCRDegraded: VisionOCR.isPermanentlyDegraded,
+            ocrConsecutiveTimeouts: VisionOCR.consecutiveTimeoutCount
         )
     }
 
@@ -3390,6 +3446,20 @@ public actor FrameProcessingQueue {
     }
 
     private func applyMemoryBackpressureIfNeeded() async -> Bool {
+        // Check system-wide resource pressure (thermal, system memory, footprint)
+        let systemPressure = ResourcePressureMonitor.shared.currentLevel
+        if systemPressure == .critical {
+            if !isPausedForMemoryPressure {
+                isPausedForMemoryPressure = true
+                let counts = await refreshLiveQueueCounts()
+                Log.warning(
+                    "[Queue-Backpressure] paused (system pressure critical) ocrQueueDepth=\(counts.ocrDepth) ocrPending=\(counts.ocrPending) ocrProcessing=\(counts.ocrProcessing)",
+                    category: .processing
+                )
+            }
+            return true
+        }
+
         let policy = OCRMemoryBackpressurePolicy.current()
         guard policy.enabled else {
             if isPausedForMemoryPressure {
@@ -3415,7 +3485,7 @@ public actor FrameProcessingQueue {
 
         isPausedForMemoryPressure = shouldPause
         let counts = await refreshLiveQueueCounts()
-        let baseMessage = "footprint=\(ProcessingMemoryDiagnostics.formatFootprint(snapshot)) pauseAt=\(ProcessingMemoryDiagnostics.formatBytes(policy.pauseThresholdBytes)) resumeBelow=\(ProcessingMemoryDiagnostics.formatBytes(policy.resumeThresholdBytes)) ocrQueueDepth=\(counts.ocrDepth) ocrPending=\(counts.ocrPending) ocrProcessing=\(counts.ocrProcessing) rewritePending=\(counts.rewritePending) rewriteProcessing=\(counts.rewriteProcessing)"
+        let baseMessage = "footprint=\(ProcessingMemoryDiagnostics.formatFootprint(snapshot)) pauseAt=\(ProcessingMemoryDiagnostics.formatBytes(policy.pauseThresholdBytes)) resumeBelow=\(ProcessingMemoryDiagnostics.formatBytes(policy.resumeThresholdBytes)) ocrQueueDepth=\(counts.ocrDepth) ocrPending=\(counts.ocrPending) ocrProcessing=\(counts.ocrProcessing) rewritePending=\(counts.rewritePending) rewriteProcessing=\(counts.rewriteProcessing) systemPressure=\(systemPressure)"
 
         if shouldPause {
             Log.warning("[Queue-Backpressure] paused \(baseMessage)", category: .processing)
@@ -3460,7 +3530,7 @@ struct OCRMemoryBackpressurePolicy: Sendable {
         largestDisplayPixelCount: UInt64? = nil
     ) -> OCRMemoryBackpressurePolicy {
         let enabled = defaults.object(forKey: enabledDefaultsKey) == nil
-            ? false
+            ? true
             : defaults.bool(forKey: enabledDefaultsKey)
 
         let detectedLargestDisplayPixelCount = largestDisplayPixelCount
@@ -3688,4 +3758,40 @@ public struct QueueStatistics: Sendable {
     public let totalRewritten: Int
     public let totalFailed: Int
     public let workerCount: Int
+    /// True once Vision OCR's circuit breaker has tripped (repeated hangs) and is
+    /// refusing new calls. Recoverable in-process via `restartOCRPipeline()`, but only
+    /// if the underlying Vision wedge was transient — see `VisionOCR.isPermanentlyDegraded`.
+    public let isOCRDegraded: Bool
+    public let ocrConsecutiveTimeouts: Int
+
+    // Explicit memberwise init (rather than relying on the synthesized one) so the two
+    // OCR-health fields default to "healthy" — existing callers (tests/mocks) that
+    // construct this without knowing about Vision's circuit breaker keep compiling.
+    public init(
+        ocrQueueDepth: Int,
+        ocrPendingCount: Int,
+        ocrProcessingCount: Int,
+        rewriteQueueDepth: Int,
+        rewritePendingCount: Int,
+        rewriteProcessingCount: Int,
+        totalProcessed: Int,
+        totalRewritten: Int,
+        totalFailed: Int,
+        workerCount: Int,
+        isOCRDegraded: Bool = false,
+        ocrConsecutiveTimeouts: Int = 0
+    ) {
+        self.ocrQueueDepth = ocrQueueDepth
+        self.ocrPendingCount = ocrPendingCount
+        self.ocrProcessingCount = ocrProcessingCount
+        self.rewriteQueueDepth = rewriteQueueDepth
+        self.rewritePendingCount = rewritePendingCount
+        self.rewriteProcessingCount = rewriteProcessingCount
+        self.totalProcessed = totalProcessed
+        self.totalRewritten = totalRewritten
+        self.totalFailed = totalFailed
+        self.workerCount = workerCount
+        self.isOCRDegraded = isOCRDegraded
+        self.ocrConsecutiveTimeouts = ocrConsecutiveTimeouts
+    }
 }

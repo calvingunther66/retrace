@@ -681,6 +681,38 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
     /// ~40x the <500ms performance target, so it only fires on a genuine hang.
     private static let ocrRequestTimeoutSeconds: TimeInterval = 20
 
+    /// Trips after 2 *consecutive* watchdog timeouts, bounding the worst-case
+    /// thread/memory leak from a wedged Vision internal queue to 2 abandoned
+    /// threads (per trip) instead of one per OCR attempt forever. See
+    /// OCRCircuitBreaker's doc comment for the full incident this addresses
+    /// (confirmed in production via `sample`: dozens of `processing.ocr.vision_watchdog`
+    /// threads permanently blocked inside `VNControlledCapacityTasksQueue`).
+    private static let circuitBreaker = OCRCircuitBreaker(threshold: 2)
+
+    /// Whether Vision OCR is currently refusing new calls after repeated hangs.
+    /// Exposed so callers (FrameProcessingQueue, UI) can check cheaply without
+    /// provoking another failed attempt.
+    public static var isPermanentlyDegraded: Bool {
+        circuitBreaker.isOpen
+    }
+
+    /// Consecutive timeout count so far (for diagnostics/UI).
+    public static var consecutiveTimeoutCount: Int {
+        circuitBreaker.consecutiveTimeoutCount
+    }
+
+    /// User-initiated recovery hook for the "Restart OCR" UI action: clears the
+    /// breaker so the next call is allowed to try Vision again. Does NOT and
+    /// cannot unwedge Vision's own internal queue if it's genuinely stuck —
+    /// that's process-global framework state outside this app's control. If
+    /// the wedge is still there, the next call(s) will simply re-trip the
+    /// breaker within one more timeout cycle; the caller should treat that as
+    /// a signal that a full app relaunch is required.
+    public static func resetCircuitBreaker() {
+        circuitBreaker.reset()
+        Log.info("[VisionOCR] Circuit breaker reset by user-initiated OCR restart", category: .processing)
+    }
+
     /// Runs `handler.perform([request])` off the calling (Swift concurrency
     /// cooperative pool) thread and bounds how long the caller waits for it.
     /// On timeout, `request.cancel()` is issued (Vision's supported mechanism
@@ -688,11 +720,26 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
     /// worker can move on; the abandoned call keeps running to completion on
     /// its own dedicated queue rather than continuing to occupy a cooperative
     /// pool thread other async work across the app depends on.
+    ///
+    /// IMPORTANT: `request.cancel()` does not unblock a thread already stuck
+    /// inside Vision's internal `VNControlledCapacityTasksQueue` -- it only
+    /// stops the caller from waiting on it. Each timeout is a real, permanent
+    /// leak of one thread plus its retained image buffer. circuitBreaker
+    /// exists specifically to bound how many times that can happen.
     private static func performWithWatchdog(
         request: VNRecognizeTextRequest,
         handler: VNImageRequestHandler,
         timeoutSeconds: TimeInterval
     ) throws {
+        guard !circuitBreaker.isOpen else {
+            throw ProcessingError.ocrFailed(
+                underlying: "OCR circuit breaker open: Vision text recognition hung "
+                    + "\(circuitBreaker.threshold) times in a row and appears wedged in this "
+                    + "process. OCR is paused to stop leaking threads/memory; use Restart OCR, "
+                    + "or relaunch the app if that doesn't clear it."
+            )
+        }
+
         let doneSemaphore = DispatchSemaphore(value: 0)
         let resultLock = NSLock()
         var performError: Error?
@@ -713,14 +760,29 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
 
         guard doneSemaphore.wait(timeout: .now() + timeoutSeconds) == .success else {
             request.cancel()
-            Log.warning(
-                "[VisionOCR] Request exceeded \(Int(timeoutSeconds))s and was cancelled; frame will be retried",
-                category: .processing
-            )
+            let justTripped = circuitBreaker.recordTimeout()
+            if justTripped {
+                Log.error(
+                    "[VisionOCR] Circuit breaker OPEN after \(circuitBreaker.threshold) consecutive "
+                        + "\(Int(timeoutSeconds))s timeouts -- Vision text recognition appears wedged. "
+                        + "OCR is paused for the rest of this process's lifetime to stop leaking "
+                        + "threads/memory. Use Restart OCR, or relaunch the app if that doesn't clear it.",
+                    category: .processing
+                )
+            } else {
+                Log.warning(
+                    "[VisionOCR] Request exceeded \(Int(timeoutSeconds))s and was cancelled "
+                        + "(consecutive timeout \(circuitBreaker.consecutiveTimeoutCount)/\(circuitBreaker.threshold)); "
+                        + "frame will be retried",
+                    category: .processing
+                )
+            }
             throw ProcessingError.ocrFailed(
                 underlying: "Vision OCR request timed out after \(Int(timeoutSeconds))s and was cancelled"
             )
         }
+
+        circuitBreaker.recordSuccess()
 
         resultLock.lock()
         let error = performError

@@ -2224,9 +2224,16 @@ private actor ProcessCPULogSampler {
         )
     }
 
+    private static let maxLogFileSizeBytes: UInt64 = 5 * 1024 * 1024
+
     private func appendLogEntry(_ entry: CPULogEntry) {
         do {
             Self.ensureLogFileExists(at: logFileURL)
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: logFileURL.path),
+               let size = attrs[.size] as? UInt64,
+               size > Self.maxLogFileSizeBytes {
+                try? "".write(to: logFileURL, atomically: true, encoding: .utf8)
+            }
             let encodedEntry = try encoder.encode(entry)
             let handle = try FileHandle(forWritingTo: logFileURL)
             defer { try? handle.close() }

@@ -734,9 +734,21 @@ public actor CaptureManager: CaptureProtocol {
         guard _isCapturing else { return }
         guard intervalCaptureEnabled() else { return }
 
+        // Scale capture interval based on system resource pressure
+        var interval = currentConfig.captureIntervalSeconds
+        let pressureLevel = ResourcePressureMonitor.shared.currentLevel
+        switch pressureLevel {
+        case .critical:
+            interval *= 5.0 // e.g. 2s → 10s under critical pressure
+        case .elevated:
+            interval *= 2.5 // e.g. 2s → 5s under elevated pressure
+        case .nominal:
+            break
+        }
+
         let capture = PendingCapture(
             trigger: .interval,
-            fireTime: referenceTime.addingTimeInterval(currentConfig.captureIntervalSeconds),
+            fireTime: referenceTime.addingTimeInterval(interval),
             windowChangeEvent: nil,
             windowChangeSignature: nil
         )

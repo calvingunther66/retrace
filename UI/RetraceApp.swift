@@ -464,6 +464,81 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         target.populateMainAppMenu(appMenu, appName: appName)
         mainMenu.addItem(makeTopLevelMenu(appName, submenu: appMenu))
 
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(
+            makeMenuItem(
+                "Undo",
+                action: #selector(UndoManager.undo),
+                keyEquivalent: "z",
+                modifiers: [.command],
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Redo",
+                action: #selector(UndoManager.redo),
+                keyEquivalent: "Z",
+                modifiers: [.command, .shift],
+                target: nil
+            )
+        )
+        editMenu.addItem(.separator())
+        editMenu.addItem(
+            makeMenuItem(
+                "Cut",
+                action: #selector(NSText.cut(_:)),
+                keyEquivalent: "x",
+                modifiers: [.command],
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Copy",
+                action: #selector(NSText.copy(_:)),
+                keyEquivalent: "c",
+                modifiers: [.command],
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Paste",
+                action: #selector(NSText.paste(_:)),
+                keyEquivalent: "v",
+                modifiers: [.command],
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Paste and Match Style",
+                action: #selector(NSTextView.pasteAsPlainText(_:)),
+                keyEquivalent: "V",
+                modifiers: [.command, .option, .shift],
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Delete",
+                action: #selector(NSText.delete(_:)),
+                keyEquivalent: "",
+                target: nil
+            )
+        )
+        editMenu.addItem(
+            makeMenuItem(
+                "Select All",
+                action: #selector(NSText.selectAll(_:)),
+                keyEquivalent: "a",
+                modifiers: [.command],
+                target: nil
+            )
+        )
+        mainMenu.addItem(makeTopLevelMenu("Edit", submenu: editMenu))
+
         let recordingMenu = NSMenu(title: "Recording")
         recordingMenu.delegate = target
         target.populateMainMenuRecording(recordingMenu)
@@ -801,58 +876,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         MainThreadWatchdog.shared.setAutoQuitHandler { blockedSeconds in
             Task.detached(priority: .userInitiated) {
                 let blockedFor = String(format: "%.1f", blockedSeconds)
-
-                let displayCount = Self.activeDisplayCount()
-                if displayCount <= 0 {
-                    let displayStateDescription = displayCount == 0 ? "0 active displays" : "display probe failed"
-                    Log.warning(
-                        "[Watchdog] Auto-quit suppressed: \(displayStateDescription) (darkwake/sleep transition). blocked=\(blockedFor)s",
-                        category: .ui
-                    )
-                    MainThreadWatchdog.shared.suspendAutoQuit(
-                        for: Self.watchdogWakeGracePeriodSeconds,
-                        reason: "\(displayStateDescription) (darkwake/sleep transition)"
-                    )
-                    EmergencyDiagnostics.capture(trigger: "watchdog_auto_quit_suppressed_no_display")
-                    return
-                }
-
-                Log.critical(
-                    "[Watchdog] Auto-quit threshold reached (\(blockedFor)s). Capturing diagnostics and attempting automatic relaunch.",
+                Log.warning(
+                    "[Watchdog] Main thread unresponsive for \(blockedFor)s. Capturing diagnostic sample.",
                     category: .ui
                 )
 
                 let hangSamplePath = await CrashRecoveryManager.captureWatchdogHangSample(
-                    trigger: "watchdog_auto_quit"
+                    trigger: "watchdog_hang_detected"
                 )
-                if hangSamplePath != nil {
-                    Log.info("[Watchdog] Helper captured watchdog hang sample for watchdog report merge", category: .ui)
-                } else {
-                    Log.warning("[Watchdog] Helper hang sample was unavailable before auto-quit", category: .ui)
-                }
-
                 EmergencyDiagnostics.capture(
-                    trigger: "watchdog_auto_quit",
+                    trigger: "watchdog_hang_detected",
                     supplementalReportPaths: hangSamplePath.map { [$0] } ?? [],
                     cleanupSupplementalReports: true
                 )
-
-                let relaunchDecision = CrashRecoverySupport.evaluateAndRecordCrashAutoRestart()
-                guard relaunchDecision.shouldRelaunch else {
-                    Log.critical(
-                        "[Watchdog] Auto-relaunch suppressed to prevent restart loop (\(relaunchDecision.recentCount) relaunches in last 5 minutes). Exiting without relaunch.",
-                        category: .ui
-                    )
-                    Darwin.exit(0)
-                }
-
-                // Ensure we still terminate if relaunch scheduling fails unexpectedly.
-                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 3.0) {
-                    Log.critical("[Watchdog] Relaunch did not complete after auto-quit trigger. Force exiting.", category: .ui)
-                    Darwin.exit(0)
-                }
-
-                AppRelaunch.relaunchForCrashRecovery()
             }
         }
     }
