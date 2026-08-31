@@ -30,6 +30,9 @@ struct PermissionChecker: Sendable {
 
             return !content.displays.isEmpty
         } catch {
+            // Log the failure so we can distinguish a system error from a permission denial.
+            // requestPermission() returns false in both cases, but only a system error logs here.
+            Log.warning("[PermissionChecker] SCShareableContent.excludingDesktopWindows failed (may indicate permission denied or system error): \(error.localizedDescription)", category: .capture)
             return false
         }
     }

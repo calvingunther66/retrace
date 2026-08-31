@@ -100,7 +100,9 @@ public actor ProcessingManager: ProcessingProtocol {
             await instrumentation.finish()
             return buildOutput.extractedText
         } catch {
+            errorCount += 1
             await instrumentation.finish()
+            Log.error("[ProcessingManager] Failed to extract text from frame at \(frame.timestamp) (app=\(frame.metadata.appName ?? "unknown"))", context: error, category: .processing)
             throw error
         }
     }

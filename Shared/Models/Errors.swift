@@ -206,7 +206,7 @@ public enum ProcessingError: RetraceError {
 
 // MARK: - Transcription Errors
 
-public enum TranscriptionError: Error, Sendable {
+public enum TranscriptionError: RetraceError {
     case notImplemented(String)
     case notInitialized
     case modelLoadFailed(String)
@@ -214,6 +214,37 @@ public enum TranscriptionError: Error, Sendable {
     case apiError(String)
     case invalidResponse
     case audioFormatError
+
+    public var errorCode: String {
+        switch self {
+        case .notImplemented:    return "TRANSCRIPTION_001"
+        case .notInitialized:    return "TRANSCRIPTION_002"
+        case .modelLoadFailed:   return "TRANSCRIPTION_003"
+        case .transcriptionFailed: return "TRANSCRIPTION_004"
+        case .apiError:          return "TRANSCRIPTION_005"
+        case .invalidResponse:   return "TRANSCRIPTION_006"
+        case .audioFormatError:  return "TRANSCRIPTION_007"
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .notImplemented(let detail):
+            return "Transcription not implemented: \(detail)"
+        case .notInitialized:
+            return "Transcription engine not initialized."
+        case .modelLoadFailed(let detail):
+            return "Transcription model load failed: \(detail)"
+        case .transcriptionFailed:
+            return "Transcription processing failed."
+        case .apiError(let detail):
+            return "Transcription API error: \(detail)"
+        case .invalidResponse:
+            return "Invalid transcription response."
+        case .audioFormatError:
+            return "Unsupported audio format for transcription."
+        }
+    }
 }
 
 // MARK: - Search Errors

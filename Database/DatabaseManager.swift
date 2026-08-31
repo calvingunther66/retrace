@@ -2746,7 +2746,11 @@ public actor DatabaseManager: DatabaseProtocol {
             )
         } catch {
             if transactionOpen {
-                try? executeImmediateSQL("ROLLBACK;", db: db)
+                do {
+                    try executeImmediateSQL("ROLLBACK;", db: db)
+                } catch let rollbackError {
+                    Log.critical("[DatabaseManager] ROLLBACK failed during deletion error recovery", context: rollbackError, category: .database)
+                }
             }
             throw error
         }

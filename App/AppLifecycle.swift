@@ -65,7 +65,7 @@ public actor AppLifecycle {
             Log.info("Application ready", category: .app)
         } catch {
             await transition(to: .error(error))
-            Log.error("Launch failed: \(error)", category: .app)
+            Log.error("Launch failed", context: error, category: .app)
             throw error
         }
     }
@@ -86,7 +86,7 @@ public actor AppLifecycle {
             Log.info("Pipeline running", category: .app)
         } catch {
             await transition(to: .error(error))
-            Log.error("Start failed: \(error)", category: .app)
+            Log.error("Start failed", context: error, category: .app)
             throw error
         }
     }
@@ -107,7 +107,7 @@ public actor AppLifecycle {
             Log.info("Pipeline paused", category: .app)
         } catch {
             await transition(to: .error(error))
-            Log.error("Pause failed: \(error)", category: .app)
+            Log.error("Pause failed", context: error, category: .app)
             throw error
         }
     }
@@ -133,7 +133,7 @@ public actor AppLifecycle {
             await transition(to: .terminated)
             Log.info("Application terminated cleanly", category: .app)
         } catch {
-            Log.error("Termination error: \(error)", category: .app)
+            Log.error("Termination error", context: error, category: .app)
             throw error
         }
     }
@@ -215,7 +215,7 @@ public actor AppLifecycle {
             Log.info("Error recovery successful", category: .app)
         } catch {
             await transition(to: .error(error))
-            Log.error("Error recovery failed: \(error)", category: .app)
+            Log.error("Error recovery failed", context: error, category: .app)
             throw error
         }
     }
@@ -280,10 +280,29 @@ public enum AppState: Sendable, Equatable {
 
 // MARK: - Errors
 
-public enum AppLifecycleError: Error {
+public enum AppLifecycleError: RetraceError {
     case invalidStateTransition(from: AppState, to: AppState)
     case serviceNotReady
     case alreadyRunning
+
+    public var errorCode: String {
+        switch self {
+        case .invalidStateTransition: return "LIFECYCLE_001"
+        case .serviceNotReady:        return "LIFECYCLE_002"
+        case .alreadyRunning:         return "LIFECYCLE_003"
+        }
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .invalidStateTransition(let from, let to):
+            return "Invalid state transition from \(from) to \(to)"
+        case .serviceNotReady:
+            return "Service is not ready for the requested operation."
+        case .alreadyRunning:
+            return "Pipeline is already running."
+        }
+    }
 }
 
 // MARK: - Extensions
