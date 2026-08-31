@@ -123,6 +123,12 @@ swift build -c release
 .build/release/Retrace
 ```
 
+Running the raw executable this way is ad-hoc signed, so macOS will
+re-prompt for Screen Recording/Accessibility on every rebuild. For iterative
+development, prefer `./dev.sh` or `./build_and_sign.sh` instead (see
+[Development Scripts](#3-development-scripts) below) — they sign with a
+stable identity so permission grants persist across rebuilds.
+
 **First Launch:**
 
 1. Grant **Screen Recording** permission when prompted (System Settings → Privacy & Security)
@@ -134,6 +140,14 @@ swift build -c release
 The app will create its database at the default location (`~/Library/Application Support/Retrace/`) or a custom location if configured in Settings.
 
 ### 3. Development Scripts
+
+**Set up stable dev code signing** (one-time per machine — avoids re-granting
+Screen Recording/Accessibility on every rebuild; see "Code Signing for Local
+Development" in [AGENTS.md](AGENTS.md)):
+
+```bash
+./scripts/setup_dev_signing_identity.sh
+```
 
 **Reset database** (keeps settings):
 

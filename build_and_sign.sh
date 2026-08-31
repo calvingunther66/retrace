@@ -139,22 +139,34 @@ echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
 
 echo "✍️  Signing app bundle..."
 
-# Prefer a stable local signing identity ("Retrace Dev Local") over an ad-hoc
-# signature: ad-hoc signatures are content-derived, so every rebuild gets a
+# Sign with the stable local signing identity ("Retrace Dev Local") instead
+# of ad-hoc: ad-hoc signatures are content-derived, so every rebuild gets a
 # different code identity and macOS re-requires Screen Recording/Accessibility
 # permission on every single dev build. A stable identity keeps that identity
 # constant across rebuilds so TCC grants persist. This identity is local to
 # each developer's machine (self-signed cert in the login keychain, trusted
-# for the Code Signing policy) - it won't exist on a fresh checkout or in CI,
-# so fall back to ad-hoc signing there rather than failing the build. See
-# local/docs for the one-time setup steps to create and trust the identity.
-SIGN_IDENTITY="-"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"Retrace Dev Local\""; then
+# for the Code Signing policy) - see AGENTS.md's "Code Signing for Local Development" section for what it is and
+# ./scripts/setup_dev_signing_identity.sh to create it (one-time per machine).
+#
+# This is a hard failure, not a silent ad-hoc fallback, on purpose: a silent
+# fallback is exactly how permission churn crept back in before (see
+# AGENTS.md). Set RETRACE_ALLOW_ADHOC_SIGN=1 to explicitly opt into
+# ad-hoc signing anyway (fresh clone/CI/one-off) - it will still work, you'll
+# just be back to re-granting permissions on every rebuild.
+IDENTITY_LINE=$(security find-identity -v -p codesigning 2>/dev/null | grep "\"Retrace Dev Local\"" || true)
+if [ -n "$IDENTITY_LINE" ] && ! printf '%s' "$IDENTITY_LINE" | grep -qi "CSSMERR\|not trusted"; then
     SIGN_IDENTITY="Retrace Dev Local"
-else
-    echo "ℹ️  No trusted 'Retrace Dev Local' signing identity found; signing ad-hoc."
+elif [ "${RETRACE_ALLOW_ADHOC_SIGN:-}" = "1" ]; then
+    SIGN_IDENTITY="-"
+    echo "ℹ️  RETRACE_ALLOW_ADHOC_SIGN=1: signing ad-hoc."
     echo "   Permissions (Screen Recording/Accessibility) will need to be re-granted"
-    echo "   after every rebuild until that identity is set up. See local/docs."
+    echo "   after every rebuild. See AGENTS.md."
+else
+    echo "❌ No trusted 'Retrace Dev Local' signing identity found."
+    echo "   Run ./scripts/setup_dev_signing_identity.sh once to set it up, or set"
+    echo "   RETRACE_ALLOW_ADHOC_SIGN=1 to explicitly accept ad-hoc signing (and the"
+    echo "   permission re-grant on every rebuild that comes with it). See AGENTS.md."
+    exit 1
 fi
 
 # Sign frameworks and dylibs first (required before signing the app)
@@ -179,7 +191,6 @@ echo "📍 App bundle location: $APP_BUNDLE"
 echo "   Version: $MARKETING_VERSION ($BUILD_NUMBER) · $GIT_COMMIT"
 echo ""
 
-# See local/docs for why a plain AppleEvent quit (not pkill) is preferred here.
 source "$(dirname "$0")/scripts/quit_app_gracefully.sh"
 
 # Check if app is already in Applications

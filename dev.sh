@@ -36,19 +36,31 @@ swift build -c debug
 # content-derived -- every rebuild gets a new identity and macOS re-requires
 # Screen Recording/Accessibility permission on every single `./dev.sh` run.
 # Sign with the same stable "Retrace Dev Local" identity build_and_sign.sh
-# uses (see local/docs for one-time setup) so TCC grants persist across dev
+# uses (see AGENTS.md's "Code Signing for Local Development" section;
+# ./scripts/setup_dev_signing_identity.sh) so TCC grants persist across dev
 # iterations too. Uses a distinct bundle identifier from the installed
 # release build (io.retrace.app) so the two don't share -- or fight over --
 # the same TCC grant; you'll need to grant permissions once for this dev
 # identity, but it'll then survive every subsequent `./dev.sh` rebuild.
+#
+# Hard failure instead of a silent ad-hoc fallback, on purpose -- see
+# AGENTS.md. Set RETRACE_ALLOW_ADHOC_SIGN=1 to explicitly opt into
+# ad-hoc signing anyway (fresh clone/CI/one-off).
 DEBUG_BIN="$(swift build -c debug --show-bin-path)/Retrace"
-SIGN_IDENTITY="-"
-if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"Retrace Dev Local\""; then
+IDENTITY_LINE=$(security find-identity -v -p codesigning 2>/dev/null | grep "\"Retrace Dev Local\"" || true)
+if [ -n "$IDENTITY_LINE" ] && ! printf '%s' "$IDENTITY_LINE" | grep -qi "CSSMERR\|not trusted"; then
     SIGN_IDENTITY="Retrace Dev Local"
-else
-    echo "ℹ️  No trusted 'Retrace Dev Local' signing identity found; signing ad-hoc."
+elif [ "${RETRACE_ALLOW_ADHOC_SIGN:-}" = "1" ]; then
+    SIGN_IDENTITY="-"
+    echo "ℹ️  RETRACE_ALLOW_ADHOC_SIGN=1: signing ad-hoc."
     echo "   Permissions (Screen Recording/Accessibility) will need to be re-granted"
-    echo "   after every dev.sh rebuild until that identity is set up. See local/docs."
+    echo "   after every dev.sh rebuild. See AGENTS.md."
+else
+    echo "❌ No trusted 'Retrace Dev Local' signing identity found."
+    echo "   Run ./scripts/setup_dev_signing_identity.sh once to set it up, or set"
+    echo "   RETRACE_ALLOW_ADHOC_SIGN=1 to explicitly accept ad-hoc signing (and the"
+    echo "   permission re-grant on every rebuild that comes with it). See AGENTS.md."
+    exit 1
 fi
 codesign --force --sign "$SIGN_IDENTITY" --identifier "io.retrace.app.dev" \
     --entitlements "UI/Retrace.entitlements" "$DEBUG_BIN"

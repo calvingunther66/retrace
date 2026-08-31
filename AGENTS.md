@@ -39,6 +39,138 @@ swift test --filter testSpecificMethod
 rm -rf .build/
 ```
 
+### Building & Running the App (Signed, Permissions-Stable)
+
+Raw `swift build` / `.build/debug/Retrace` is fine for compiling, but running
+the app that way (or via an ad-hoc-signed `.app`) makes macOS re-prompt for
+Screen Recording/Accessibility on every rebuild. Use these instead, which
+sign with a stable local identity so permission grants persist:
+
+```bash
+# One-time per machine: create + trust the stable dev signing identity
+./scripts/setup_dev_signing_identity.sh
+
+# Debug build, runs in place (hot-reload friendly)
+./dev.sh
+
+# Release build, packages a .app, installs to /Applications
+./build_and_sign.sh
+```
+
+Why this exists, full setup/renewal/troubleshooting steps, and the rule for
+future changes to the signing logic: see
+[Code Signing for Local Development](#code-signing-for-local-development)
+below.
+
+---
+
+## Code Signing for Local Development
+
+This section exists so the fix for a real recurring pain point — macOS
+re-asking for Screen Recording/Accessibility permission after every single
+dev rebuild — doesn't get silently undone by a future change. Read this
+before touching signing logic in `build_and_sign.sh`, `dev.sh`, or
+`scripts/setup_dev_signing_identity.sh`.
+
+**The problem.** macOS ties Screen Recording/Accessibility grants (TCC) to a
+build's code identity, not its bundle ID or path. `codesign --sign -`
+(ad-hoc signing) derives that identity from the binary's own content hash,
+so it's different on every build. Every rebuild therefore looks like a brand
+new app to TCC, and macOS makes you re-grant both permissions again.
+
+**The fix.** Sign dev builds with a *stable* identity instead: a self-signed
+code-signing certificate named `Retrace Dev Local` that doesn't change from
+build to build even though the binary's hash does. macOS then recognizes
+each rebuild as "still the same app" and the grant survives. This is purely
+a local dev concern — actual releases (`scripts/create-release.sh`) already
+sign with a real `Developer ID Application` identity via Xcode, which is
+stable for the same reason; nothing here touches that path.
+
+**One-time setup (per machine):**
+
+```bash
+./scripts/setup_dev_signing_identity.sh
+```
+
+Creates a self-signed, 10-year, code-signing-only certificate named
+`Retrace Dev Local` and trusts it for the Code Signing policy, scoped to the
+login keychain only (no sudo). It self-verifies with a real test sign before
+declaring success, and is idempotent — re-running it when the identity
+already exists is a safe no-op. macOS may show a one-time "codesign wants to
+use your confidential information in Retrace Dev Local" keychain prompt
+during this — click **Always Allow** so future builds never ask again. (If
+the very next codesign attempt then fails with `errSecInternalComponent`,
+that's a known transient macOS quirk right after granting that prompt — the
+script retries once automatically.)
+
+After setup, the *next* `./build_and_sign.sh` or `./dev.sh` build prompts
+for Screen Recording/Accessibility **one more time** (new identity = new app
+to TCC). Grant it once — every rebuild after that keeps the identity and the
+grant persists indefinitely. `dev.sh` signs with a distinct bundle
+identifier (`io.retrace.app.dev`) from the installed release build
+(`io.retrace.app`), so the two variants carry independent, equally stable
+grants rather than fighting over one.
+
+**What the build scripts do.** Both scripts look for a trusted
+`Retrace Dev Local` identity and sign with it if found. If it's missing (or
+present but untrusted/expired), **they fail the build** with a pointer to
+`./scripts/setup_dev_signing_identity.sh`, rather than silently falling back
+to ad-hoc signing. That's deliberate: a silent ad-hoc fallback is exactly
+how this problem reappears — the build keeps "working," just with the
+permission churn this setup exists to eliminate, and nobody notices until
+permissions start resetting again. Set `RETRACE_ALLOW_ADHOC_SIGN=1` to
+explicitly opt into ad-hoc signing anyway (fresh clone, CI, a one-off build
+you won't iterate on).
+
+**Renewing/replacing the identity.** The cert is generated with a 10-year
+validity specifically so expiry isn't a near-term problem. If you ever hand
+create one via Keychain Access → Certificate Assistant instead, note its
+*default* validity is 1 year, and an expired cert quietly drops out of
+`security find-identity -p codesigning`'s output — both scripts then hit
+their "no identity found" failure a year later for no reason anyone
+immediately remembers. Always let the setup script generate the cert. To
+replace an existing identity (expired, untrusted, or just want a fresh one):
+
+```bash
+./scripts/setup_dev_signing_identity.sh --replace
+```
+
+This deletes the existing `Retrace Dev Local` certificate(s) and generates a
+new one — expect one more permission re-grant afterward, inherent to
+changing the identity.
+
+**Troubleshooting:**
+
+- *"No trusted identity found" but you set one up*: check
+  `security find-identity -v -p codesigning | grep "Retrace Dev Local"` — a
+  `CSSMERR_TP_NOT_TRUSTED` annotation means it exists but isn't trusted; fix
+  with `--replace`.
+- *Check expiry*:
+  `security find-certificate -c "Retrace Dev Local" -p | openssl x509 -noout -dates`
+- *"ambiguous identity" from codesign*: two certs share the name (e.g. one
+  hand-created, one from the script). List with
+  `security find-certificate -a -c "Retrace Dev Local" -Z ~/Library/Keychains/login.keychain-db`,
+  delete both by SHA-1 hash with
+  `security delete-certificate -Z <hash> ~/Library/Keychains/login.keychain-db`,
+  then re-run the setup script.
+- *Permissions still not persisting*: confirm the installed app is actually
+  using the identity —
+  `codesign -dvvv /Applications/Retrace.app 2>&1 | grep -E "Authority|CDHash"`
+  should show `Authority=Retrace Dev Local` staying constant across rebuilds
+  while `CDHash` changes each time. If `Authority=` shows `-`, the build
+  fell back to ad-hoc — check `RETRACE_ALLOW_ADHOC_SIGN` isn't set and the
+  identity is trusted.
+- *A stale grant tied to an old/deleted identity is stuck*: remove it once
+  via System Settings → Privacy & Security → Screen Recording and
+  Accessibility (renamed on newer macOS to "Screen & System Audio Recording"
+  and "Device Control and Data Access") → select Retrace → `−` → relaunch
+  and re-grant.
+
+**Rule for future changes: never make `build_and_sign.sh` or `dev.sh` fall
+back to `--sign -` (ad-hoc) silently.** If signing fails, the fix is running
+`./scripts/setup_dev_signing_identity.sh` (or `--replace`), not changing the
+script to tolerate ad-hoc signing by default.
+
 ---
 
 ## Project Structure
@@ -478,6 +610,12 @@ Then check which path actually executes and fix the right code.
 - **Any newly added feature or user action must add `daily_metrics` instrumentation in the same change**.
 - Add a new `DailyMetricsQueries.MetricType` (and metadata schema) when no existing metric accurately represents the action.
 - Wire the metric emission at the action entry/outcome points (for example: opened, submitted, succeeded, failed/no-results where applicable).
+
+### 8. Never Fall Back to Ad-Hoc Signing in Dev Build Scripts
+
+- `build_and_sign.sh` and `dev.sh` sign dev builds with a stable local identity (`Retrace Dev Local`) instead of ad-hoc (`--sign -`) so macOS Screen Recording/Accessibility grants (TCC) survive every rebuild. If signing fails, both scripts **fail the build** rather than silently falling back to ad-hoc.
+- **Do not "fix" a signing failure by reverting that identity to `--sign -` or otherwise making the fallback silent** — that reintroduces the exact permission-churn problem this setup exists to eliminate, and it won't be obvious until permissions start resetting again. The correct fix is `./scripts/setup_dev_signing_identity.sh` (or `--replace`), never a script change.
+- Full explanation and troubleshooting: see [Code Signing for Local Development](#code-signing-for-local-development) above.
 
 ---
 
