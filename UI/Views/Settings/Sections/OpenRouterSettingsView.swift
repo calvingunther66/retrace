@@ -14,6 +14,8 @@ public struct OpenRouterSettingsView: View {
     @State private var isCustomIndexingModel: Bool = false
     // Same sentinel-decoupling fix as `selectedModelPickerTag` above.
     @State private var indexingModelPickerTag: String = ""
+    @State private var isRestartingIndexing: Bool = false
+    @State private var restartStatusMessage: String? = nil
 
     @State private var apiKeyInput: String = ""
     @State private var hasStoredKey: Bool = false
@@ -388,6 +390,56 @@ public struct OpenRouterSettingsView: View {
                                 .buttonStyle(.plain)
                             }
                             .padding(.top, 4)
+                        }
+                    }
+
+                    Divider().opacity(0.1)
+
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            isRestartingIndexing = true
+                            restartStatusMessage = "Restarting and resetting backlog..."
+                            NotificationCenter.default.post(name: .forceRestartSemanticIndexing, object: nil)
+                            Task {
+                                try? await Task.sleep(for: .seconds(1), clock: .continuous)
+                                await MainActor.run {
+                                    isRestartingIndexing = false
+                                    restartStatusMessage = "AI indexing restarted & backlog reset"
+                                }
+                                try? await Task.sleep(for: .seconds(3), clock: .continuous)
+                                await MainActor.run {
+                                    if restartStatusMessage == "AI indexing restarted & backlog reset" {
+                                        restartStatusMessage = nil
+                                    }
+                                }
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                if isRestartingIndexing {
+                                    ProgressView()
+                                        .scaleEffect(0.6)
+                                        .frame(width: 14, height: 14)
+                                } else {
+                                    Image(systemName: "arrow.clockwise")
+                                        .font(.system(size: 11, weight: .semibold))
+                                }
+                                Text(isRestartingIndexing ? "Restarting…" : "Force Restart Indexing")
+                                    .font(.retraceCaptionMedium)
+                            }
+                            .foregroundColor(.retracePrimary)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isRestartingIndexing)
+                        .help("Clears rate-limit backoff, resets stalled frames to pending, and immediately triggers an indexing cycle")
+
+                        if let msg = restartStatusMessage {
+                            Text(msg)
+                                .font(.retraceCaption2)
+                                .foregroundColor(.retraceSecondary)
                         }
                     }
                 }

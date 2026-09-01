@@ -387,15 +387,50 @@ public final class OpenRouterClient: Sendable {
         public let description: String
     }
 
-    /// Sends up to N screenshots in a single chat-completion request to a vision-capable model
-    /// and returns a description per image, matched back to `frameID` by position (not by
-    /// trusting the model to echo an arbitrary numeric ID correctly).
-    ///
-    /// Never throws for a partially-parseable response — images the model dropped or
-    /// mis-formatted come back in `unparsedFrameIDs` instead, so the caller can commit the
-    /// descriptions that did parse (the request's cost against the daily budget is sunk either way).
+    /// Input structure for a frame in a visual semantic indexing sequence, including rich context
+    /// for cross-referencing against adjacent frames.
+    public struct SemanticFrameInput: Sendable {
+        public let frameID: Int64
+        public let jpegData: Data
+        public let appName: String?
+        public let windowTitle: String?
+        public let browserURL: String?
+        public let relativeTimeDescription: String?
+
+        public init(
+            frameID: Int64,
+            jpegData: Data,
+            appName: String? = nil,
+            windowTitle: String? = nil,
+            browserURL: String? = nil,
+            relativeTimeDescription: String? = nil
+        ) {
+            self.frameID = frameID
+            self.jpegData = jpegData
+            self.appName = appName
+            self.windowTitle = windowTitle
+            self.browserURL = browserURL
+            self.relativeTimeDescription = relativeTimeDescription
+        }
+    }
+
+    /// Convenience wrapper for raw images without sequence metadata.
     public func describeFrames(
         images: [(frameID: Int64, jpegData: Data)],
+        apiKey: String,
+        model: String,
+        temperature: Double = 0.2
+    ) async throws -> (parsed: [SemanticDescriptionResult], unparsedFrameIDs: [Int64]) {
+        let frameInputs = images.map {
+            SemanticFrameInput(frameID: $0.frameID, jpegData: $0.jpegData)
+        }
+        return try await describeFrames(frames: frameInputs, apiKey: apiKey, model: model, temperature: temperature)
+    }
+
+    /// Sends a chronological batch of screenshots to a vision model with multi-layer cross-referencing instructions:
+    /// analyzing visual structure, workflow transitions between frames, and key entities/intent.
+    public func describeFrames(
+        frames: [SemanticFrameInput],
         apiKey: String,
         model: String,
         temperature: Double = 0.2
@@ -406,7 +441,7 @@ public final class OpenRouterClient: Sendable {
                 NSLocalizedDescriptionKey: "OpenRouter API Key not configured. Please add your key in Settings."
             ])
         }
-        guard !images.isEmpty else {
+        guard !frames.isEmpty else {
             return (parsed: [], unparsedFrameIDs: [])
         }
 
@@ -418,20 +453,37 @@ public final class OpenRouterClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 90
 
-        let promptText = """
-            You will be shown \(images.count) screenshots, labeled Image 1 through Image \(images.count), in order.
-            For each image, write ONE dense sentence (max 40 words) describing what is visually shown: \
-            the application/website, on-screen content, notable icons, diagrams, images, or layout. \
-            Do not describe browser chrome or window frames. If an image is mostly plain text, focus on \
-            visual structure (tables, charts, buttons, thumbnails) rather than restating prose.
+        var frameContextLines: [String] = []
+        for (index, frame) in frames.enumerated() {
+            var metaParts: [String] = []
+            if let time = frame.relativeTimeDescription { metaParts.append("Time: \(time)") }
+            if let app = frame.appName { metaParts.append("App: \(app)") }
+            if let title = frame.windowTitle { metaParts.append("Window: \"\(title)\"") }
+            if let url = frame.browserURL { metaParts.append("URL: \(url)") }
+            let metaString = metaParts.isEmpty ? "" : " (\(metaParts.joined(separator: ", ")))"
+            frameContextLines.append("- Image \(index + 1)\(metaString)")
+        }
 
-            Respond with ONLY a JSON array, no other text, no markdown fences:
+        let contextSummary = frameContextLines.joined(separator: "\n")
+
+        let promptText = """
+            You are analyzing a chronological sequence of \(frames.count) user screen captures to build an in-depth, cross-referenced visual index for a search engine.
+
+            Sequence context:
+            \(contextSummary)
+
+            For each image, generate an in-depth multi-layer semantic description (1-2 dense sentences, max 60 words) that captures:
+            1. Visual Content: What is visually shown on screen (UI components, diagrams, graphs, code blocks, layout, media).
+            2. Workflow & Cross-Frame Transitions: How this screen connects to the surrounding workflow stream (e.g. "Switched from reading Safari docs to VSCode to edit database query", "Modal confirmation dialog appeared after form submission in prior screen", "Executing tests in terminal after code changes").
+            3. Key Entities & Intent: Specific tools, topics, functions, files, or error states.
+
+            Respond with ONLY a JSON array, no markdown fences:
             [{"image": 1, "description": "..."}, {"image": 2, "description": "..."}, ...]
             """
 
         var contentParts: [[String: Any]] = [["type": "text", "text": promptText]]
-        for image in images {
-            let base64 = image.jpegData.base64EncodedString()
+        for frame in frames {
+            let base64 = frame.jpegData.base64EncodedString()
             contentParts.append([
                 "type": "image_url",
                 "image_url": ["url": "data:image/jpeg;base64,\(base64)"]
@@ -444,13 +496,8 @@ public final class OpenRouterClient: Sendable {
                 ["role": "user", "content": contentParts]
             ],
             "temperature": temperature,
-            "max_tokens": 900,
-            // This model family defaults reasoning ON and counts reasoning tokens against
-            // max_tokens. Verified empirically: with reasoning on, a 5-image batch of real
-            // screenshots can burn the entire token budget on the reasoning trace before ever
-            // emitting content, producing `finish_reason: "length"` and empty/truncated JSON —
-            // silently stalling every frame. Disabling it (in `supported_parameters` for this
-            // model) makes the response deterministic and keeps completion cost tiny.
+            "max_tokens": 1200,
+            // Disable reasoning to avoid exhausting completion tokens
             "reasoning": ["enabled": false]
         ]
 
@@ -484,12 +531,12 @@ public final class OpenRouterClient: Sendable {
 
         var parsed: [SemanticDescriptionResult] = []
         var unparsedFrameIDs: [Int64] = []
-        for (index, image) in images.enumerated() {
+        for (index, frame) in frames.enumerated() {
             let position = index + 1
             if let description = descriptionsByPosition[position], !description.isEmpty {
-                parsed.append(SemanticDescriptionResult(frameID: image.frameID, description: description))
+                parsed.append(SemanticDescriptionResult(frameID: frame.frameID, description: description))
             } else {
-                unparsedFrameIDs.append(image.frameID)
+                unparsedFrameIDs.append(frame.frameID)
             }
         }
 
@@ -506,6 +553,10 @@ public final class OpenRouterClient: Sendable {
             text.removeSubrange(thinkRange.lowerBound..<thinkEndRange.upperBound)
         }
 
+        // Strip markdown code fences if wrapped
+        text = text.replacingOccurrences(of: "```json", with: "")
+        text = text.replacingOccurrences(of: "```", with: "")
+
         guard let arrayText = lastBalancedJSONArray(in: text),
               let data = arrayText.data(using: .utf8),
               let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
@@ -514,7 +565,8 @@ public final class OpenRouterClient: Sendable {
 
         var result: [Int: String] = [:]
         for entry in entries {
-            guard let image = entry["image"] as? Int,
+            let imageNum: Int? = (entry["image"] as? Int) ?? (Int(entry["image"] as? String ?? ""))
+            guard let image = imageNum,
                   let description = entry["description"] as? String,
                   !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 continue

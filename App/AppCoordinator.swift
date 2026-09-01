@@ -1331,6 +1331,11 @@ public actor AppCoordinator {
             Task { await self?.handleStorageVolumeMounted(notification) }
         }
         storageHealthObserverTokens.append(mounted)
+
+        let forceRestartSemantic = center.addObserver(forName: Notification.Name("forceRestartSemanticIndexing"), object: nil, queue: .main) { [weak self] _ in
+            Task { await self?.forceRestartSemanticIndexer(resetFailedFrames: true) }
+        }
+        storageHealthObserverTokens.append(forceRestartSemantic)
     }
 
     private func stopStorageHealthNotifications() {
@@ -3258,9 +3263,16 @@ public actor AppCoordinator {
         )
     }
 
+    /// Force restarts the AI visual semantic indexer, resetting stalled frames and cleaning orphaned requests.
+    @discardableResult
+    public func forceRestartSemanticIndexer(resetFailedFrames: Bool = true) async -> (resetFrameCount: Int, cleanedRequestCount: Int) {
+        Log.info("[AppCoordinator] Force restarting semantic indexer", category: .app)
+        return await services.semanticIndexer.forceRestart(resetFailedFrames: resetFailedFrames)
+    }
+
     /// Get current AI visual semantic-indexing progress for the System Monitor.
     public func getSemanticIndexStatistics() async -> SemanticIndexStatistics? {
-        guard let progress = try? await services.database.getSemanticIndexProgress() else {
+        guard let detailed = try? await services.database.getSemanticIndexDetailedProgress() else {
             return nil
         }
 
@@ -3269,17 +3281,25 @@ public actor AppCoordinator {
         var utcCalendar = Calendar(identifier: .gregorian)
         utcCalendar.timeZone = TimeZone(identifier: "UTC")!
         let dayStartMs = Int64(utcCalendar.startOfDay(for: Date()).timeIntervalSince1970 * 1000)
-        let requestsToday = (try? await services.database.countBackfillSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
+        let requestsToday = (try? await services.database.countTotalSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
 
-        let defaults = UserDefaults(suiteName: "io.retrace.app") ?? .standard
+        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
         let isEnabled = defaults.bool(forKey: OpenRouterCredentialsManager.semanticIndexingEnabledDefaultsKey)
 
+        let statusInfo = await services.semanticIndexer.getStatusInfo()
+
         return SemanticIndexStatistics(
-            indexed: progress.indexed,
-            eligibleTotal: progress.eligibleTotal,
+            indexed: detailed.indexed,
+            eligibleTotal: detailed.eligibleTotal,
             backfillRequestsToday: requestsToday,
             dailyBackfillBudget: SemanticIndexer.dailyBackfillBudget,
-            isEnabled: isEnabled
+            isEnabled: isEnabled,
+            status: statusInfo.status,
+            statusMessage: statusInfo.message,
+            failedCount: detailed.failed,
+            pendingCount: detailed.pending,
+            baselineIndexedCount: detailed.baselineIndexed,
+            deepIndexedCount: detailed.deepIndexed
         )
     }
 

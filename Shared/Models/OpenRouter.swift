@@ -2,6 +2,18 @@ import Foundation
 
 // MARK: - AI Visual Semantic Indexing Progress
 
+/// Live status of the AI Visual Semantic Indexer.
+public enum SemanticIndexStatus: String, Sendable, Equatable {
+    case running = "Running"
+    case idle = "Idle"
+    case budgetExhausted = "Daily Cap Reached"
+    case rateLimited = "Rate Limited"
+    case error = "Error"
+    case awaitingKey = "No API Key"
+    case disabled = "Off"
+    case restarting = "Restarting"
+}
+
 /// Snapshot of AI visual semantic-indexing progress, for the System Monitor.
 public struct SemanticIndexStatistics: Sendable, Equatable {
     public let indexed: Int
@@ -9,19 +21,37 @@ public struct SemanticIndexStatistics: Sendable, Equatable {
     public let backfillRequestsToday: Int
     public let dailyBackfillBudget: Int
     public let isEnabled: Bool
+    public let status: SemanticIndexStatus
+    public let statusMessage: String?
+    public let failedCount: Int
+    public let pendingCount: Int
+    public let baselineIndexedCount: Int
+    public let deepIndexedCount: Int
 
     public init(
         indexed: Int,
         eligibleTotal: Int,
         backfillRequestsToday: Int,
         dailyBackfillBudget: Int,
-        isEnabled: Bool
+        isEnabled: Bool,
+        status: SemanticIndexStatus = .idle,
+        statusMessage: String? = nil,
+        failedCount: Int = 0,
+        pendingCount: Int = 0,
+        baselineIndexedCount: Int = 0,
+        deepIndexedCount: Int = 0
     ) {
         self.indexed = indexed
         self.eligibleTotal = eligibleTotal
         self.backfillRequestsToday = backfillRequestsToday
         self.dailyBackfillBudget = dailyBackfillBudget
         self.isEnabled = isEnabled
+        self.status = status
+        self.statusMessage = statusMessage
+        self.failedCount = failedCount
+        self.pendingCount = pendingCount
+        self.baselineIndexedCount = baselineIndexedCount
+        self.deepIndexedCount = deepIndexedCount
     }
 
     public var fractionComplete: Double {
