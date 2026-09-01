@@ -427,6 +427,13 @@ public struct OpenRouterSettingsView: View {
 
     private func loadKeyStatus() {
         hasStoredKey = OpenRouterCredentialsManager.hasAPIKey()
+        // A persisted literal `"custom"` is the stale picker sentinel from before the Picker/
+        // @AppStorage decoupling fix, not a real (if unrecognized) model slug — treating it as
+        // one would populate the text field with the word "custom" and, if the user hits Apply
+        // without editing it, re-persist the same broken value forever. Reset to a real default.
+        if selectedModel == "custom" {
+            selectedModel = "anthropic/claude-3.5-sonnet"
+        }
         if OpenRouterConfig.popularModels.contains(selectedModel) {
             selectedModelPickerTag = selectedModel
         } else {

@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import ImageIO
 import Shared
 import Database
 import Storage
@@ -188,7 +189,12 @@ public actor SemanticIndexer {
                 }
 
                 if candidateLane == "backfill" {
-                    guard backfillRemaining > batch.count else {
+                    // `backfillRemaining` counts *requests* left today (one row per dispatched
+                    // batch), not frames — comparing it to `batch.count` (frames already
+                    // gathered) shrinks the batch by one candidate every time it's checked,
+                    // so the last few cycles of the day dispatch batches of 4, 3, 2, 1 instead
+                    // of full 5-frame batches while still spending a full request each time.
+                    guard backfillRemaining >= 1 else {
                         backfillBudgetExhausted = true
                         continue
                     }
@@ -260,6 +266,10 @@ public actor SemanticIndexer {
             return .error(error.localizedDescription)
         }
 
+        // Tracks which frames actually committed a description (each `writeSemanticDescription`
+        // call commits its own transaction) so a throw partway through the loop below only
+        // reconsiders the frames that never got written — see the catch block.
+        var writtenFrameIDs: [Int64] = []
         do {
             let (parsed, unparsedFrameIDs) = try await openRouterClient.describeFrames(
                 images: images,
@@ -274,6 +284,7 @@ public actor SemanticIndexer {
                     description: result.description,
                     indexedAtMs: indexedAtMs
                 )
+                writtenFrameIDs.append(result.frameID)
             }
             if !unparsedFrameIDs.isEmpty {
                 try await database.markSemanticFramesRetryPending(unparsedFrameIDs)
@@ -293,20 +304,47 @@ public actor SemanticIndexer {
             )
             try? await database.recordMetricEvent(
                 metricType: .semanticIndexBatchOutcome,
-                metadata: "{\"outcome\":\"success\",\"lane\":\"\(lane)\",\"count\":\(parsed.count)}"
+                metadata: "{\"outcome\":\"\(outcomeStatus)\",\"lane\":\"\(lane)\",\"count\":\(parsed.count)}"
             )
             return .processed(count: parsed.count)
         } catch {
+            // A cancelled task (app quit mid-batch, `stop()` racing an in-flight request) is not
+            // a per-frame failure — the frames never got a real chance to succeed or fail against
+            // the API. Leave their status untouched so they're simply reselected next launch,
+            // rather than spending a retry attempt; three quits that happen to race the same
+            // frames would otherwise strand them at `semanticStatus = 8` forever.
+            let isCancellation = Task.isCancelled
+                || error is CancellationError
+                || (error as NSError).code == NSURLErrorCancelled
+            if isCancellation {
+                Log.debug("[SemanticIndexer] Batch cancelled mid-dispatch — leaving unwritten frames pending", category: .processing)
+                try? await database.updateSemanticIndexRequestOutcome(
+                    requestRowID: requestRowID,
+                    status: "cancelled",
+                    httpStatus: 0,
+                    errorMessage: "cancelled"
+                )
+                return .error("cancelled")
+            }
+
             let nsError = error as NSError
             let isTransient = Self.isTransientError(nsError)
-            if isTransient {
-                // Rate limits, 5xx, and transport failures are lane/API-wide, not a property of
-                // these specific frames — reset to pending without spending a retry attempt, so
-                // a blip doesn't permanently strand frames that had the bad luck to be in-flight
-                // during it (see markTransientRetry's doc comment).
-                try? await database.markSemanticFramesTransientRetry(images.map(\.frameID))
-            } else {
-                try? await database.markSemanticFramesFailed(images.map(\.frameID), permanently: false)
+            // Only frames that never committed a description need to be reconsidered — anything
+            // in `writtenFrameIDs` already durably committed its own transaction (status=2)
+            // before this frame threw; reverting it to pending would have the next cycle's
+            // `writeDescriptionUnguarded` delete a still-valid description and re-spend a
+            // daily-budget slot re-describing something already correctly indexed.
+            let unwrittenFrameIDs = images.map(\.frameID).filter { !writtenFrameIDs.contains($0) }
+            if !unwrittenFrameIDs.isEmpty {
+                if isTransient {
+                    // Rate limits, 5xx, and transport failures are lane/API-wide, not a property
+                    // of these specific frames — reset to pending without spending a retry
+                    // attempt, so a blip doesn't permanently strand frames that had the bad luck
+                    // to be in-flight during it (see markTransientRetry's doc comment).
+                    try? await database.markSemanticFramesTransientRetry(unwrittenFrameIDs)
+                } else {
+                    try? await database.markSemanticFramesFailed(unwrittenFrameIDs, permanently: false)
+                }
             }
             try? await database.updateSemanticIndexRequestOutcome(
                 requestRowID: requestRowID,
@@ -354,31 +392,37 @@ public actor SemanticIndexer {
         return VideoSegmentID(value: actualSegmentID)
     }
 
+    /// `NSImage.lockFocus()`/`unlockFocus()` manipulate per-thread `NSGraphicsContext` state and
+    /// are main-thread-only by AppKit convention — this runs on `SemanticIndexer`'s (non-main)
+    /// actor executor, so it deliberately avoids them in favor of `CGImageSource`/
+    /// `CGImageDestination`, which are documented thread-safe and never touch
+    /// `NSGraphicsContext`. Off-main `lockFocus` use is a known source of sporadic blank/
+    /// corrupted output — here that would silently ship a corrupted frame to OpenRouter, get a
+    /// plausible-sounding hallucinated description back, and write it into `semanticRanking` as
+    /// if it were real, permanently poisoning search for that frame while still burning budget.
     private static func downscale(_ jpegData: Data, maxLongEdge: CGFloat, quality: CGFloat) throws -> Data {
-        guard let image = NSImage(data: jpegData) else {
+        guard let source = CGImageSourceCreateWithData(jpegData as CFData, nil) else {
             throw ProcessingError.invalidVideoPath(path: "undecodable JPEG")
         }
-        let size = image.size
-        let longEdge = max(size.width, size.height)
-        let scale = longEdge > maxLongEdge ? maxLongEdge / longEdge : 1.0
-        let targetSize = NSSize(width: size.width * scale, height: size.height * scale)
+        let thumbnailOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int(maxLongEdge)
+        ]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) else {
+            throw ProcessingError.invalidVideoPath(path: "failed to downscale JPEG")
+        }
 
-        let resized = NSImage(size: targetSize)
-        resized.lockFocus()
-        image.draw(
-            in: NSRect(origin: .zero, size: targetSize),
-            from: NSRect(origin: .zero, size: size),
-            operation: .copy,
-            fraction: 1.0
-        )
-        resized.unlockFocus()
-
-        guard let tiffData = resized.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiffData),
-              let jpeg = bitmap.representation(using: .jpeg, properties: [.compressionFactor: quality]) else {
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(output, "public.jpeg" as CFString, 1, nil) else {
             throw ProcessingError.invalidVideoPath(path: "failed to re-encode downscaled JPEG")
         }
-        return jpeg
+        let destinationOptions: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
+        CGImageDestinationAddImage(destination, thumbnail, destinationOptions as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else {
+            throw ProcessingError.invalidVideoPath(path: "failed to re-encode downscaled JPEG")
+        }
+        return output as Data
     }
 
     // MARK: - Settings

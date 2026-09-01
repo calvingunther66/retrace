@@ -161,12 +161,16 @@ public actor SearchManager: SearchProtocol {
             }
         }
 
-        // Merge: OCR matches win on conflict (already have a searchable snippet); semantic-only
-        // matches fill in frames OCR search missed entirely. Truncate back to the requested
-        // page size — the merge can otherwise exceed `query.limit`.
+        // Merge: OCR matches win on conflict (already have a searchable snippet), but a frame
+        // that also has a corroborating semantic (AI visual) description is labeled `.both`
+        // rather than plain `.ocr` — that distinction is the whole point of the match-source
+        // signal, so a frame present in both indexes must not silently collapse to `.ocr`.
+        // Semantic-only matches fill in frames OCR search missed entirely. Truncate back to the
+        // requested page size — the merge can otherwise exceed `query.limit`.
+        let semanticFrameIDs = Set(semanticMatches.map(\.frameID))
         var seenFrameIDs = Set(ftsMatches.map(\.frameID))
         var mergedMatches: [(match: FTSMatch, matchSource: SearchResult.MatchSource)] =
-            ftsMatches.map { ($0, .ocr) }
+            ftsMatches.map { ($0, semanticFrameIDs.contains($0.frameID) ? .both : .ocr) }
         for match in semanticMatches where !seenFrameIDs.contains(match.frameID) {
             guard mergedMatches.count < query.limit else { break }
             mergedMatches.append((match, .semantic))
@@ -427,6 +431,16 @@ public actor SearchManager: SearchProtocol {
         for phrase in parsed.phrases {
             let escaped = QueryTokenizer.sanitizeFTSTerm(phrase)
             parts.append("\"\(escaped)\"")
+        }
+
+        // A pure-stopword question ("how did you do that", "what was it about") can leave
+        // `parts` empty once every term is filtered out above — FTS5 rejects an empty MATCH
+        // expression outright, which would make the AI-context fallback throw and silently fall
+        // back to zero context (exactly the failure this fallback exists to avoid). Degrade to
+        // ORing every term unfiltered rather than producing a query FTS5 can't even parse; at
+        // worst that's a weak, low-precision match, which is still strictly better than none.
+        if matchAny && parts.isEmpty && !parsed.searchTerms.isEmpty {
+            parts = parsed.searchTerms.map { "\(QueryTokenizer.sanitizeFTSTerm($0))*" }
         }
 
         return parts.joined(separator: matchAny ? " OR " : " ")

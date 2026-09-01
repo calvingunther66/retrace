@@ -2668,7 +2668,17 @@ public class SearchViewModel: ObservableObject {
         // app): searches always used Claude regardless of the Settings picker, and WebSSH tools
         // were never offered even with the toggle on.
         let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
-        let selectedModel = defaults.string(forKey: OpenRouterCredentialsManager.selectedModelDefaultsKey) ?? "anthropic/claude-3.5-sonnet"
+        // Defensively reject the Settings UI's "custom" picker sentinel (and empty strings) —
+        // it must never be sent to OpenRouter as a literal model slug. Mirrors the same guard in
+        // SemanticIndexer.readIndexingModel: a stale/corrupted default here would otherwise fail
+        // every single AI chat query with an opaque 400/404 until the user reopens Settings.
+        let storedModel = defaults.string(forKey: OpenRouterCredentialsManager.selectedModelDefaultsKey)
+        let selectedModel: String = {
+            guard let storedModel, !storedModel.isEmpty, storedModel != "custom" else {
+                return "anthropic/claude-3.5-sonnet"
+            }
+            return storedModel
+        }()
         let maxFrames = defaults.integer(forKey: OpenRouterCredentialsManager.maxContextFramesDefaultsKey)
         // `UserDefaults.double(forKey:)` returns 0.0 for an absent key (not nil), so `?? 0.2`
         // only fires if `defaults` itself is nil — it can't distinguish "never set" from
@@ -2702,8 +2712,11 @@ public class SearchViewModel: ObservableObject {
                 // isn't running (it's a normal desktop app the user opens on demand, not a
                 // background daemon). A query about yesterday's browsing shouldn't fail with
                 // "WebSSH isn't running." Fall back to the plain non-tools path instead.
-                let webSSHAvailable = (try? await self.webSSHClient.listTools()) != nil
-                guard webSSHAvailable else {
+                // Fetched once here and threaded through to `answerQueryWithTools` below —
+                // that method used to redo this exact same `tools/list` JSON-RPC round-trip
+                // itself, doubling the local WebSSH round-trips on every tool-enabled query.
+                let prefetchedTools = try? await self.webSSHClient.listTools()
+                guard let prefetchedTools else {
                     Log.warning("[SearchViewModel] WebSSH integration enabled but WebSSH isn't reachable — falling back to plain AI search for this query", category: .search)
                     await self.runPlainStreamingAnswer(
                         question: question,
@@ -2724,11 +2737,19 @@ public class SearchViewModel: ObservableObject {
                         model: config.model,
                         temperature: config.temperature,
                         webSSHClient: self.webSSHClient,
+                        availableTools: prefetchedTools,
                         confirmSendCommand: { [weak self] confirmation in
                             guard let self else { return false }
                             return await self.awaitCommandConfirmation(confirmation)
                         }
                     )
+                    // A cancelled task must not touch shared state at all, not even to "clean
+                    // up" `isAIGenerating` — `askOpenRouterAI` cancels the old task and
+                    // synchronously resets state for a NEW one before the old task's next await
+                    // point even notices the cancellation, so clearing `isAIGenerating` here
+                    // unconditionally would race and clobber the new task's genuine in-flight
+                    // spinner. The "dismiss with nothing following" case (`cancelSearch`) is
+                    // instead responsible for clearing it itself — see its comment.
                     guard !Task.isCancelled else { return }
                     self.aiGeneratedAnswer = response.answer
                     self.aiCitations = response.citations
@@ -2859,6 +2880,13 @@ public class SearchViewModel: ObservableObject {
                 self?.aiCitations = citations
             }
         } catch {
+            // A cancelled task must not touch shared state — see the matching comment in
+            // askOpenRouterAI's WebSSH-branch completion handler. Without this guard, a
+            // cancelled URLSession stream throwing `URLError(.cancelled)` after the user has
+            // already submitted a NEW query would overwrite that new task's fresh
+            // `isAIGenerating`/state with a stale "cancelled" error, flashing a bogus error
+            // banner and hiding the spinner mid-generation for the query that's actually running.
+            guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
                 self?.isAIGenerating = false
                 self?.aiError = error.localizedDescription
@@ -2886,6 +2914,13 @@ public class SearchViewModel: ObservableObject {
     public func cancelSearch() {
         openRouterTask?.cancel()
         openRouterTask = nil
+        // Cancelling the task above does NOT clear `isAIGenerating` — by design, a cancelled
+        // `openRouterTask` skips touching shared state entirely so it can't race a subsequent
+        // task's fresh state (see askOpenRouterAI's completion-handler comments). Since dismissal
+        // via cancelSearch has no following task to eventually clear the flag, this is the one
+        // place responsible for it — without this the "Synthesizing..." spinner would keep
+        // running until the user issued a new query or explicitly closed the AI panel.
+        isAIGenerating = false
         // See askOpenRouterAI's comment — cancelling the Task doesn't resume a continuation
         // it may be suspended on.
         denyPendingCommand()

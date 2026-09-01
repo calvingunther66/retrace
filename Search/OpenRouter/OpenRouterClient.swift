@@ -434,6 +434,11 @@ public final class OpenRouterClient: Sendable {
         model: String,
         temperature: Double = 0.2,
         webSSHClient: WebSSHMCPClient,
+        // Callers that already probed availability (e.g. `SearchViewModel.askOpenRouterAI`,
+        // which calls `listTools()` first to decide whether to use this path at all) can pass
+        // that result through here to avoid a second identical JSON-RPC round-trip against the
+        // local WebSSH endpoint. `nil` fetches it fresh, same as before.
+        availableTools prefetchedTools: [WebSSHMCPClient.MCPTool]? = nil,
         confirmSendCommand: @escaping @Sendable (PendingCommandConfirmation) async -> Bool
     ) async throws -> OpenRouterSearchResponse {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -443,7 +448,12 @@ public final class OpenRouterClient: Sendable {
             ])
         }
 
-        let availableTools = try await webSSHClient.listTools()
+        let availableTools: [WebSSHMCPClient.MCPTool]
+        if let prefetchedTools {
+            availableTools = prefetchedTools
+        } else {
+            availableTools = try await webSSHClient.listTools()
+        }
         let toolDefinitions: [[String: Any]] = availableTools.map { tool in
             let parameters = tool.inputSchema.isEmpty
                 ? ["type": "object", "properties": [String: Any]()] as [String: Any]
@@ -540,7 +550,22 @@ public final class OpenRouterClient: Sendable {
 
                     guard let toolCallID = toolCall["id"] as? String,
                           let function = toolCall["function"] as? [String: Any],
-                          let toolName = function["name"] as? String else { continue }
+                          let toolName = function["name"] as? String else {
+                        // The assistant message declaring this tool_call was already appended
+                        // above (verbatim, before validation) — OpenRouter requires a matching
+                        // `role: "tool"` response for every tool_call_id in that message, or the
+                        // *next* request in this loop gets rejected with an opaque 400 that
+                        // aborts the whole answer. Recover whatever id we can and answer it with
+                        // an error rather than silently dropping it from the response set.
+                        if let toolCallID = toolCall["id"] as? String {
+                            messages.append([
+                                "role": "tool",
+                                "tool_call_id": toolCallID,
+                                "content": "Error: tool_call was malformed and could not be executed."
+                            ])
+                        }
+                        continue
+                    }
 
                     let argumentsString = function["arguments"] as? String ?? "{}"
                     let arguments = (try? JSONSerialization.jsonObject(with: Data(argumentsString.utf8)) as? [String: Any]) ?? [:]
