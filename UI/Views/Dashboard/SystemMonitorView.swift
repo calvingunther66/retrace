@@ -792,10 +792,52 @@ public struct SystemMonitorView: View {
 
                 Spacer()
 
+                if let stats = viewModel.semanticIndexStats, stats.isEnabled {
+                    Button(action: {
+                        viewModel.forceRestartSemanticIndexer()
+                    }) {
+                        HStack(spacing: 5) {
+                            if viewModel.isRestartingSemanticIndex {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                    .frame(width: 12, height: 12)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            Text(viewModel.isRestartingSemanticIndex ? "Restarting…" : "Force Restart")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundColor(.retraceSecondary.opacity(0.9))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.06))
+                        .cornerRadius(6)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isRestartingSemanticIndex)
+                    .help("Interrupt any stuck indexing loop, reset failed/stalled frames back to pending, and restart immediately")
+                }
+
                 if let stats = viewModel.semanticIndexStats {
+                    let (badgeText, badgeColor): (String, Color) = {
+                        if viewModel.isRestartingSemanticIndex {
+                            return ("Restarting", .orange)
+                        }
+                        switch stats.status {
+                        case .running: return ("Running", .green)
+                        case .budgetExhausted: return ("Daily Cap Reached", .orange)
+                        case .rateLimited: return ("Rate Limited", .orange)
+                        case .error: return ("Error", .red)
+                        case .awaitingKey: return ("No Key", .yellow)
+                        case .idle: return ("Idle", .retraceSecondary)
+                        case .disabled: return ("Off", .retraceSecondary)
+                        case .restarting: return ("Restarting", .orange)
+                        }
+                    }()
                     statusBadge(
-                        text: stats.isEnabled ? "Running" : "Off",
-                        color: stats.isEnabled ? .green : .retraceSecondary
+                        text: stats.isEnabled ? badgeText : "Off",
+                        color: stats.isEnabled ? badgeColor : .retraceSecondary
                     )
                 }
             }
@@ -831,9 +873,42 @@ public struct SystemMonitorView: View {
                             }
                             .frame(height: 6)
 
-                            Text("Backfill: \(stats.backfillRequestsToday) / \(stats.dailyBackfillBudget) requests used today · resets at UTC midnight")
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary.opacity(0.8))
+                            if let message = stats.statusMessage, !message.isEmpty {
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: stats.status == .error ? "xmark.octagon.fill" : (stats.status == .rateLimited || stats.status == .budgetExhausted ? "exclamationmark.triangle.fill" : "info.circle.fill"))
+                                        .foregroundColor(stats.status == .error ? .red : (stats.status == .rateLimited || stats.status == .budgetExhausted ? .orange : .retraceSecondary))
+                                        .font(.system(size: 11))
+                                        .padding(.top, 2)
+                                    Text(message)
+                                        .font(.retraceCaption2)
+                                        .foregroundColor(stats.status == .error ? .red.opacity(0.9) : (stats.status == .rateLimited || stats.status == .budgetExhausted ? .orange.opacity(0.9) : .retraceSecondary))
+                                    Spacer()
+                                }
+                                .padding(8)
+                                .background(Color.white.opacity(0.03))
+                                .cornerRadius(6)
+                            }
+
+                            VStack(alignment: .leading, spacing: 5) {
+                                HStack {
+                                    Text("Stage 1 (On-Device Apple Intelligence):")
+                                        .font(.retraceCaption2)
+                                        .foregroundColor(.retraceSecondary)
+                                    Spacer()
+                                    Text("\(stats.baselineIndexedCount + stats.deepIndexedCount) / \(stats.eligibleTotal) frames")
+                                        .font(.retraceCaption2)
+                                        .foregroundColor(.retracePrimary)
+                                }
+                                HStack {
+                                    Text("Stage 2 (Vision LLM Deep Cross-Ref):")
+                                        .font(.retraceCaption2)
+                                        .foregroundColor(.retraceSecondary)
+                                    Spacer()
+                                    Text("\(stats.deepIndexedCount) deep · \(stats.backfillRequestsToday) / \(stats.dailyBackfillBudget) reqs today")
+                                        .font(.retraceCaption2)
+                                        .foregroundColor(.retracePrimary)
+                                }
+                            }
                         }
                         .padding(16)
                     } else {
@@ -1737,12 +1812,17 @@ protocol SystemMonitorDataProviding: AnyObject {
     )?
     func getCurrentPowerState() -> (source: PowerStateMonitor.PowerSource, isPaused: Bool)
     func getSemanticIndexStatistics() async -> SemanticIndexStatistics?
+    func forceRestartSemanticIndexer() async
     var isSystemMonitorRecordingActive: Bool { get }
 }
 
 extension AppCoordinator: SystemMonitorDataProviding {
     nonisolated var isSystemMonitorRecordingActive: Bool {
         statusHolder.status.isRunning
+    }
+
+    public func forceRestartSemanticIndexer() async {
+        await forceRestartSemanticIndexer(resetFailedFrames: true)
     }
 }
 
@@ -1775,6 +1855,7 @@ class SystemMonitorViewModel: ObservableObject {
     @Published var pauseOnLowPowerModeSetting: Bool = false
     @Published var isRecordingActive: Bool = false
     @Published var semanticIndexStats: SemanticIndexStatistics? = nil
+    @Published var isRestartingSemanticIndex: Bool = false
 
     // Chart data
     @Published private var ocrHistoryState = ActivityPipelineHistory(windowMinutes: 30)
@@ -2082,6 +2163,17 @@ class SystemMonitorViewModel: ObservableObject {
         pauseOnLowPowerModeSetting = powerSettings.pauseOnLowPowerMode
 
         semanticIndexStats = await dataProvider.getSemanticIndexStatistics()
+    }
+
+    func forceRestartSemanticIndexer() {
+        guard !isRestartingSemanticIndex else { return }
+        isRestartingSemanticIndex = true
+        Task {
+            await dataProvider.forceRestartSemanticIndexer()
+            semanticIndexStats = await dataProvider.getSemanticIndexStatistics()
+            try? await Task.sleep(for: .milliseconds(500), clock: .continuous)
+            isRestartingSemanticIndex = false
+        }
     }
 
     #if DEBUG

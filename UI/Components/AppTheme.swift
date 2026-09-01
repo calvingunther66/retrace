@@ -1657,4 +1657,6 @@ extension Notification.Name {
     public static let fontStyleDidChange = Notification.Name("fontStyleDidChange")
     /// Posted when user-defined tag colors are updated
     public static let tagColorsDidChange = Notification.Name("tagColorsDidChange")
+    /// Posted to request a force restart of the AI Visual Semantic Indexer
+    public static let forceRestartSemanticIndexing = Notification.Name("forceRestartSemanticIndexing")
 }

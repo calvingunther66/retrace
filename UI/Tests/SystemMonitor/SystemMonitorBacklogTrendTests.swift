@@ -225,4 +225,6 @@ private final class StubSystemMonitorDataProvider: SystemMonitorDataProviding {
     func getSemanticIndexStatistics() async -> SemanticIndexStatistics? {
         await semanticIndexStatisticsHandler()
     }
+
+    func forceRestartSemanticIndexer() async {}
 }

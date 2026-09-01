@@ -3531,11 +3531,39 @@ public actor DatabaseManager: DatabaseProtocol {
         try SemanticIndexQueries.updateRequestOutcome(db: db, requestRowID: requestRowID, status: status, httpStatus: httpStatus, errorMessage: errorMessage)
     }
 
+    public func writeBaselineSemanticDescription(frameID: Int64, description: String, indexedAtMs: Int64) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.writeBaselineDescription(db: db, frameID: frameID, description: description, indexedAtMs: indexedAtMs)
+    }
+
+    public func getOCRTextForFrame(frameID: Int64) async throws -> (mainText: String, chromeText: String?, title: String?)? {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.getOCRTextForFrame(db: db, frameID: frameID)
+    }
+
+    public func selectPendingBaselineSemanticFrames(limit: Int) async throws -> [SemanticIndexQueries.PendingFrame] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.selectPendingBaseline(db: db, limit: limit)
+    }
+
     public func countBackfillSemanticRequestsToday(utcDayStartMs: Int64) async throws -> Int {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")
         }
         return try SemanticIndexQueries.countBackfillRequestsToday(db: db, utcDayStartMs: utcDayStartMs)
+    }
+
+    public func countTotalSemanticRequestsToday(utcDayStartMs: Int64) async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.countTotalRequestsToday(db: db, utcDayStartMs: utcDayStartMs)
     }
 
     public func getSemanticIndexProgress() async throws -> (indexed: Int, eligibleTotal: Int) {
@@ -3545,6 +3573,35 @@ public actor DatabaseManager: DatabaseProtocol {
         let indexed = try SemanticIndexQueries.countIndexed(db: db)
         let eligibleTotal = try SemanticIndexQueries.countEligibleTotal(db: db)
         return (indexed: indexed, eligibleTotal: eligibleTotal)
+    }
+
+    public func getSemanticIndexDetailedProgress() async throws -> (indexed: Int, eligibleTotal: Int, failed: Int, pending: Int, baselineIndexed: Int, deepIndexed: Int) {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        let indexed = try SemanticIndexQueries.countIndexed(db: db)
+        let eligibleTotal = try SemanticIndexQueries.countEligibleTotal(db: db)
+        let failed = try SemanticIndexQueries.countFailed(db: db)
+        let pending = try SemanticIndexQueries.countPending(db: db)
+        let baselineIndexed = try SemanticIndexQueries.countBaselineIndexed(db: db)
+        let deepIndexed = try SemanticIndexQueries.countDeepIndexed(db: db)
+        return (indexed: indexed, eligibleTotal: eligibleTotal, failed: failed, pending: pending, baselineIndexed: baselineIndexed, deepIndexed: deepIndexed)
+    }
+
+    @discardableResult
+    public func resetStalledAndFailedSemanticFrames(includePermanentlyFailed: Bool = false) async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.resetStalledAndFailedFrames(db: db, includePermanentlyFailed: includePermanentlyFailed)
+    }
+
+    @discardableResult
+    public func cleanDanglingDispatchedSemanticRequests() async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.cleanDanglingDispatchedRequests(db: db)
     }
 
     // MARK: - Maintenance Operations

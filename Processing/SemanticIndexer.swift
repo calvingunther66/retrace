@@ -40,18 +40,13 @@ public actor SemanticIndexer {
 
     private var loopTask: Task<Void, Never>?
     private var isRunning = false
+    public private(set) var currentStatus: SemanticIndexStatus = .idle
+    public private(set) var currentStatusMessage: String? = nil
 
     /// Live-toggle read from UserDefaults every loop iteration, so flipping this in Settings
     /// takes effect without an app restart (there's no push notification wiring the way
     /// `FrameProcessingQueue.ocrEnabled` gets pushed via `updatePowerConfig`, so this polls).
     private var isEnabled: Bool {
-        // `UserDefaults(suiteName:)` returns `nil` when the suite name equals the *calling
-        // process's own* bundle identifier (confirmed empirically via lldb against the running
-        // app) — Retrace's bundle ID IS `settingsSuiteName` ("io.retrace.app"), so every read
-        // here was silently hitting the `?? false` fallback forever, regardless of the actual
-        // stored value. Every other call site in the app already guards this with `?? .standard`
-        // (see `MasterKeyManager`, `SettingsDefaults.swift`'s `settingsStore`, etc.) — this one
-        // didn't, which is why the toggle appeared to do nothing no matter how long the app ran.
         let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
         return defaults.bool(forKey: OpenRouterCredentialsManager.semanticIndexingEnabledDefaultsKey)
     }
@@ -112,7 +107,49 @@ public actor SemanticIndexer {
         loopTask?.cancel()
         loopTask = nil
         isRunning = false
+        currentStatus = .idle
+        currentStatusMessage = nil
         Log.info("[SemanticIndexer] Stopped", category: .processing)
+    }
+
+    /// Returns current status snapshot for System Monitor & UI readout.
+    public func getStatusInfo() -> (status: SemanticIndexStatus, message: String?) {
+        guard isEnabled else {
+            return (.disabled, nil)
+        }
+        return (currentStatus, currentStatusMessage)
+    }
+
+    /// Interrupts any running batch or sleep backoff, resets stalled & retryable frames in SQLite,
+    /// cleans up dangling requests, and immediately launches a fresh indexing cycle.
+    @discardableResult
+    public func forceRestart(resetFailedFrames: Bool = true) async -> (resetFrameCount: Int, cleanedRequestCount: Int) {
+        Log.info("[SemanticIndexer] Force restart requested", category: .processing)
+        currentStatus = .restarting
+        currentStatusMessage = "Restarting indexer and resetting backlog..."
+
+        // 1. Cancel active loop
+        loopTask?.cancel()
+        loopTask = nil
+        isRunning = false
+
+        // 2. Clean up database state
+        var resetCount = 0
+        var cleanedCount = 0
+        if resetFailedFrames {
+            resetCount = (try? await database.resetStalledAndFailedSemanticFrames(includePermanentlyFailed: false)) ?? 0
+        }
+        cleanedCount = (try? await database.cleanDanglingDispatchedSemanticRequests()) ?? 0
+
+        Log.info(
+            "[SemanticIndexer] Reset \(resetCount) stalled frames and \(cleanedCount) dangling requests",
+            category: .processing
+        )
+
+        // 3. Restart loop immediately
+        await start()
+
+        return (resetFrameCount: resetCount, cleanedRequestCount: cleanedCount)
     }
 
     public func updateAppFilterPolicy(_ policy: AppFilterPolicy) {
@@ -133,20 +170,28 @@ public actor SemanticIndexer {
         case error(String)
     }
 
+    private let appleFoundationModelService = AppleFoundationModelService.shared
+
     private func processNextBatch() async -> BatchOutcome {
         guard isEnabled else {
+            currentStatus = .disabled
+            currentStatusMessage = nil
             Log.debug("[SemanticIndexer] Skipping cycle: disabled in Settings", category: .processing)
             return .disabled
         }
         // Never dispatch before the real app-exclusion policy has arrived from
         // AppCoordinator — see `hasReceivedPolicySync`'s doc comment.
         guard hasReceivedPolicySync else {
+            currentStatus = .idle
+            currentStatusMessage = "Awaiting policy sync"
             Log.debug("[SemanticIndexer] Skipping cycle: awaiting first app-filter policy sync", category: .processing)
             return .awaitingPolicySync
         }
 
         let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
         guard !apiKey.isEmpty else {
+            currentStatus = .awaitingKey
+            currentStatusMessage = "OpenRouter API Key not configured"
             Log.warning("[SemanticIndexer] Skipping cycle: no OpenRouter API key found in Keychain", category: .processing)
             return .noAPIKey
         }
@@ -155,27 +200,33 @@ public actor SemanticIndexer {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let freshCutoffMs = nowMs - Int64(freshLaneWindow * 1000)
 
+        // Stage 1: Fast on-device baseline sweep using Apple Foundation Models / NaturalLanguage
+        await processBaselineStage(nowMs: nowMs)
+
+        // Stage 2: Deep visual indexing via vision LLM, strictly governed by daily request budget
         do {
-            let backfillRemaining = try await remainingBackfillBudgetToday(nowMs: nowMs)
+            let dailyRemaining = try await remainingDailyBudgetToday(nowMs: nowMs)
+            guard dailyRemaining >= 1 else {
+                currentStatus = .budgetExhausted
+                currentStatusMessage = "Daily request limit (\(Self.dailyBackfillBudget)) reached · Resets at UTC midnight"
+                Log.info("[SemanticIndexer] Daily budget exhausted (\(Self.dailyBackfillBudget) requests used today)", category: .processing)
+                return .budgetExhausted
+            }
+
             let candidates = try await database.selectPendingSemanticFrames(
                 limit: batchSize * 2, // headroom in case some get filtered out below
                 freshCutoffMs: freshCutoffMs
             )
 
             guard !candidates.isEmpty else {
+                currentStatus = .idle
+                currentStatusMessage = "All eligible frames indexed"
                 Log.debug("[SemanticIndexer] Skipping cycle: no pending frames match selection criteria", category: .processing)
                 return .emptyQueue
             }
 
-            // Determine the batch's lane from the FIRST eligible (non-app-filtered) candidate,
-            // then take ONLY same-lane candidates for this batch. A batch must never mix lanes:
-            // it's written to `semantic_index_requests` with a single `lane` value, and
-            // `countBackfillSemanticRequestsToday` only counts rows labeled "backfill" — a
-            // mixed batch labeled "fresh" would let backfill frames escape the daily cap
-            // entirely, defeating the whole point of a separate, bounded backfill budget.
             var lane: String?
             var batch: [SemanticIndexQueries.PendingFrame] = []
-            var backfillBudgetExhausted = false
 
             for candidate in candidates {
                 guard appFilterPolicy.allows(bundleID: candidate.bundleID) else {
@@ -188,35 +239,66 @@ public actor SemanticIndexer {
                     continue // wrong lane for this batch — leave it for a later cycle
                 }
 
-                if candidateLane == "backfill" {
-                    // `backfillRemaining` counts *requests* left today (one row per dispatched
-                    // batch), not frames — comparing it to `batch.count` (frames already
-                    // gathered) shrinks the batch by one candidate every time it's checked,
-                    // so the last few cycles of the day dispatch batches of 4, 3, 2, 1 instead
-                    // of full 5-frame batches while still spending a full request each time.
-                    guard backfillRemaining >= 1 else {
-                        backfillBudgetExhausted = true
-                        continue
-                    }
-                }
-
                 lane = candidateLane
                 batch.append(candidate)
                 if batch.count >= batchSize { break }
             }
 
             guard let resolvedLane = lane, !batch.isEmpty else {
-                return backfillBudgetExhausted ? .budgetExhausted : .emptyQueue
+                currentStatus = .idle
+                currentStatusMessage = "No pending frames match selection"
+                return .emptyQueue
             }
 
-            return await dispatch(batch: batch, lane: resolvedLane, model: model, apiKey: apiKey)
+            // Sort batch chronologically (oldest to newest) so the vision model sees the
+            // true forward temporal progression of the user's workflow.
+            let sortedBatch = batch.sorted { $0.createdAtMs < $1.createdAtMs }
+
+            currentStatus = .running
+            currentStatusMessage = "Deep indexing \(sortedBatch.count) frames..."
+
+            return await dispatch(batch: sortedBatch, lane: resolvedLane, model: model, apiKey: apiKey)
         } catch {
+            currentStatus = .error
+            currentStatusMessage = error.localizedDescription
             Log.error("[SemanticIndexer] Batch selection failed: \(error.localizedDescription)", category: .processing)
             return .error(error.localizedDescription)
         }
     }
 
-    private func remainingBackfillBudgetToday(nowMs: Int64) async throws -> Int {
+    /// Stage 1: Fast image-free on-device baseline indexing using Apple Foundation Models & NaturalLanguage.
+    /// Operates purely on OCR text and window metadata without network calls or vision token spend.
+    private func processBaselineStage(nowMs: Int64) async {
+        guard let pendingFrames = try? await database.selectPendingBaselineSemanticFrames(limit: 50),
+              !pendingFrames.isEmpty else {
+            return
+        }
+
+        for frame in pendingFrames {
+            guard appFilterPolicy.allows(bundleID: frame.bundleID) else {
+                try? await database.markSemanticFramesSkipped([frame.frameID])
+                continue
+            }
+
+            let ocrData = try? await database.getOCRTextForFrame(frameID: frame.frameID)
+
+            let baselineDesc = await appleFoundationModelService.generateBaselineSemanticDescription(
+                appName: frame.bundleID,
+                windowTitle: frame.windowName ?? ocrData?.title,
+                browserURL: frame.browserUrl ?? ocrData?.chromeText,
+                ocrText: ocrData?.mainText ?? ""
+            )
+
+            let finalDesc = baselineDesc ?? "App: \(frame.bundleID ?? "System")"
+            try? await database.writeBaselineSemanticDescription(
+                frameID: frame.frameID,
+                description: finalDesc,
+                indexedAtMs: nowMs
+            )
+        }
+    }
+
+    private func remainingDailyBudgetToday(nowMs: Int64) async throws -> Int {
         let utcCalendar = { () -> Calendar in
             var cal = Calendar(identifier: .gregorian)
             cal.timeZone = TimeZone(identifier: "UTC")!
@@ -226,7 +308,7 @@ public actor SemanticIndexer {
         let dayStart = utcCalendar.startOfDay(for: now)
         let dayStartMs = Int64(dayStart.timeIntervalSince1970 * 1000)
 
-        let usedToday = try await database.countBackfillSemanticRequestsToday(utcDayStartMs: dayStartMs)
+        let usedToday = try await database.countTotalSemanticRequestsToday(utcDayStartMs: dayStartMs)
         return max(0, Self.dailyBackfillBudget - usedToday)
     }
 
@@ -236,12 +318,22 @@ public actor SemanticIndexer {
         model: String,
         apiKey: String
     ) async -> BatchOutcome {
-        var images: [(frameID: Int64, jpegData: Data)] = []
+        var frameInputs: [OpenRouterClient.SemanticFrameInput] = []
+        let baseTimeMs = batch.first?.createdAtMs ?? 0
 
         for frame in batch {
             do {
                 let jpeg = try await extractDownscaledJPEG(for: frame)
-                images.append((frameID: frame.frameID, jpegData: jpeg))
+                let deltaSeconds = max(0, (frame.createdAtMs - baseTimeMs) / 1000)
+                let timeDesc = "+\(deltaSeconds)s"
+                frameInputs.append(OpenRouterClient.SemanticFrameInput(
+                    frameID: frame.frameID,
+                    jpegData: jpeg,
+                    appName: frame.bundleID,
+                    windowTitle: frame.windowName,
+                    browserURL: frame.browserUrl,
+                    relativeTimeDescription: timeDesc
+                ))
             } catch {
                 Log.warning(
                     "[SemanticIndexer] Failed to extract frame \(frame.frameID): \(error.localizedDescription)",
@@ -251,17 +343,19 @@ public actor SemanticIndexer {
             }
         }
 
-        guard !images.isEmpty else { return .emptyQueue }
+        guard !frameInputs.isEmpty else { return .emptyQueue }
 
         let requestedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
         let requestRowID: Int64
         do {
             requestRowID = try await database.recordSemanticIndexDispatch(
-                frameIDs: images.map(\.frameID),
+                frameIDs: frameInputs.map(\.frameID),
                 lane: lane,
                 requestedAtMs: requestedAtMs
             )
         } catch {
+            currentStatus = .error
+            currentStatusMessage = "Failed to record dispatch: \(error.localizedDescription)"
             Log.error("[SemanticIndexer] Failed to record dispatch: \(error.localizedDescription)", category: .processing)
             return .error(error.localizedDescription)
         }
@@ -272,7 +366,7 @@ public actor SemanticIndexer {
         var writtenFrameIDs: [Int64] = []
         do {
             let (parsed, unparsedFrameIDs) = try await openRouterClient.describeFrames(
-                images: images,
+                frames: frameInputs,
                 apiKey: apiKey,
                 model: model
             )
@@ -297,6 +391,9 @@ public actor SemanticIndexer {
                 httpStatus: 200,
                 errorMessage: nil
             )
+
+            currentStatus = .running
+            currentStatusMessage = "Indexed \(parsed.count) frames (lane=\(lane))"
 
             Log.info(
                 "[SemanticIndexer] Batch complete: \(parsed.count) described, \(unparsedFrameIDs.count) unparsed (lane=\(lane))",
@@ -334,7 +431,7 @@ public actor SemanticIndexer {
             // before this frame threw; reverting it to pending would have the next cycle's
             // `writeDescriptionUnguarded` delete a still-valid description and re-spend a
             // daily-budget slot re-describing something already correctly indexed.
-            let unwrittenFrameIDs = images.map(\.frameID).filter { !writtenFrameIDs.contains($0) }
+            let unwrittenFrameIDs = frameInputs.map(\.frameID).filter { !writtenFrameIDs.contains($0) }
             if !unwrittenFrameIDs.isEmpty {
                 if isTransient {
                     // Rate limits, 5xx, and transport failures are lane/API-wide, not a property
@@ -358,9 +455,20 @@ public actor SemanticIndexer {
             )
 
             if nsError.code == 429 {
-                Log.warning("[SemanticIndexer] Rate limited: \(nsError.localizedDescription)", category: .processing)
-                return .rateLimited(retryAfterSeconds: 30)
+                let desc = nsError.localizedDescription
+                let isDailyQuota = desc.contains("free-models-per-day") || desc.contains("per-day") || desc.contains("quota")
+                let retrySeconds = isDailyQuota ? 300 : 30
+                currentStatus = .rateLimited
+                currentStatusMessage = isDailyQuota
+                    ? "OpenRouter free model daily limit reached. Switch model in Settings or wait."
+                    : "Rate limited by OpenRouter (429). Retrying shortly..."
+
+                Log.warning("[SemanticIndexer] Rate limited (\(isDailyQuota ? "daily quota" : "burst")): \(desc)", category: .processing)
+                return .rateLimited(retryAfterSeconds: retrySeconds)
             }
+
+            currentStatus = .error
+            currentStatusMessage = nsError.localizedDescription
             Log.error("[SemanticIndexer] Dispatch failed: \(nsError.localizedDescription)", category: .processing)
             return .error(nsError.localizedDescription)
         }
