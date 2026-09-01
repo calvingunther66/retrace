@@ -3320,6 +3320,14 @@ public actor AppCoordinator {
         return try await services.search.search(query: query)
     }
 
+    /// Search tailored for building "Ask AI" context from a raw natural-language question — see
+    /// `SearchManager.searchForAIContext` doc comment. Deliberately bypasses the DataAdapter/
+    /// Rewind routing above: this is a best-effort context-rescue fallback for the AI feature,
+    /// not the user-facing search path, so going straight to native FTS keeps it simple.
+    public nonisolated func searchForAIContext(question: String, filters: SearchFilters = .none, limit: Int = 30) async throws -> SearchResults {
+        try await services.search.searchForAIContext(question: question, filters: filters, limit: limit)
+    }
+
     // MARK: - Frame Retrieval
 
     /// Get a specific frame image by timestamp

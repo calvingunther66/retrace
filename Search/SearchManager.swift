@@ -49,6 +49,24 @@ public actor SearchManager: SearchProtocol {
     // MARK: - SearchProtocol: Full-Text Search
 
     public func search(query: SearchQuery) async throws -> SearchResults {
+        try await performSearch(query: query, matchAny: false)
+    }
+
+    /// Search tailored for building "Ask AI" context from a raw natural-language question rather
+    /// than a deliberate keyword search. `search(query:)` ANDs every significant term together
+    /// (required so a precise keyword search stays precise), which means a full question like
+    /// "when was my 5 hour window going to reset" — 8+ significant tokens that must ALL appear
+    /// verbatim in the same frame's OCR text — matches essentially nothing. This ORs the terms
+    /// instead (after dropping common stopwords, so "the"/"was"/"to" don't just match everything
+    /// and drown out the terms that actually matter), so the AI gets whatever frames are at least
+    /// loosely related instead of a hard "no matching records" every time someone asks a real
+    /// question instead of typing search keywords.
+    public func searchForAIContext(question: String, filters: SearchFilters = .none, limit: Int = 30) async throws -> SearchResults {
+        let query = SearchQuery(text: question, filters: filters, limit: limit, offset: 0)
+        return try await performSearch(query: query, matchAny: true)
+    }
+
+    private func performSearch(query: SearchQuery, matchAny: Bool) async throws -> SearchResults {
         guard isInitialized else {
             Log.error("[SearchManager] Search attempted before search manager is initialized", category: .search)
             throw SearchError.indexNotReady
@@ -69,7 +87,7 @@ public actor SearchManager: SearchProtocol {
         let parsed = try queryParser.parse(rawQuery: query.text)
 
         // Build FTS query
-        let searchableColumnsFTSQuery = Self.buildScopedFTSQuery(for: parsed)
+        let searchableColumnsFTSQuery = Self.buildScopedFTSQuery(for: parsed, matchAny: matchAny)
         Log.debug("[SearchManager] Raw query: '\(query.text)' → FTS query: '\(searchableColumnsFTSQuery)' | terms: \(parsed.searchTerms) | phrases: \(parsed.phrases) | excluded: \(parsed.excludedTerms)", category: .search)
 
         // Build filters
@@ -128,7 +146,7 @@ public actor SearchManager: SearchProtocol {
         let remainingSlots = query.limit - ftsMatches.count
         var semanticMatches: [FTSMatch] = []
         if query.offset == 0 && remainingSlots > 0 {
-            let semanticFTSQuery = Self.buildSemanticFTSQuery(for: parsed)
+            let semanticFTSQuery = Self.buildSemanticFTSQuery(for: parsed, matchAny: matchAny)
             do {
                 semanticMatches = try await ftsEngine.searchSemantic(
                     query: semanticFTSQuery,
@@ -349,8 +367,8 @@ public actor SearchManager: SearchProtocol {
     /// Build an FTS query that searches OCR columns and applies exclusions globally.
     /// Example: `haseab -wave` becomes:
     /// `((text:(haseab*)) OR (otherText:(haseab*))) NOT ((text:(wave)) OR (otherText:(wave)))`
-    static func buildScopedFTSQuery(for parsed: ParsedQuery) -> String {
-        let includeQuery = buildIncludeFTSQuery(for: parsed)
+    static func buildScopedFTSQuery(for parsed: ParsedQuery, matchAny: Bool = false) -> String {
+        let includeQuery = buildIncludeFTSQuery(for: parsed, matchAny: matchAny)
         let trimmedInclude = includeQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedInclude.isEmpty else { return includeQuery }
 
@@ -369,8 +387,8 @@ public actor SearchManager: SearchProtocol {
     /// `buildScopedFTSQuery`, this is NOT column-scoped — `semanticRanking` has a single
     /// `description` column, so a `text:`/`otherText:` prefix (valid only on the OCR table)
     /// would be a malformed FTS5 column reference here.
-    static func buildSemanticFTSQuery(for parsed: ParsedQuery) -> String {
-        let includeQuery = buildIncludeFTSQuery(for: parsed)
+    static func buildSemanticFTSQuery(for parsed: ParsedQuery, matchAny: Bool = false) -> String {
+        let includeQuery = buildIncludeFTSQuery(for: parsed, matchAny: matchAny)
         let trimmedInclude = includeQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedInclude.isEmpty else { return includeQuery }
 
@@ -384,10 +402,24 @@ public actor SearchManager: SearchProtocol {
         return query
     }
 
-    private static func buildIncludeFTSQuery(for parsed: ParsedQuery) -> String {
+    /// Common words dropped only in `matchAny` mode — ORing them in would match nearly every
+    /// frame's OCR text and drown out the terms that actually distinguish the query.
+    /// `matchAny` mode is used for AI-context gathering, not user-facing keyword search, where
+    /// dropping stopwords the user explicitly typed would be surprising.
+    private static let aiContextStopwords: Set<String> = [
+        "a", "an", "the", "of", "to", "in", "on", "for", "and", "or", "but", "was", "were",
+        "is", "are", "am", "be", "been", "being", "my", "your", "his", "her", "its", "our",
+        "their", "i", "you", "he", "she", "it", "we", "they", "when", "what", "where", "who",
+        "why", "how", "did", "do", "does", "had", "have", "has", "having", "last", "going",
+        "with", "at", "as", "by", "from", "about", "this", "that", "these", "those", "will",
+        "would", "could", "should", "can", "not", "no"
+    ]
+
+    private static func buildIncludeFTSQuery(for parsed: ParsedQuery, matchAny: Bool = false) -> String {
         var parts: [String] = []
 
         for term in parsed.searchTerms {
+            if matchAny && aiContextStopwords.contains(term.lowercased()) { continue }
             let escaped = QueryTokenizer.sanitizeFTSTerm(term)
             parts.append("\(escaped)*")
         }
@@ -397,6 +429,6 @@ public actor SearchManager: SearchProtocol {
             parts.append("\"\(escaped)\"")
         }
 
-        return parts.joined(separator: " ")
+        return parts.joined(separator: matchAny ? " OR " : " ")
     }
 }

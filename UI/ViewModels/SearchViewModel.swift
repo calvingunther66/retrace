@@ -2659,16 +2659,7 @@ public class SearchViewModel: ObservableObject {
         showAIAnswerPanel = true
 
         let currentResults = Array((results?.results ?? []).prefix(30))
-        let contextFrames: [OpenRouterContextFrame] = currentResults.map { r in
-            OpenRouterContextFrame(
-                frameID: r.id.value,
-                timestamp: r.timestamp,
-                appName: r.metadata.appName ?? "Unknown",
-                windowTitle: r.metadata.windowName,
-                browserURL: r.metadata.browserURL,
-                extractedText: r.snippet.isEmpty ? r.matchedText : r.snippet
-            )
-        }
+        let initialContextFrames = Self.makeContextFrames(from: currentResults)
 
         // `UserDefaults(suiteName:)` returns `nil` when the suite name equals the calling
         // process's own bundle identifier — Retrace's bundle ID IS `settingsSuiteName`
@@ -2700,6 +2691,10 @@ public class SearchViewModel: ObservableObject {
             }
             openRouterTask = Task { [weak self] in
                 guard let self else { return }
+                let contextFrames = await self.resolveContextFrames(
+                    initial: initialContextFrames,
+                    question: question
+                )
 
                 // Probe WebSSH availability before committing to the tools path. Without this,
                 // enabling the toggle once silently converts EVERY AI query — including ones
@@ -2749,6 +2744,10 @@ public class SearchViewModel: ObservableObject {
 
         openRouterTask = Task { [weak self] in
             guard let self else { return }
+            let contextFrames = await self.resolveContextFrames(
+                initial: initialContextFrames,
+                question: question
+            )
             await self.runPlainStreamingAnswer(
                 question: question,
                 contextFrames: contextFrames,
@@ -2756,6 +2755,74 @@ public class SearchViewModel: ObservableObject {
                 temperature: config.temperature
             )
         }
+    }
+
+    /// Maps search results into the context frames sent to the AI model.
+    private static func makeContextFrames(from results: [SearchResult]) -> [OpenRouterContextFrame] {
+        results.map { r in
+            OpenRouterContextFrame(
+                frameID: r.id.value,
+                timestamp: r.timestamp,
+                appName: r.metadata.appName ?? "Unknown",
+                windowTitle: r.metadata.windowName,
+                browserURL: r.metadata.browserURL,
+                extractedText: r.snippet.isEmpty ? r.matchedText : r.snippet
+            )
+        }
+    }
+
+    /// `askOpenRouterAI`'s `initialContextFrames` come from whatever's currently in the search
+    /// box/timeline, which uses a strict AND-of-every-term FTS match — great for a deliberate
+    /// keyword search, but a full natural-language question ("when was my 5 hour window going to
+    /// reset?") almost never matches verbatim in any single frame's OCR text, so that's usually
+    /// empty when the user types a question straight into "Ask AI" rather than searching first.
+    /// Falls back to a looser OR-based match on the raw question so the AI still gets *something*
+    /// instead of unconditionally reporting "no matching records found."
+    private func resolveContextFrames(
+        initial: [OpenRouterContextFrame],
+        question: String
+    ) async -> [OpenRouterContextFrame] {
+        guard initial.isEmpty else { return initial }
+
+        // A loosely-OR'd term match alone isn't enough: for a question like "when I last had the
+        // Claude desktop app open...", generic OR terms ("window", "hour", "usage") are common
+        // enough in ordinary OCR text (menu chrome, timestamps, system stats) to outrank the one
+        // term that actually matters. When the question names an app the user has actually
+        // captured, scope the fallback search to that app specifically — a far stronger signal
+        // than keyword overlap for "when was X open" questions.
+        let appFilter = detectAppBundleID(in: question)
+        if let appFilter {
+            if let scoped = try? await coordinator.searchForAIContext(
+                question: question,
+                filters: SearchFilters(appBundleIDs: [appFilter]),
+                limit: 30
+            ), !scoped.results.isEmpty {
+                Log.info("[SearchViewModel] No exact-match frames for AI context; using \(scoped.results.count) frames scoped to app '\(appFilter)'", category: .search)
+                return Self.makeContextFrames(from: scoped.results)
+            }
+            // Named app has no captured frames matching the question's other terms — fall
+            // through to the unscoped OR search rather than reporting nothing at all.
+        }
+
+        guard let fallback = try? await coordinator.searchForAIContext(question: question, limit: 30),
+              !fallback.results.isEmpty else {
+            return initial
+        }
+        Log.info("[SearchViewModel] No exact-match frames for AI context; using \(fallback.results.count) loosely-matched frames instead", category: .search)
+        return Self.makeContextFrames(from: fallback.results)
+    }
+
+    /// Looks for a captured app's name as a substring of the raw question (e.g. "Claude" in
+    /// "the Claude desktop app"). Requires >= 4 characters to avoid short/generic app names
+    /// (like a hypothetical "Do" or "Go") producing false-positive matches on ordinary words.
+    /// Prefers the longest matching name so a more specific app wins over a shorter one whose
+    /// name happens to also be a substring of it.
+    private func detectAppBundleID(in question: String) -> String? {
+        let lowered = question.lowercased()
+        return availableApps
+            .filter { $0.name.count >= 4 && lowered.contains($0.name.lowercased()) }
+            .max(by: { $0.name.count < $1.name.count })?
+            .bundleID
     }
 
     /// The non-tools streaming AI-answer path — shared by the default flow and by the
