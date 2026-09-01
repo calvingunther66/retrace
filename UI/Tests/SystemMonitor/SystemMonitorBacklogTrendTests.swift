@@ -172,6 +172,7 @@ private final class StubSystemMonitorDataProvider: SystemMonitorDataProviding {
     private let encodingStatisticsHandler: () async -> (queueDepth: Int, pendingCount: Int)?
     private let currentPowerStateHandler: () -> (source: PowerStateMonitor.PowerSource, isPaused: Bool)
     private let recordingActiveHandler: () -> Bool
+    private let semanticIndexStatisticsHandler: () async -> SemanticIndexStatistics?
 
     init(
         queueStatisticsHandler: @escaping () async -> QueueStatistics? = { nil },
@@ -180,7 +181,8 @@ private final class StubSystemMonitorDataProvider: SystemMonitorDataProviding {
         rewrittenHistoryHandler: @escaping (Int) async throws -> [Int: Int] = { _ in [:] },
         encodingStatisticsHandler: @escaping () async -> (queueDepth: Int, pendingCount: Int)? = { nil },
         currentPowerStateHandler: @escaping () -> (source: PowerStateMonitor.PowerSource, isPaused: Bool) = { (.ac, false) },
-        recordingActiveHandler: @escaping () -> Bool = { false }
+        recordingActiveHandler: @escaping () -> Bool = { false },
+        semanticIndexStatisticsHandler: @escaping () async -> SemanticIndexStatistics? = { nil }
     ) {
         self.queueStatisticsHandler = queueStatisticsHandler
         self.processedHistoryHandler = processedHistoryHandler
@@ -189,6 +191,7 @@ private final class StubSystemMonitorDataProvider: SystemMonitorDataProviding {
         self.encodingStatisticsHandler = encodingStatisticsHandler
         self.currentPowerStateHandler = currentPowerStateHandler
         self.recordingActiveHandler = recordingActiveHandler
+        self.semanticIndexStatisticsHandler = semanticIndexStatisticsHandler
     }
 
     func getQueueStatistics() async -> QueueStatistics? {
@@ -217,5 +220,9 @@ private final class StubSystemMonitorDataProvider: SystemMonitorDataProviding {
 
     var isSystemMonitorRecordingActive: Bool {
         recordingActiveHandler()
+    }
+
+    func getSemanticIndexStatistics() async -> SemanticIndexStatistics? {
+        await semanticIndexStatisticsHandler()
     }
 }

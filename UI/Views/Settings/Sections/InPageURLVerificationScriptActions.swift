@@ -328,7 +328,11 @@ extension SettingsView {
         process: Process,
         timeoutSeconds: TimeInterval
     ) async -> Bool {
-        final class ResumeState {
+        // @unchecked: every stored property is only ever touched inside `resumeOnce`, which
+        // takes `lock` before reading or writing `didResume` — safe to share across the
+        // termination-handler and timeout closures below, the compiler just can't see through
+        // the lock to verify it.
+        final class ResumeState: @unchecked Sendable {
             let lock = NSLock()
             var didResume = false
 

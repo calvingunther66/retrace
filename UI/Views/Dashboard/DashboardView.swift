@@ -452,6 +452,7 @@ public struct DashboardView: View {
                     if let statusBanner = crashRecoveryBannerModel.state {
                         CrashRecoveryStatusBanner(
                             state: statusBanner,
+                            isRetrying: crashRecoveryBannerModel.isRetrying,
                             onOpenSettings: statusBanner.showsOpenSettingsAction ? {
                                 crashRecoveryBannerModel.openSettings()
                             } : nil,
@@ -2500,6 +2501,7 @@ private struct CrashReportBanner: View {
 
 private struct CrashRecoveryStatusBanner: View {
     let state: CrashRecoveryStatusBannerState
+    let isRetrying: Bool
     let onOpenSettings: (() -> Void)?
     let onRetry: () -> Void
     let onDismiss: () -> Void
@@ -2534,14 +2536,24 @@ private struct CrashRecoveryStatusBanner: View {
                         .buttonStyle(.plain)
                 }
 
-                Button("Retry", action: onRetry)
+                Button(action: onRetry) {
+                    HStack(spacing: 6) {
+                        if isRetrying {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                                .frame(width: 10, height: 10)
+                        }
+                        Text(isRetrying ? "Retrying…" : "Retry")
+                    }
+                }
                     .font(.retraceCaption2Medium)
                     .foregroundColor(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(Color.orange.opacity(0.9))
+                    .background(Color.orange.opacity(isRetrying ? 0.5 : 0.9))
                     .cornerRadius(6)
                     .buttonStyle(.plain)
+                    .disabled(isRetrying)
             }
 
             Button(action: onDismiss) {

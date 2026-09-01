@@ -134,25 +134,6 @@ public struct OpenRouterAIAnswerView: View {
         )
         .cornerRadius(12)
         .shadow(color: Color.black.opacity(0.2), radius: 12, x: 0, y: 6)
-        .confirmationDialog(
-            "Allow this WebSSH action?",
-            isPresented: Binding(
-                get: { viewModel.pendingCommandConfirmation != nil },
-                set: { if !$0 { viewModel.denyPendingCommand() } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Allow", role: .destructive) {
-                viewModel.approvePendingCommand()
-            }
-            Button("Cancel", role: .cancel) {
-                viewModel.denyPendingCommand()
-            }
-        } message: {
-            if let pending = viewModel.pendingCommandConfirmation {
-                Text("The AI wants to call \(pending.toolName)\(pending.sessionUUID.isEmpty ? "" : " on SSH session \(pending.sessionUUID.prefix(8))…"):\n\n\(pending.command)\n\nOnly approve this if you asked for it. Text from a page you merely viewed could have caused this request.")
-            }
-        }
     }
 
     private func formatCitationDate(_ date: Date) -> String {

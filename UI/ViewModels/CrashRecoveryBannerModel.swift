@@ -48,6 +48,11 @@ struct CrashRecoveryStatusBannerState: Equatable {
 @MainActor
 final class CrashRecoveryBannerModel: ObservableObject {
     @Published private(set) var state: CrashRecoveryStatusBannerState?
+    /// True while a Retry-triggered arm sequence is in flight. The retry itself can take up to
+    /// ~70s (12 attempts with backoff) since it's specifically riding out a helper that isn't
+    /// reachable yet — this exists so the button can show that instead of sitting inert, which
+    /// is what invited repeated clicking in the first place.
+    @Published private(set) var isRetrying = false
 
     private let coordinator: AppCoordinator
     private let manager: CrashRecoveryManager
@@ -94,11 +99,13 @@ final class CrashRecoveryBannerModel: ObservableObject {
     }
 
     func retry() {
-        guard let state else { return }
+        guard let state, !isRetrying else { return }
         recordAction("retry_clicked", state: state)
+        isRetrying = true
 
         Task { @MainActor [weak self] in
             await self?.manager.retryActivationAfterApprovalChange()
+            self?.isRetrying = false
             self?.refresh()
         }
     }
