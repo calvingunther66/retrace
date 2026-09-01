@@ -1490,6 +1490,12 @@ public actor AppCoordinator {
             Log.warning("[AppCoordinator] processingQueue is nil, cannot apply power config", category: .app)
         }
 
+        // Keep the semantic indexer's app-exclusion policy in lockstep with OCR's, so a
+        // screenshot upload can never happen for an app the user excluded from OCR.
+        await services.semanticIndexer.updateAppFilterPolicy(
+            AppFilterPolicy(excludedBundleIDs: excludedBundleIDs, includedBundleIDs: includedBundleIDs)
+        )
+
         Log.info(
             "[AppCoordinator] Applied power settings: ocrEnabled=\(ocrEnabled), level=\(processingLevel), workers=\(workerCount), priority=\(taskPriority), maxFPS=\(maxFPS), preferBgProcessing=\(preferBackground), pauseOnBattery=\(pauseOnBattery), pauseOnLowPowerMode=\(pauseOnLowPowerMode), isLowPowerModeEnabled=\(isLowPowerModeEnabled), power=\(powerSource)",
             category: .app
@@ -3252,6 +3258,31 @@ public actor AppCoordinator {
         )
     }
 
+    /// Get current AI visual semantic-indexing progress for the System Monitor.
+    public func getSemanticIndexStatistics() async -> SemanticIndexStatistics? {
+        guard let progress = try? await services.database.getSemanticIndexProgress() else {
+            return nil
+        }
+
+        // Same UTC-day boundary SemanticIndexer uses for its own budget accounting, so the
+        // number shown here always matches what actually governs throttling.
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        let dayStartMs = Int64(utcCalendar.startOfDay(for: Date()).timeIntervalSince1970 * 1000)
+        let requestsToday = (try? await services.database.countBackfillSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
+
+        let defaults = UserDefaults(suiteName: "io.retrace.app") ?? .standard
+        let isEnabled = defaults.bool(forKey: OpenRouterCredentialsManager.semanticIndexingEnabledDefaultsKey)
+
+        return SemanticIndexStatistics(
+            indexed: progress.indexed,
+            eligibleTotal: progress.eligibleTotal,
+            backfillRequestsToday: requestsToday,
+            dailyBackfillBudget: SemanticIndexer.dailyBackfillBudget,
+            isEnabled: isEnabled
+        )
+    }
+
     // MARK: - Search Interface
 
     /// Get distinct app bundle IDs from the database for filter UI.
@@ -3287,6 +3318,14 @@ public actor AppCoordinator {
 
         // Fallback to native FTS search
         return try await services.search.search(query: query)
+    }
+
+    /// Search tailored for building "Ask AI" context from a raw natural-language question — see
+    /// `SearchManager.searchForAIContext` doc comment. Deliberately bypasses the DataAdapter/
+    /// Rewind routing above: this is a best-effort context-rescue fallback for the AI feature,
+    /// not the user-facing search path, so going straight to native FTS keeps it simple.
+    public nonisolated func searchForAIContext(question: String, filters: SearchFilters = .none, limit: Int = 30) async throws -> SearchResults {
+        try await services.search.searchForAIContext(question: question, filters: filters, limit: limit)
     }
 
     // MARK: - Frame Retrieval

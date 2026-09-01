@@ -10,6 +10,23 @@ public enum OpenRouterCredentialsManager {
     public static let selectedModelDefaultsKey = "openRouterSelectedModel"
     public static let maxContextFramesDefaultsKey = "openRouterMaxContextFrames"
 
+    /// Model used for AI visual semantic indexing (must support image input) — deliberately
+    /// separate from `selectedModelDefaultsKey` (the interactive "Ask AI" chat model), since
+    /// the two are not required to be the same model and often shouldn't be (indexing needs
+    /// vision support; chat does not).
+    public static let indexingModelDefaultsKey = "openRouterIndexingModel"
+    public static let defaultIndexingModel = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+
+    /// Whether AI visual semantic indexing is enabled. Opt-in (default false): this feature
+    /// uploads downscaled screenshots to OpenRouter, which is a meaningfully different privacy
+    /// posture than local-only OCR.
+    public static let semanticIndexingEnabledDefaultsKey = "semanticIndexingEnabled"
+
+    /// Whether the AI search feature is allowed to offer WebSSH terminal tools to the model at
+    /// all (separate from the per-command confirmation gate — this is defense in depth: a user
+    /// who never opts in never has the capability silently available). Default false.
+    public static let webSSHIntegrationEnabledDefaultsKey = "webSSHIntegrationEnabled"
+
     private static let lock = NSLock()
     private static var cachedAPIKey: String?
 

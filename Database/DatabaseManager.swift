@@ -3466,6 +3466,87 @@ public actor DatabaseManager: DatabaseProtocol {
         return (frameCount: frameCount, sessionCount: sessionCount)
     }
 
+    // MARK: - Semantic Indexing
+
+    public func selectPendingSemanticFrames(limit: Int, freshCutoffMs: Int64) async throws -> [SemanticIndexQueries.PendingFrame] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.selectPending(db: db, limit: limit, freshCutoffMs: freshCutoffMs)
+    }
+
+    public func markSemanticFramesSkipped(_ frameIDs: [Int64]) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.markSkipped(db: db, frameIDs: frameIDs)
+    }
+
+    public func markSemanticFramesFailed(_ frameIDs: [Int64], permanently: Bool) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.markFailed(db: db, frameIDs: frameIDs, permanently: permanently)
+    }
+
+    public func markSemanticFramesTransientRetry(_ frameIDs: [Int64]) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.markTransientRetry(db: db, frameIDs: frameIDs)
+    }
+
+    public func markSemanticFramesRetryPending(_ frameIDs: [Int64]) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.markRetryPending(db: db, frameIDs: frameIDs)
+    }
+
+    public func writeSemanticDescription(frameID: Int64, description: String, indexedAtMs: Int64) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.writeDescription(db: db, frameID: frameID, description: description, indexedAtMs: indexedAtMs)
+    }
+
+    public func deleteSemanticDescriptions(frameIDs: [Int64]) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.deleteDescriptions(db: db, frameIDs: frameIDs)
+    }
+
+    public func recordSemanticIndexDispatch(frameIDs: [Int64], lane: String, requestedAtMs: Int64) async throws -> Int64 {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.recordDispatch(db: db, frameIDs: frameIDs, lane: lane, requestedAtMs: requestedAtMs)
+    }
+
+    public func updateSemanticIndexRequestOutcome(requestRowID: Int64, status: String, httpStatus: Int?, errorMessage: String?) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.updateRequestOutcome(db: db, requestRowID: requestRowID, status: status, httpStatus: httpStatus, errorMessage: errorMessage)
+    }
+
+    public func countBackfillSemanticRequestsToday(utcDayStartMs: Int64) async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.countBackfillRequestsToday(db: db, utcDayStartMs: utcDayStartMs)
+    }
+
+    public func getSemanticIndexProgress() async throws -> (indexed: Int, eligibleTotal: Int) {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        let indexed = try SemanticIndexQueries.countIndexed(db: db)
+        let eligibleTotal = try SemanticIndexQueries.countEligibleTotal(db: db)
+        return (indexed: indexed, eligibleTotal: eligibleTotal)
+    }
+
     // MARK: - Maintenance Operations
 
     /// Checkpoint the WAL file (merge WAL into main database and truncate)

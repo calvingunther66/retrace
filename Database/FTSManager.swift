@@ -160,6 +160,130 @@ public actor FTSManager: FTSProtocol {
         return matches
     }
 
+    /// Searches the AI-generated visual-description index (`semanticRanking`), a separate
+    /// FTS5 table from the OCR `searchRanking` table. Same filter semantics and `FTSMatch`
+    /// shape as `search(query:filters:limit:offset:)`, so callers can merge the two result
+    /// sets without a new result type.
+    public func searchSemantic(
+        query: String,
+        filters: SearchFilters,
+        limit: Int,
+        offset: Int
+    ) async throws -> [FTSMatch] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "FTS database not initialized")
+        }
+
+        let sql = buildSemanticSearchQuery(filters: filters)
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            let errorMessage = String(cString: sqlite3_errmsg(db))
+            Log.error(
+                "[FTSManager] Failed to prepare semantic search statement: \(errorMessage). Runtime: \(SQLiteRuntimeDiagnostics.summary(db: db))",
+                category: .database
+            )
+            throw DatabaseError.queryFailed(query: sql, underlying: errorMessage)
+        }
+
+        var bindIndex: Int32 = 1
+        sqlite3_bind_text(statement, bindIndex, query, -1, SQLITE_TRANSIENT)
+        bindIndex += 1
+
+        if let startDate = filters.startDate {
+            sqlite3_bind_int64(statement, bindIndex, Schema.dateToTimestamp(startDate))
+            bindIndex += 1
+        }
+        if let endDate = filters.endDate {
+            sqlite3_bind_int64(statement, bindIndex, Schema.dateToTimestamp(endDate))
+            bindIndex += 1
+        }
+        if let appBundleIDs = filters.appBundleIDs, !appBundleIDs.isEmpty {
+            for appID in appBundleIDs {
+                let appPattern = "%\(appID)%"
+                sqlite3_bind_text(statement, bindIndex, appPattern, -1, SQLITE_TRANSIENT)
+                bindIndex += 1
+                sqlite3_bind_text(statement, bindIndex, appPattern, -1, SQLITE_TRANSIENT)
+                bindIndex += 1
+            }
+        }
+        if let excludedAppBundleIDs = filters.excludedAppBundleIDs, !excludedAppBundleIDs.isEmpty {
+            for appID in excludedAppBundleIDs {
+                let appPattern = "%\(appID)%"
+                sqlite3_bind_text(statement, bindIndex, appPattern, -1, SQLITE_TRANSIENT)
+                bindIndex += 1
+                sqlite3_bind_text(statement, bindIndex, appPattern, -1, SQLITE_TRANSIENT)
+                bindIndex += 1
+            }
+        }
+        if let windowNameFilter = filters.windowNameFilter?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !windowNameFilter.isEmpty {
+            let windowPattern = "%\(windowNameFilter)%"
+            sqlite3_bind_text(statement, bindIndex, windowPattern, -1, SQLITE_TRANSIENT)
+            bindIndex += 1
+        }
+        if let browserUrlFilter = filters.browserUrlFilter?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !browserUrlFilter.isEmpty {
+            let browserPattern = "%\(browserUrlFilter)%"
+            sqlite3_bind_text(statement, bindIndex, browserPattern, -1, SQLITE_TRANSIENT)
+            bindIndex += 1
+        }
+
+        sqlite3_bind_int(statement, bindIndex, Int32(limit))
+        bindIndex += 1
+        sqlite3_bind_int(statement, bindIndex, Int32(offset))
+
+        var matches: [FTSMatch] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            matches.append(parseSearchResult(statement: statement!))
+        }
+        return matches
+    }
+
+    /// Mirrors `buildSearchQuery`'s filter clauses exactly (copy, not shared helper — kept in
+    /// sync manually since `searchRanking`/`semanticRanking` are structurally different tables)
+    /// so a filtered semantic search can't leak unfiltered results.
+    private func buildSemanticSearchQuery(filters: SearchFilters) -> String {
+        var sql = """
+            SELECT
+                semanticRanking.rowid, sdf.frameId, f.createdAt, s.bundleID, s.windowName,
+                bm25(semanticRanking) as rank,
+                f.videoId, f.videoFrameIndex,
+                snippet(semanticRanking, -1, '<mark>', '</mark>', '...', 16) AS snippet
+            FROM semanticRanking
+            JOIN semantic_doc_frame sdf ON semanticRanking.rowid = sdf.docid
+            JOIN frame f ON sdf.frameId = f.id
+            JOIN segment s ON f.segmentId = s.id
+            WHERE semanticRanking MATCH ?
+            """
+
+        if filters.startDate != nil {
+            sql += " AND f.createdAt >= ?"
+        }
+        if filters.endDate != nil {
+            sql += " AND f.createdAt <= ?"
+        }
+        if let appBundleIDs = filters.appBundleIDs, !appBundleIDs.isEmpty {
+            let placeholders = appBundleIDs.map { _ in "(s.bundleID LIKE ? OR s.windowName LIKE ?)" }.joined(separator: " OR ")
+            sql += " AND (\(placeholders))"
+        }
+        if let excludedAppBundleIDs = filters.excludedAppBundleIDs, !excludedAppBundleIDs.isEmpty {
+            let placeholders = excludedAppBundleIDs.map { _ in "(s.bundleID NOT LIKE ? AND s.windowName NOT LIKE ?)" }.joined(separator: " AND ")
+            sql += " AND (\(placeholders))"
+        }
+        if filters.windowNameFilter?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            sql += " AND s.windowName LIKE ?"
+        }
+        if filters.browserUrlFilter?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            sql += " AND s.browserUrl LIKE ?"
+        }
+
+        sql += " ORDER BY rank LIMIT ? OFFSET ?"
+        return sql
+    }
+
     public func getMatchCount(query: String, filters: SearchFilters) async throws -> Int {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "FTS database not initialized")

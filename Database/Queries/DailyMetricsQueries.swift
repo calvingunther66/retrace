@@ -84,6 +84,13 @@ public enum DailyMetricsQueries {
         case redactionRulesUpdated = "redaction_rules_updated"
         case masterKeyFlow = "master_key_flow"  // metadata: JSON {action, source, ...}
         case phraseLevelRedactionRulesUpdated = "phrase_level_redaction_rules_updated"
+
+        // AI visual semantic indexing + WebSSH tool-calling metrics
+        case semanticIndexBatchOutcome = "semantic_index_batch_outcome"  // metadata: JSON {outcome, lane?, count?}
+        case semanticIndexingToggle = "semantic_indexing_toggle"  // metadata: JSON {enabled}
+        case webSSHIntegrationToggle = "webssh_integration_toggle"  // metadata: JSON {enabled}
+        case aiSearchWithToolsSubmitted = "ai_search_with_tools_submitted"
+        case aiCommandConfirmation = "ai_command_confirmation"  // metadata: JSON {approved, toolName}
         case phraseLevelRedactionReveal = "phrase_level_redaction_reveal"
         case phraseLevelRedactionQueuedHover = "phrase_level_redaction_queued_hover"  // metadata: JSON {nodeID, frameID, processingStatus}
         case privateWindowRedactionToggle = "private_window_redaction_toggle"

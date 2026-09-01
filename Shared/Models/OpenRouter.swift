@@ -1,5 +1,35 @@
 import Foundation
 
+// MARK: - AI Visual Semantic Indexing Progress
+
+/// Snapshot of AI visual semantic-indexing progress, for the System Monitor.
+public struct SemanticIndexStatistics: Sendable, Equatable {
+    public let indexed: Int
+    public let eligibleTotal: Int
+    public let backfillRequestsToday: Int
+    public let dailyBackfillBudget: Int
+    public let isEnabled: Bool
+
+    public init(
+        indexed: Int,
+        eligibleTotal: Int,
+        backfillRequestsToday: Int,
+        dailyBackfillBudget: Int,
+        isEnabled: Bool
+    ) {
+        self.indexed = indexed
+        self.eligibleTotal = eligibleTotal
+        self.backfillRequestsToday = backfillRequestsToday
+        self.dailyBackfillBudget = dailyBackfillBudget
+        self.isEnabled = isEnabled
+    }
+
+    public var fractionComplete: Double {
+        guard eligibleTotal > 0 else { return 0 }
+        return min(1.0, Double(indexed) / Double(eligibleTotal))
+    }
+}
+
 // MARK: - OpenRouter Search & Q&A Models
 
 /// Represents a cited screen frame in an OpenRouter AI answer.

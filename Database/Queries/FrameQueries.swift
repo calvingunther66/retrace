@@ -1217,6 +1217,7 @@ public enum FrameQueries {
         do {
             for frameID in frameIDs {
                 try FTSQueries.deleteForFrame(db: db, frameId: frameID)
+                try SemanticIndexQueries.deleteDescriptions(db: db, frameIDs: [frameID])
                 try deleteFrameRow(db: db, frameID: frameID)
             }
 

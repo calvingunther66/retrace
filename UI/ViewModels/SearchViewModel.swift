@@ -2577,6 +2577,64 @@ public class SearchViewModel: ObservableObject {
     // MARK: - OpenRouter AI Search
 
     private var openRouterTask: Task<Void, Never>?
+    private let webSSHClient = WebSSHMCPClient()
+
+    /// Set when the model proposes a `Terminal_Session_Send_Command` call and is awaiting
+    /// explicit user approval. The AI-answer view shows a confirmation dialog bound to this;
+    /// nothing executes on a real SSH session until `approvePendingCommand()` is called.
+    @Published public var pendingCommandConfirmation: PendingCommandConfirmation?
+    private var pendingCommandContinuation: CheckedContinuation<Bool, Never>?
+
+    public func approvePendingCommand() {
+        let toolName = pendingCommandConfirmation?.toolName
+        pendingCommandContinuation?.resume(returning: true)
+        pendingCommandContinuation = nil
+        pendingCommandConfirmation = nil
+        if let toolName {
+            Task { [coordinator] in
+                try? await coordinator.recordMetricEvent(
+                    metricType: .aiCommandConfirmation,
+                    metadata: "{\"approved\":true,\"toolName\":\"\(toolName)\"}"
+                )
+            }
+        }
+    }
+
+    public func denyPendingCommand() {
+        guard pendingCommandContinuation != nil else { return }
+        let toolName = pendingCommandConfirmation?.toolName
+        pendingCommandContinuation?.resume(returning: false)
+        pendingCommandContinuation = nil
+        pendingCommandConfirmation = nil
+        if let toolName {
+            Task { [coordinator] in
+                try? await coordinator.recordMetricEvent(
+                    metricType: .aiCommandConfirmation,
+                    metadata: "{\"approved\":false,\"toolName\":\"\(toolName)\"}"
+                )
+            }
+        }
+    }
+
+    /// Called from `OpenRouterClient`'s tool-calling loop (off the main actor) whenever it
+    /// proposes sending a command. Suspends until the user approves or denies via the dialog.
+    private func awaitCommandConfirmation(_ confirmation: PendingCommandConfirmation) async -> Bool {
+        // Defensive: resume any continuation already parked here before overwriting the slot.
+        // `CheckedContinuation` requires exactly one resume; silently dropping a reference
+        // triggers a "SWIFT TASK CONTINUATION MISUSE" runtime warning and permanently suspends
+        // the old tool-calling Task (leaking it and everything it captured). Every entry point
+        // that cancels `openRouterTask` is supposed to call `denyPendingCommand()` first, but
+        // this makes that a belt-and-suspenders guarantee rather than something every future
+        // call site has to remember.
+        if let stale = pendingCommandContinuation {
+            stale.resume(returning: false)
+            pendingCommandContinuation = nil
+        }
+        return await withCheckedContinuation { continuation in
+            self.pendingCommandContinuation = continuation
+            self.pendingCommandConfirmation = confirmation
+        }
+    }
 
     public func askOpenRouterAI(query: String? = nil) {
         let question = (query ?? searchQuery).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2589,6 +2647,11 @@ public class SearchViewModel: ObservableObject {
         }
 
         openRouterTask?.cancel()
+        // A prior task cancelled above may currently be suspended inside `awaitCommandConfirmation`
+        // waiting on a confirmation dialog for a query we're about to replace — cancelling the
+        // Task does NOT resume a suspended `withCheckedContinuation`, so without this the old
+        // continuation leaks and its Task hangs forever.
+        denyPendingCommand()
         isAIGenerating = true
         aiError = nil
         aiGeneratedAnswer = ""
@@ -2596,7 +2659,128 @@ public class SearchViewModel: ObservableObject {
         showAIAnswerPanel = true
 
         let currentResults = Array((results?.results ?? []).prefix(30))
-        let contextFrames: [OpenRouterContextFrame] = currentResults.map { r in
+        let initialContextFrames = Self.makeContextFrames(from: currentResults)
+
+        // `UserDefaults(suiteName:)` returns `nil` when the suite name equals the calling
+        // process's own bundle identifier — Retrace's bundle ID IS `settingsSuiteName`
+        // ("io.retrace.app"), so without this fallback every read below silently hit its
+        // hardcoded `??` default forever (confirmed empirically via lldb against the running
+        // app): searches always used Claude regardless of the Settings picker, and WebSSH tools
+        // were never offered even with the toggle on.
+        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
+        // Defensively reject the Settings UI's "custom" picker sentinel (and empty strings) —
+        // it must never be sent to OpenRouter as a literal model slug. Mirrors the same guard in
+        // SemanticIndexer.readIndexingModel: a stale/corrupted default here would otherwise fail
+        // every single AI chat query with an opaque 400/404 until the user reopens Settings.
+        let storedModel = defaults.string(forKey: OpenRouterCredentialsManager.selectedModelDefaultsKey)
+        let selectedModel: String = {
+            guard let storedModel, !storedModel.isEmpty, storedModel != "custom" else {
+                return "anthropic/claude-3.5-sonnet"
+            }
+            return storedModel
+        }()
+        let maxFrames = defaults.integer(forKey: OpenRouterCredentialsManager.maxContextFramesDefaultsKey)
+        // `UserDefaults.double(forKey:)` returns 0.0 for an absent key (not nil), so `?? 0.2`
+        // only fires if `defaults` itself is nil — it can't distinguish "never set" from
+        // "explicitly set to 0". Read via `.object(forKey:)` so an unset key actually falls
+        // through to the 0.2 default instead of silently becoming deterministic (temp 0).
+        let temperature = (defaults.object(forKey: "openRouterTemperature") as? Double) ?? 0.2
+
+        let config = OpenRouterConfig(
+            isEnabled: true,
+            model: selectedModel,
+            maxContextFrames: maxFrames > 0 ? maxFrames : 25,
+            temperature: temperature >= 0 ? temperature : 0.2
+        )
+
+        let webSSHEnabled = defaults.bool(forKey: OpenRouterCredentialsManager.webSSHIntegrationEnabledDefaultsKey)
+
+        if webSSHEnabled {
+            Task { [coordinator] in
+                try? await coordinator.recordMetricEvent(metricType: .aiSearchWithToolsSubmitted)
+            }
+            openRouterTask = Task { [weak self] in
+                guard let self else { return }
+                let contextFrames = await self.resolveContextFrames(
+                    initial: initialContextFrames,
+                    question: question
+                )
+
+                // Probe WebSSH availability before committing to the tools path. Without this,
+                // enabling the toggle once silently converts EVERY AI query — including ones
+                // with nothing to do with a terminal — into a hard failure whenever WebSSH.app
+                // isn't running (it's a normal desktop app the user opens on demand, not a
+                // background daemon). A query about yesterday's browsing shouldn't fail with
+                // "WebSSH isn't running." Fall back to the plain non-tools path instead.
+                // Fetched once here and threaded through to `answerQueryWithTools` below —
+                // that method used to redo this exact same `tools/list` JSON-RPC round-trip
+                // itself, doubling the local WebSSH round-trips on every tool-enabled query.
+                let prefetchedTools = try? await self.webSSHClient.listTools()
+                guard let prefetchedTools else {
+                    Log.warning("[SearchViewModel] WebSSH integration enabled but WebSSH isn't reachable — falling back to plain AI search for this query", category: .search)
+                    await self.runPlainStreamingAnswer(
+                        question: question,
+                        contextFrames: contextFrames,
+                        model: config.model,
+                        temperature: config.temperature
+                    )
+                    return
+                }
+
+                let client = OpenRouterClient()
+                let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
+                do {
+                    let response = try await client.answerQueryWithTools(
+                        query: question,
+                        contextFrames: contextFrames,
+                        apiKey: apiKey,
+                        model: config.model,
+                        temperature: config.temperature,
+                        webSSHClient: self.webSSHClient,
+                        availableTools: prefetchedTools,
+                        confirmSendCommand: { [weak self] confirmation in
+                            guard let self else { return false }
+                            return await self.awaitCommandConfirmation(confirmation)
+                        }
+                    )
+                    // A cancelled task must not touch shared state at all, not even to "clean
+                    // up" `isAIGenerating` — `askOpenRouterAI` cancels the old task and
+                    // synchronously resets state for a NEW one before the old task's next await
+                    // point even notices the cancellation, so clearing `isAIGenerating` here
+                    // unconditionally would race and clobber the new task's genuine in-flight
+                    // spinner. The "dismiss with nothing following" case (`cancelSearch`) is
+                    // instead responsible for clearing it itself — see its comment.
+                    guard !Task.isCancelled else { return }
+                    self.aiGeneratedAnswer = response.answer
+                    self.aiCitations = response.citations
+                    self.isAIGenerating = false
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    self.isAIGenerating = false
+                    self.aiError = error.localizedDescription
+                }
+            }
+            return
+        }
+
+        openRouterTask = Task { [weak self] in
+            guard let self else { return }
+            let contextFrames = await self.resolveContextFrames(
+                initial: initialContextFrames,
+                question: question
+            )
+            await self.runPlainStreamingAnswer(
+                question: question,
+                contextFrames: contextFrames,
+                model: config.model,
+                temperature: config.temperature
+            )
+        }
+    }
+
+    /// Maps search results into the context frames sent to the AI model.
+    private static func makeContextFrames(from results: [SearchResult]) -> [OpenRouterContextFrame] {
+        results.map { r in
             OpenRouterContextFrame(
                 frameID: r.id.value,
                 timestamp: r.timestamp,
@@ -2606,54 +2790,106 @@ public class SearchViewModel: ObservableObject {
                 extractedText: r.snippet.isEmpty ? r.matchedText : r.snippet
             )
         }
+    }
 
-        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName)
-        let selectedModel = defaults?.string(forKey: OpenRouterCredentialsManager.selectedModelDefaultsKey) ?? "anthropic/claude-3.5-sonnet"
-        let maxFrames = defaults?.integer(forKey: OpenRouterCredentialsManager.maxContextFramesDefaultsKey) ?? 25
-        // `UserDefaults.double(forKey:)` returns 0.0 for an absent key (not nil), so `?? 0.2`
-        // only fires if `defaults` itself is nil — it can't distinguish "never set" from
-        // "explicitly set to 0". Read via `.object(forKey:)` so an unset key actually falls
-        // through to the 0.2 default instead of silently becoming deterministic (temp 0).
-        let temperature = (defaults?.object(forKey: "openRouterTemperature") as? Double) ?? 0.2
+    /// `askOpenRouterAI`'s `initialContextFrames` come from whatever's currently in the search
+    /// box/timeline, which uses a strict AND-of-every-term FTS match — great for a deliberate
+    /// keyword search, but a full natural-language question ("when was my 5 hour window going to
+    /// reset?") almost never matches verbatim in any single frame's OCR text, so that's usually
+    /// empty when the user types a question straight into "Ask AI" rather than searching first.
+    /// Falls back to a looser OR-based match on the raw question so the AI still gets *something*
+    /// instead of unconditionally reporting "no matching records found."
+    private func resolveContextFrames(
+        initial: [OpenRouterContextFrame],
+        question: String
+    ) async -> [OpenRouterContextFrame] {
+        guard initial.isEmpty else { return initial }
 
-        let config = OpenRouterConfig(
-            isEnabled: true,
-            model: selectedModel,
-            maxContextFrames: maxFrames > 0 ? maxFrames : 25,
-            temperature: temperature >= 0 ? temperature : 0.2
+        // A loosely-OR'd term match alone isn't enough: for a question like "when I last had the
+        // Claude desktop app open...", generic OR terms ("window", "hour", "usage") are common
+        // enough in ordinary OCR text (menu chrome, timestamps, system stats) to outrank the one
+        // term that actually matters. When the question names an app the user has actually
+        // captured, scope the fallback search to that app specifically — a far stronger signal
+        // than keyword overlap for "when was X open" questions.
+        let appFilter = detectAppBundleID(in: question)
+        if let appFilter {
+            if let scoped = try? await coordinator.searchForAIContext(
+                question: question,
+                filters: SearchFilters(appBundleIDs: [appFilter]),
+                limit: 30
+            ), !scoped.results.isEmpty {
+                Log.info("[SearchViewModel] No exact-match frames for AI context; using \(scoped.results.count) frames scoped to app '\(appFilter)'", category: .search)
+                return Self.makeContextFrames(from: scoped.results)
+            }
+            // Named app has no captured frames matching the question's other terms — fall
+            // through to the unscoped OR search rather than reporting nothing at all.
+        }
+
+        guard let fallback = try? await coordinator.searchForAIContext(question: question, limit: 30),
+              !fallback.results.isEmpty else {
+            return initial
+        }
+        Log.info("[SearchViewModel] No exact-match frames for AI context; using \(fallback.results.count) loosely-matched frames instead", category: .search)
+        return Self.makeContextFrames(from: fallback.results)
+    }
+
+    /// Looks for a captured app's name as a substring of the raw question (e.g. "Claude" in
+    /// "the Claude desktop app"). Requires >= 4 characters to avoid short/generic app names
+    /// (like a hypothetical "Do" or "Go") producing false-positive matches on ordinary words.
+    /// Prefers the longest matching name so a more specific app wins over a shorter one whose
+    /// name happens to also be a substring of it.
+    private func detectAppBundleID(in question: String) -> String? {
+        let lowered = question.lowercased()
+        return availableApps
+            .filter { $0.name.count >= 4 && lowered.contains($0.name.lowercased()) }
+            .max(by: { $0.name.count < $1.name.count })?
+            .bundleID
+    }
+
+    /// The non-tools streaming AI-answer path — shared by the default flow and by the
+    /// WebSSH-enabled flow's fallback when WebSSH itself isn't reachable.
+    private func runPlainStreamingAnswer(
+        question: String,
+        contextFrames: [OpenRouterContextFrame],
+        model: String,
+        temperature: Double
+    ) async {
+        let client = OpenRouterClient()
+        let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
+        let stream = client.streamAnswerQuery(
+            query: question,
+            contextFrames: contextFrames,
+            apiKey: apiKey,
+            model: model,
+            temperature: temperature
         )
 
-        openRouterTask = Task { [weak self] in
-            let client = OpenRouterClient()
-            let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
-            let stream = client.streamAnswerQuery(
-                query: question,
-                contextFrames: contextFrames,
-                apiKey: apiKey,
-                model: config.model,
-                temperature: config.temperature
-            )
-
-            do {
-                var accumulated = ""
-                for try await token in stream {
-                    guard !Task.isCancelled else { break }
-                    accumulated += token
-                    await MainActor.run { [weak self] in
-                        self?.aiGeneratedAnswer = accumulated
-                    }
-                }
-
-                let citations = OpenRouterClient.extractCitations(from: accumulated, contextFrames: contextFrames)
+        do {
+            var accumulated = ""
+            for try await token in stream {
+                guard !Task.isCancelled else { break }
+                accumulated += token
                 await MainActor.run { [weak self] in
-                    self?.isAIGenerating = false
-                    self?.aiCitations = citations
+                    self?.aiGeneratedAnswer = accumulated
                 }
-            } catch {
-                await MainActor.run { [weak self] in
-                    self?.isAIGenerating = false
-                    self?.aiError = error.localizedDescription
-                }
+            }
+
+            let citations = OpenRouterClient.extractCitations(from: accumulated, contextFrames: contextFrames)
+            await MainActor.run { [weak self] in
+                self?.isAIGenerating = false
+                self?.aiCitations = citations
+            }
+        } catch {
+            // A cancelled task must not touch shared state — see the matching comment in
+            // askOpenRouterAI's WebSSH-branch completion handler. Without this guard, a
+            // cancelled URLSession stream throwing `URLError(.cancelled)` after the user has
+            // already submitted a NEW query would overwrite that new task's fresh
+            // `isAIGenerating`/state with a stale "cancelled" error, flashing a bogus error
+            // banner and hiding the spinner mid-generation for the query that's actually running.
+            guard !Task.isCancelled else { return }
+            await MainActor.run { [weak self] in
+                self?.isAIGenerating = false
+                self?.aiError = error.localizedDescription
             }
         }
     }
@@ -2666,6 +2902,9 @@ public class SearchViewModel: ObservableObject {
         aiCitations = []
         aiError = nil
         showAIAnswerPanel = false
+        // A dangling continuation would leak the tool-calling Task forever awaiting a reply
+        // that will never come — treat closing the panel as an implicit denial.
+        denyPendingCommand()
     }
 
     // MARK: - Cleanup
@@ -2675,6 +2914,16 @@ public class SearchViewModel: ObservableObject {
     public func cancelSearch() {
         openRouterTask?.cancel()
         openRouterTask = nil
+        // Cancelling the task above does NOT clear `isAIGenerating` — by design, a cancelled
+        // `openRouterTask` skips touching shared state entirely so it can't race a subsequent
+        // task's fresh state (see askOpenRouterAI's completion-handler comments). Since dismissal
+        // via cancelSearch has no following task to eventually clear the flag, this is the one
+        // place responsible for it — without this the "Synthesizing..." spinner would keep
+        // running until the user issued a new query or explicitly closed the AI panel.
+        isAIGenerating = false
+        // See askOpenRouterAI's comment — cancelling the Task doesn't resume a continuation
+        // it may be suspended on.
+        denyPendingCommand()
         currentSearchTask?.cancel()
         currentSearchTask = nil
         currentLoadMoreTask?.cancel()
