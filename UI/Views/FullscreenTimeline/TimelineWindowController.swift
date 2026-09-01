@@ -2327,7 +2327,7 @@ public class TimelineWindowController: NSObject {
             viewModel.showTimelineContextMenu = true
             viewModel.isHoveringAddTagButton = true
 
-            Task { @MainActor in
+            Task { @MainActor [self] in
                 await viewModel.loadTags()
 
                 DispatchQueue.main.async { [weak self] in

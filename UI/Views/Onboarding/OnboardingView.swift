@@ -1630,7 +1630,7 @@ public struct OnboardingView: View {
                 .font(.retraceTitle)
                 .foregroundColor(.retracePrimary)
 
-            Text("Would you like to encrypt your database? This adds an extra layer of security.")
+            Text("Would you like to encrypt your database? This protects your searchable text index — window titles, URLs, and OCR'd text — with a key stored in Keychain.")
                 .font(.retraceBody)
                 .foregroundColor(.retraceSecondary)
                 .multilineTextAlignment(.center)
@@ -1646,14 +1646,21 @@ public struct OnboardingView: View {
                 }
 
 
-                HStack(spacing: .spacingM) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.retraceSuccess)
-                    Text("You can unencrypt at any time in Settings")
+                HStack(alignment: .top, spacing: .spacingM) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundColor(.retraceSecondary)
+                    Text("Your recorded screen video isn't covered by this — it relies on macOS FileVault (Settings > Privacy & Security > FileVault) for disk-level protection.")
                         .font(.retraceBody)
                         .foregroundColor(.retracePrimary)
                 }
 
+                HStack(alignment: .top, spacing: .spacingM) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.retraceWarning)
+                    Text("This choice is set now, before your database exists, and can't be changed later without deleting and starting over.")
+                        .font(.retraceBody)
+                        .foregroundColor(.retracePrimary)
+                }
 
             }
             .padding(.spacingL)

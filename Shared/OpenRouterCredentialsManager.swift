@@ -22,11 +22,6 @@ public enum OpenRouterCredentialsManager {
     /// posture than local-only OCR.
     public static let semanticIndexingEnabledDefaultsKey = "semanticIndexingEnabled"
 
-    /// Whether the AI search feature is allowed to offer WebSSH terminal tools to the model at
-    /// all (separate from the per-command confirmation gate — this is defense in depth: a user
-    /// who never opts in never has the capability silently available). Default false.
-    public static let webSSHIntegrationEnabledDefaultsKey = "webSSHIntegrationEnabled"
-
     private static let lock = NSLock()
     private static var cachedAPIKey: String?
 

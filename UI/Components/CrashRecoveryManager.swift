@@ -72,7 +72,15 @@ private func crashRecoveryTagged(_ message: String) -> String {
 private actor CrashRecoveryWorker {
     private static let armRetryAttempts = 12
     private static let armRetryDelayMs: UInt64 = 5_000
-    private static let armAcknowledgementTimeoutMs: UInt64 = 800
+    // Right after launch — especially at login/boot, when the helper is being spawned fresh by
+    // launchd under the same system-wide contention as every other login item — a mach service
+    // lookup + XPC handshake + reply round trip can genuinely take longer than a few hundred
+    // milliseconds. 800ms was tight enough that the very first attempt (and often several
+    // retries) failed on a busy launch even though the helper was about to become reachable;
+    // this was reported as the app-restart banner reliably appearing and needing several manual
+    // Retry clicks before "magically" working — that's this timeout losing the race, not the
+    // helper actually being unavailable.
+    private static let armAcknowledgementTimeoutMs: UInt64 = 3_000
 
     private let service = SMAppService.agent(plistName: CrashRecoverySupport.launchAgentPlistName)
     private var connection: NSXPCConnection?
@@ -244,7 +252,17 @@ private actor CrashRecoveryWorker {
             return refreshStatus()
         }
 
-        cancelInFlightArmSequence()
+        // If an arm sequence (from `armAtLaunch` or an earlier Retry click) is still working
+        // through its 12-attempt backoff, join it instead of cancelling it. The sequence exists
+        // specifically to ride out "the helper isn't reachable yet" — cancelling and restarting
+        // from attempt 1 on every impatient click (the UI gives no progress feedback, so a user
+        // waiting on a fresh boot has no reason not to click repeatedly) throws away exactly the
+        // wait that would otherwise let a later attempt land after the helper becomes reachable,
+        // which is what turned this into "click Retry ~10 times until it magically works."
+        if let armTask {
+            return await armTask.value
+        }
+
         disconnect()
         suppressReconnect = false
         unavailableReason = nil
