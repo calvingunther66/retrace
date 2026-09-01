@@ -3278,7 +3278,7 @@ public actor AppCoordinator {
             indexed: progress.indexed,
             eligibleTotal: progress.eligibleTotal,
             backfillRequestsToday: requestsToday,
-            dailyBackfillBudget: 600,
+            dailyBackfillBudget: SemanticIndexer.dailyBackfillBudget,
             isEnabled: isEnabled
         )
     }

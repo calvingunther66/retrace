@@ -3489,6 +3489,13 @@ public actor DatabaseManager: DatabaseProtocol {
         try SemanticIndexQueries.markFailed(db: db, frameIDs: frameIDs, permanently: permanently)
     }
 
+    public func markSemanticFramesTransientRetry(_ frameIDs: [Int64]) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.markTransientRetry(db: db, frameIDs: frameIDs)
+    }
+
     public func markSemanticFramesRetryPending(_ frameIDs: [Int64]) async throws {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")

@@ -2586,21 +2586,51 @@ public class SearchViewModel: ObservableObject {
     private var pendingCommandContinuation: CheckedContinuation<Bool, Never>?
 
     public func approvePendingCommand() {
+        let toolName = pendingCommandConfirmation?.toolName
         pendingCommandContinuation?.resume(returning: true)
         pendingCommandContinuation = nil
         pendingCommandConfirmation = nil
+        if let toolName {
+            Task { [coordinator] in
+                try? await coordinator.recordMetricEvent(
+                    metricType: .aiCommandConfirmation,
+                    metadata: "{\"approved\":true,\"toolName\":\"\(toolName)\"}"
+                )
+            }
+        }
     }
 
     public func denyPendingCommand() {
+        guard pendingCommandContinuation != nil else { return }
+        let toolName = pendingCommandConfirmation?.toolName
         pendingCommandContinuation?.resume(returning: false)
         pendingCommandContinuation = nil
         pendingCommandConfirmation = nil
+        if let toolName {
+            Task { [coordinator] in
+                try? await coordinator.recordMetricEvent(
+                    metricType: .aiCommandConfirmation,
+                    metadata: "{\"approved\":false,\"toolName\":\"\(toolName)\"}"
+                )
+            }
+        }
     }
 
     /// Called from `OpenRouterClient`'s tool-calling loop (off the main actor) whenever it
     /// proposes sending a command. Suspends until the user approves or denies via the dialog.
     private func awaitCommandConfirmation(_ confirmation: PendingCommandConfirmation) async -> Bool {
-        await withCheckedContinuation { continuation in
+        // Defensive: resume any continuation already parked here before overwriting the slot.
+        // `CheckedContinuation` requires exactly one resume; silently dropping a reference
+        // triggers a "SWIFT TASK CONTINUATION MISUSE" runtime warning and permanently suspends
+        // the old tool-calling Task (leaking it and everything it captured). Every entry point
+        // that cancels `openRouterTask` is supposed to call `denyPendingCommand()` first, but
+        // this makes that a belt-and-suspenders guarantee rather than something every future
+        // call site has to remember.
+        if let stale = pendingCommandContinuation {
+            stale.resume(returning: false)
+            pendingCommandContinuation = nil
+        }
+        return await withCheckedContinuation { continuation in
             self.pendingCommandContinuation = continuation
             self.pendingCommandConfirmation = confirmation
         }
@@ -2617,6 +2647,11 @@ public class SearchViewModel: ObservableObject {
         }
 
         openRouterTask?.cancel()
+        // A prior task cancelled above may currently be suspended inside `awaitCommandConfirmation`
+        // waiting on a confirmation dialog for a query we're about to replace — cancelling the
+        // Task does NOT resume a suspended `withCheckedContinuation`, so without this the old
+        // continuation leaks and its Task hangs forever.
+        denyPendingCommand()
         isAIGenerating = true
         aiError = nil
         aiGeneratedAnswer = ""
@@ -2635,14 +2670,20 @@ public class SearchViewModel: ObservableObject {
             )
         }
 
-        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName)
-        let selectedModel = defaults?.string(forKey: OpenRouterCredentialsManager.selectedModelDefaultsKey) ?? "anthropic/claude-3.5-sonnet"
-        let maxFrames = defaults?.integer(forKey: OpenRouterCredentialsManager.maxContextFramesDefaultsKey) ?? 25
+        // `UserDefaults(suiteName:)` returns `nil` when the suite name equals the calling
+        // process's own bundle identifier — Retrace's bundle ID IS `settingsSuiteName`
+        // ("io.retrace.app"), so without this fallback every read below silently hit its
+        // hardcoded `??` default forever (confirmed empirically via lldb against the running
+        // app): searches always used Claude regardless of the Settings picker, and WebSSH tools
+        // were never offered even with the toggle on.
+        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
+        let selectedModel = defaults.string(forKey: OpenRouterCredentialsManager.selectedModelDefaultsKey) ?? "anthropic/claude-3.5-sonnet"
+        let maxFrames = defaults.integer(forKey: OpenRouterCredentialsManager.maxContextFramesDefaultsKey)
         // `UserDefaults.double(forKey:)` returns 0.0 for an absent key (not nil), so `?? 0.2`
         // only fires if `defaults` itself is nil — it can't distinguish "never set" from
         // "explicitly set to 0". Read via `.object(forKey:)` so an unset key actually falls
         // through to the 0.2 default instead of silently becoming deterministic (temp 0).
-        let temperature = (defaults?.object(forKey: "openRouterTemperature") as? Double) ?? 0.2
+        let temperature = (defaults.object(forKey: "openRouterTemperature") as? Double) ?? 0.2
 
         let config = OpenRouterConfig(
             isEnabled: true,
@@ -2651,11 +2692,33 @@ public class SearchViewModel: ObservableObject {
             temperature: temperature >= 0 ? temperature : 0.2
         )
 
-        let webSSHEnabled = defaults?.bool(forKey: OpenRouterCredentialsManager.webSSHIntegrationEnabledDefaultsKey) ?? false
+        let webSSHEnabled = defaults.bool(forKey: OpenRouterCredentialsManager.webSSHIntegrationEnabledDefaultsKey)
 
         if webSSHEnabled {
+            Task { [coordinator] in
+                try? await coordinator.recordMetricEvent(metricType: .aiSearchWithToolsSubmitted)
+            }
             openRouterTask = Task { [weak self] in
                 guard let self else { return }
+
+                // Probe WebSSH availability before committing to the tools path. Without this,
+                // enabling the toggle once silently converts EVERY AI query — including ones
+                // with nothing to do with a terminal — into a hard failure whenever WebSSH.app
+                // isn't running (it's a normal desktop app the user opens on demand, not a
+                // background daemon). A query about yesterday's browsing shouldn't fail with
+                // "WebSSH isn't running." Fall back to the plain non-tools path instead.
+                let webSSHAvailable = (try? await self.webSSHClient.listTools()) != nil
+                guard webSSHAvailable else {
+                    Log.warning("[SearchViewModel] WebSSH integration enabled but WebSSH isn't reachable — falling back to plain AI search for this query", category: .search)
+                    await self.runPlainStreamingAnswer(
+                        question: question,
+                        contextFrames: contextFrames,
+                        model: config.model,
+                        temperature: config.temperature
+                    )
+                    return
+                }
+
                 let client = OpenRouterClient()
                 let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
                 do {
@@ -2685,36 +2748,53 @@ public class SearchViewModel: ObservableObject {
         }
 
         openRouterTask = Task { [weak self] in
-            let client = OpenRouterClient()
-            let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
-            let stream = client.streamAnswerQuery(
-                query: question,
+            guard let self else { return }
+            await self.runPlainStreamingAnswer(
+                question: question,
                 contextFrames: contextFrames,
-                apiKey: apiKey,
                 model: config.model,
                 temperature: config.temperature
             )
+        }
+    }
 
-            do {
-                var accumulated = ""
-                for try await token in stream {
-                    guard !Task.isCancelled else { break }
-                    accumulated += token
-                    await MainActor.run { [weak self] in
-                        self?.aiGeneratedAnswer = accumulated
-                    }
-                }
+    /// The non-tools streaming AI-answer path — shared by the default flow and by the
+    /// WebSSH-enabled flow's fallback when WebSSH itself isn't reachable.
+    private func runPlainStreamingAnswer(
+        question: String,
+        contextFrames: [OpenRouterContextFrame],
+        model: String,
+        temperature: Double
+    ) async {
+        let client = OpenRouterClient()
+        let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
+        let stream = client.streamAnswerQuery(
+            query: question,
+            contextFrames: contextFrames,
+            apiKey: apiKey,
+            model: model,
+            temperature: temperature
+        )
 
-                let citations = OpenRouterClient.extractCitations(from: accumulated, contextFrames: contextFrames)
+        do {
+            var accumulated = ""
+            for try await token in stream {
+                guard !Task.isCancelled else { break }
+                accumulated += token
                 await MainActor.run { [weak self] in
-                    self?.isAIGenerating = false
-                    self?.aiCitations = citations
+                    self?.aiGeneratedAnswer = accumulated
                 }
-            } catch {
-                await MainActor.run { [weak self] in
-                    self?.isAIGenerating = false
-                    self?.aiError = error.localizedDescription
-                }
+            }
+
+            let citations = OpenRouterClient.extractCitations(from: accumulated, contextFrames: contextFrames)
+            await MainActor.run { [weak self] in
+                self?.isAIGenerating = false
+                self?.aiCitations = citations
+            }
+        } catch {
+            await MainActor.run { [weak self] in
+                self?.isAIGenerating = false
+                self?.aiError = error.localizedDescription
             }
         }
     }
@@ -2739,6 +2819,9 @@ public class SearchViewModel: ObservableObject {
     public func cancelSearch() {
         openRouterTask?.cancel()
         openRouterTask = nil
+        // See askOpenRouterAI's comment — cancelling the Task doesn't resume a continuation
+        // it may be suspended on.
+        denyPendingCommand()
         currentSearchTask?.cancel()
         currentSearchTask = nil
         currentLoadMoreTask?.cancel()

@@ -13,6 +13,8 @@ public struct OpenRouterSettingsView: View {
     @AppStorage(OpenRouterCredentialsManager.indexingModelDefaultsKey, store: settingsStore) private var indexingModel: String = OpenRouterCredentialsManager.defaultIndexingModel
     @State private var customIndexingModelInput: String = ""
     @State private var isCustomIndexingModel: Bool = false
+    // Same sentinel-decoupling fix as `selectedModelPickerTag` above.
+    @State private var indexingModelPickerTag: String = ""
 
     @State private var apiKeyInput: String = ""
     @State private var hasStoredKey: Bool = false
@@ -22,6 +24,14 @@ public struct OpenRouterSettingsView: View {
     @State private var testStatusIsError: Bool = false
     @State private var customModelInput: String = ""
     @State private var isCustomModel: Bool = false
+    // Drives the Picker's `selection` — deliberately NOT the same storage as `selectedModel`.
+    // Binding the Picker directly to the @AppStorage value meant selecting "Custom Model..."
+    // wrote the literal sentinel string "custom" straight into the stored model slug (and if
+    // the user closed Settings before clicking Apply, "custom" would be sent to OpenRouter
+    // verbatim on every request). It also meant that once Apply *did* write a real custom slug,
+    // the Picker's selection matched no tag and rendered blank on reopen. This sentinel is
+    // local UI state only; `selectedModel` is written to exactly once, by Apply.
+    @State private var selectedModelPickerTag: String = ""
 
     public init() {}
 
@@ -230,7 +240,7 @@ public struct OpenRouterSettingsView: View {
                         .font(.retraceCaptionMedium)
                         .foregroundColor(.retraceSecondary)
 
-                    Picker("", selection: $selectedModel) {
+                    Picker("", selection: $selectedModelPickerTag) {
                         ForEach(OpenRouterConfig.popularModels, id: \.self) { modelName in
                             Text(modelName).tag(modelName)
                         }
@@ -238,8 +248,11 @@ public struct OpenRouterSettingsView: View {
                     }
                     .pickerStyle(.menu)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .onChange(of: selectedModel) { newValue in
+                    .onChange(of: selectedModelPickerTag) { newValue in
                         isCustomModel = (newValue == "custom")
+                        if newValue != "custom" {
+                            selectedModel = newValue
+                        }
                     }
 
                     if isCustomModel || !OpenRouterConfig.popularModels.contains(selectedModel) {
@@ -339,14 +352,17 @@ public struct OpenRouterSettingsView: View {
                             .font(.retraceCaptionMedium)
                             .foregroundColor(.retraceSecondary)
 
-                        Picker("", selection: $indexingModel) {
+                        Picker("", selection: $indexingModelPickerTag) {
                             Text("NVIDIA Nemotron 3 Nano Omni (free, vision)").tag(OpenRouterCredentialsManager.defaultIndexingModel)
                             Text("Custom Model...").tag("custom")
                         }
                         .pickerStyle(.menu)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .onChange(of: indexingModel) { newValue in
+                        .onChange(of: indexingModelPickerTag) { newValue in
                             isCustomIndexingModel = (newValue == "custom")
+                            if newValue != "custom" {
+                                indexingModel = newValue
+                            }
                         }
 
                         if isCustomIndexingModel || indexingModel != OpenRouterCredentialsManager.defaultIndexingModel {
@@ -406,18 +422,25 @@ public struct OpenRouterSettingsView: View {
         }
         .onAppear {
             loadKeyStatus()
-            isCustomIndexingModel = (indexingModel != OpenRouterCredentialsManager.defaultIndexingModel)
-            if isCustomIndexingModel {
-                customIndexingModelInput = indexingModel
-            }
         }
     }
 
     private func loadKeyStatus() {
         hasStoredKey = OpenRouterCredentialsManager.hasAPIKey()
-        if !OpenRouterConfig.popularModels.contains(selectedModel) {
+        if OpenRouterConfig.popularModels.contains(selectedModel) {
+            selectedModelPickerTag = selectedModel
+        } else {
             isCustomModel = true
             customModelInput = selectedModel
+            selectedModelPickerTag = "custom"
+        }
+
+        if indexingModel == OpenRouterCredentialsManager.defaultIndexingModel {
+            indexingModelPickerTag = OpenRouterCredentialsManager.defaultIndexingModel
+        } else {
+            isCustomIndexingModel = true
+            customIndexingModelInput = indexingModel
+            indexingModelPickerTag = "custom"
         }
     }
 

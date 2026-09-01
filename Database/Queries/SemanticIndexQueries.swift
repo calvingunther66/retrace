@@ -18,7 +18,9 @@ public enum SemanticIndexQueries {
     // MARK: - Selection
 
     /// Selects up to `limit` pending/retryable frames, fresh (recently captured) frames first,
-    /// oldest-first within each lane. Excludes non-finalized (WAL-only) and redacted frames.
+    /// newest-first within each lane (deliberate recency bias for a memory tool: when the daily
+    /// backfill budget runs out mid-lane, we'd rather have indexed the screens closest to "now"
+    /// than the oldest ones in the backlog). Excludes non-finalized (WAL-only) and redacted frames.
     public static func selectPending(
         db: OpaquePointer,
         limit: Int,
@@ -73,8 +75,46 @@ public enum SemanticIndexQueries {
         try updateStatus(db: db, frameIDs: frameIDs, status: 4, incrementRetry: false)
     }
 
+    /// Marks frames failed. When `permanently` is false, mirrors `markRetryPending`'s retry-cap
+    /// guard: without it, a frame that fails 3 times sits at status 3 with
+    /// `semanticRetryCount >= 3` forever — excluded by `selectPending`'s `semanticRetryCount < 3`
+    /// filter, so it's never retried AND never surfaces as failed. Silent, permanent limbo.
     public static func markFailed(db: OpaquePointer, frameIDs: [Int64], permanently: Bool) throws {
-        try updateStatus(db: db, frameIDs: frameIDs, status: permanently ? 8 : 3, incrementRetry: true)
+        guard !frameIDs.isEmpty else { return }
+        if permanently {
+            try updateStatus(db: db, frameIDs: frameIDs, status: 8, incrementRetry: true)
+            return
+        }
+
+        let placeholders = frameIDs.map { _ in "?" }.joined(separator: ",")
+        let sql = """
+            UPDATE frame
+            SET semanticRetryCount = semanticRetryCount + 1,
+                semanticStatus = CASE WHEN semanticRetryCount + 1 >= 3 THEN 8 ELSE 3 END
+            WHERE id IN (\(placeholders));
+            """
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        for (offset, frameID) in frameIDs.enumerated() {
+            sqlite3_bind_int64(statement, Int32(1 + offset), frameID)
+        }
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+    }
+
+    /// Resets frames back to pending WITHOUT incrementing the retry counter — for lane/API-wide
+    /// transient failures (429 rate limits, 5xx, transport errors) that say nothing about
+    /// whether these particular frames are processable. Using `markFailed` here would burn
+    /// through the 3-attempt cap on failures that have nothing to do with the frame itself,
+    /// permanently stranding frames that just had the bad luck to be in-flight during a blip.
+    public static func markTransientRetry(db: OpaquePointer, frameIDs: [Int64]) throws {
+        try updateStatus(db: db, frameIDs: frameIDs, status: 0, incrementRetry: false)
     }
 
     /// Resets a frame back to pending (e.g. an unparsed image in an otherwise-successful batch)
@@ -137,7 +177,30 @@ public enum SemanticIndexQueries {
     /// Writes a completed description: inserts into `semanticRanking` (FTS5), links it via
     /// `semantic_doc_frame`, and marks the frame completed. Deletes any prior description first
     /// (idempotent re-index, e.g. after a manual reprocess).
+    ///
+    /// Wrapped in a transaction (matching `MigrationRunner`'s pattern) — this is 4 sequential
+    /// statements, and a mid-sequence failure (WAL busy, disk full) without a rollback path
+    /// would otherwise be able to leave an orphaned `semanticRanking` row (invisible to search,
+    /// permanently un-reclaimable since `deleteDescriptions` finds rows via the very link table
+    /// that failed to insert) or a frame that's searchable but stuck at a non-completed status
+    /// (re-selected and re-billed against the daily budget forever).
     public static func writeDescription(
+        db: OpaquePointer,
+        frameID: Int64,
+        description: String,
+        indexedAtMs: Int64
+    ) throws {
+        try execute(db: db, sql: "BEGIN IMMEDIATE TRANSACTION;", int64Params: [])
+        do {
+            try writeDescriptionUnguarded(db: db, frameID: frameID, description: description, indexedAtMs: indexedAtMs)
+            try execute(db: db, sql: "COMMIT;", int64Params: [])
+        } catch {
+            try? execute(db: db, sql: "ROLLBACK;", int64Params: [])
+            throw error
+        }
+    }
+
+    private static func writeDescriptionUnguarded(
         db: OpaquePointer,
         frameID: Int64,
         description: String,

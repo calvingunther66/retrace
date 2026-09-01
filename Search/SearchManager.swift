@@ -120,14 +120,20 @@ public actor SearchManager: SearchProtocol {
         // means later pages fall back to OCR-only, which is a real limitation (semantic-only
         // matches beyond page 1 won't surface) but a correct one, rather than a subtly broken
         // "correct-looking" merge on every page.
+        // Also skip when OCR alone already fills the page — a common case for well-populated
+        // OCR indexes with the default page size, and every semantic row fetched in that case
+        // would just be discarded by the merge's `mergedMatches.count < query.limit` guard
+        // below. Narrowing the limit to the remaining slots (rather than a flat `query.limit`)
+        // means semantic never fetches more than it could possibly contribute either.
+        let remainingSlots = query.limit - ftsMatches.count
         var semanticMatches: [FTSMatch] = []
-        if query.offset == 0 {
+        if query.offset == 0 && remainingSlots > 0 {
             let semanticFTSQuery = Self.buildSemanticFTSQuery(for: parsed)
             do {
                 semanticMatches = try await ftsEngine.searchSemantic(
                     query: semanticFTSQuery,
                     filters: filters,
-                    limit: query.limit,
+                    limit: remainingSlots,
                     offset: 0
                 )
             } catch {

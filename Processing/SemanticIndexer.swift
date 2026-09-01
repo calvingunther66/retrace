@@ -22,7 +22,20 @@ public actor SemanticIndexer {
     private let database: DatabaseManager
     private let storage: StorageManager
     private let openRouterClient: OpenRouterClient
+    // Deliberately NOT `.allowAll` by default — see `hasReceivedPolicySync` below. The actual
+    // policy value here doesn't matter until that flag is true, since `processNextBatch`
+    // refuses to dispatch anything before then.
     private var appFilterPolicy: AppFilterPolicy = .allowAll
+
+    // `AppCoordinator.applyPowerSettings()` computes the real exclusion policy from settings
+    // and calls `updateAppFilterPolicy`, but that happens only after `ServiceContainer`
+    // constructs and starts this actor — there's a real window at app launch where the loop
+    // could run a batch against the still-default `.allowAll` policy, uploading screenshots
+    // from apps the user excluded from OCR before the exclusion list ever reaches this actor.
+    // Refusing to dispatch until the first sync closes that window without needing
+    // `ServiceContainer` to duplicate `AppCoordinator`'s settings-parsing logic just to pass an
+    // initial value into the constructor.
+    private var hasReceivedPolicySync = false
 
     private var loopTask: Task<Void, Never>?
     private var isRunning = false
@@ -31,12 +44,22 @@ public actor SemanticIndexer {
     /// takes effect without an app restart (there's no push notification wiring the way
     /// `FrameProcessingQueue.ocrEnabled` gets pushed via `updatePowerConfig`, so this polls).
     private var isEnabled: Bool {
-        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName)
-        return defaults?.bool(forKey: OpenRouterCredentialsManager.semanticIndexingEnabledDefaultsKey) ?? false
+        // `UserDefaults(suiteName:)` returns `nil` when the suite name equals the *calling
+        // process's own* bundle identifier (confirmed empirically via lldb against the running
+        // app) — Retrace's bundle ID IS `settingsSuiteName` ("io.retrace.app"), so every read
+        // here was silently hitting the `?? false` fallback forever, regardless of the actual
+        // stored value. Every other call site in the app already guards this with `?? .standard`
+        // (see `MasterKeyManager`, `SettingsDefaults.swift`'s `settingsStore`, etc.) — this one
+        // didn't, which is why the toggle appeared to do nothing no matter how long the app ran.
+        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
+        return defaults.bool(forKey: OpenRouterCredentialsManager.semanticIndexingEnabledDefaultsKey)
     }
 
     private let batchSize = 5
-    private let dailyBackfillBudget = 600
+    /// Single source of truth for the backfill request budget — also read by
+    /// `AppCoordinator.getSemanticIndexStatistics()` for the System Monitor readout, so that
+    /// display can never drift from what actually governs throttling here.
+    public static let dailyBackfillBudget = 600
     private let freshLaneWindow: TimeInterval = 72 * 3600
     private let idlePollInterval: Duration = .seconds(30)
     // OpenRouter's free-tier shared pool caps at 20 requests/minute across ALL free models a
@@ -71,7 +94,7 @@ public actor SemanticIndexer {
                 switch outcome {
                 case .processed:
                     delay = self.interBatchDelay
-                case .emptyQueue, .budgetExhausted, .disabled, .noAPIKey:
+                case .emptyQueue, .budgetExhausted, .disabled, .noAPIKey, .awaitingPolicySync:
                     delay = self.idlePollInterval
                 case .rateLimited(let retryAfterSeconds):
                     delay = .seconds(max(retryAfterSeconds, 5))
@@ -93,6 +116,7 @@ public actor SemanticIndexer {
 
     public func updateAppFilterPolicy(_ policy: AppFilterPolicy) {
         appFilterPolicy = policy
+        hasReceivedPolicySync = true
     }
 
     // MARK: - Batch processing
@@ -103,15 +127,28 @@ public actor SemanticIndexer {
         case budgetExhausted
         case disabled
         case noAPIKey
+        case awaitingPolicySync
         case rateLimited(retryAfterSeconds: Int)
         case error(String)
     }
 
     private func processNextBatch() async -> BatchOutcome {
-        guard isEnabled else { return .disabled }
+        guard isEnabled else {
+            Log.debug("[SemanticIndexer] Skipping cycle: disabled in Settings", category: .processing)
+            return .disabled
+        }
+        // Never dispatch before the real app-exclusion policy has arrived from
+        // AppCoordinator — see `hasReceivedPolicySync`'s doc comment.
+        guard hasReceivedPolicySync else {
+            Log.debug("[SemanticIndexer] Skipping cycle: awaiting first app-filter policy sync", category: .processing)
+            return .awaitingPolicySync
+        }
 
         let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
-        guard !apiKey.isEmpty else { return .noAPIKey }
+        guard !apiKey.isEmpty else {
+            Log.warning("[SemanticIndexer] Skipping cycle: no OpenRouter API key found in Keychain", category: .processing)
+            return .noAPIKey
+        }
 
         let model = Self.readIndexingModel()
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -124,7 +161,10 @@ public actor SemanticIndexer {
                 freshCutoffMs: freshCutoffMs
             )
 
-            guard !candidates.isEmpty else { return .emptyQueue }
+            guard !candidates.isEmpty else {
+                Log.debug("[SemanticIndexer] Skipping cycle: no pending frames match selection criteria", category: .processing)
+                return .emptyQueue
+            }
 
             // Determine the batch's lane from the FIRST eligible (non-app-filtered) candidate,
             // then take ONLY same-lane candidates for this batch. A batch must never mix lanes:
@@ -181,7 +221,7 @@ public actor SemanticIndexer {
         let dayStartMs = Int64(dayStart.timeIntervalSince1970 * 1000)
 
         let usedToday = try await database.countBackfillSemanticRequestsToday(utcDayStartMs: dayStartMs)
-        return max(0, dailyBackfillBudget - usedToday)
+        return max(0, Self.dailyBackfillBudget - usedToday)
     }
 
     private func dispatch(
@@ -251,15 +291,32 @@ public actor SemanticIndexer {
                 "[SemanticIndexer] Batch complete: \(parsed.count) described, \(unparsedFrameIDs.count) unparsed (lane=\(lane))",
                 category: .processing
             )
+            try? await database.recordMetricEvent(
+                metricType: .semanticIndexBatchOutcome,
+                metadata: "{\"outcome\":\"success\",\"lane\":\"\(lane)\",\"count\":\(parsed.count)}"
+            )
             return .processed(count: parsed.count)
         } catch {
             let nsError = error as NSError
-            try? await database.markSemanticFramesFailed(images.map(\.frameID), permanently: false)
+            let isTransient = Self.isTransientError(nsError)
+            if isTransient {
+                // Rate limits, 5xx, and transport failures are lane/API-wide, not a property of
+                // these specific frames — reset to pending without spending a retry attempt, so
+                // a blip doesn't permanently strand frames that had the bad luck to be in-flight
+                // during it (see markTransientRetry's doc comment).
+                try? await database.markSemanticFramesTransientRetry(images.map(\.frameID))
+            } else {
+                try? await database.markSemanticFramesFailed(images.map(\.frameID), permanently: false)
+            }
             try? await database.updateSemanticIndexRequestOutcome(
                 requestRowID: requestRowID,
                 status: "failed",
                 httpStatus: nsError.code,
                 errorMessage: nsError.localizedDescription
+            )
+            try? await database.recordMetricEvent(
+                metricType: .semanticIndexBatchOutcome,
+                metadata: "{\"outcome\":\"failed\",\"lane\":\"\(lane)\",\"transient\":\(isTransient)}"
             )
 
             if nsError.code == 429 {
@@ -327,8 +384,38 @@ public actor SemanticIndexer {
     // MARK: - Settings
 
     private static func readIndexingModel() -> String {
-        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName)
-        return defaults?.string(forKey: OpenRouterCredentialsManager.indexingModelDefaultsKey)
-            ?? "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
+        let stored = defaults.string(forKey: OpenRouterCredentialsManager.indexingModelDefaultsKey)
+        // Defensively reject the Settings UI's "custom" picker sentinel (and empty strings) —
+        // it must never be sent to OpenRouter as a literal model slug. The Settings UI itself
+        // is now fixed to never persist the sentinel, but this guard means a stale/corrupted
+        // default can't silently burn through the daily budget on requests doomed to 400/404.
+        guard let stored, !stored.isEmpty, stored != "custom" else {
+            return OpenRouterCredentialsManager.defaultIndexingModel
+        }
+        return stored
+    }
+
+    // MARK: - Error Classification
+
+    /// Rate limits, 5xx, and network-transport failures say nothing about whether the specific
+    /// frames in this batch are processable — they're conditions of the API/network at that
+    /// moment. Distinguishing them from genuine per-batch failures lets the caller retry without
+    /// spending one of the frame's 3 retry attempts on bad luck.
+    private static func isTransientError(_ error: NSError) -> Bool {
+        if error.domain == "OpenRouterClient" {
+            return error.code == 429 || (500...599).contains(error.code)
+        }
+        if error.domain == NSURLErrorDomain {
+            let transientCodes: Set<Int> = [
+                NSURLErrorTimedOut,
+                NSURLErrorCannotConnectToHost,
+                NSURLErrorNetworkConnectionLost,
+                NSURLErrorNotConnectedToInternet,
+                NSURLErrorDNSLookupFailed
+            ]
+            return transientCodes.contains(error.code)
+        }
+        return false
     }
 }
