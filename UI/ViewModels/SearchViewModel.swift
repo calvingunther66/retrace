@@ -2631,6 +2631,17 @@ public class SearchViewModel: ObservableObject {
 
         openRouterTask = Task { [weak self] in
             guard let self else { return }
+
+            // Check dedicated 100 requests/day search quota (separate from visual indexing)
+            let searchRequestsToday = await self.coordinator.getSearchRequestsTodayCount()
+            guard searchRequestsToday < SemanticIndexStatistics.defaultDailySearchBudget else {
+                await MainActor.run {
+                    self.isAIGenerating = false
+                    self.aiError = "Daily AI search limit (\(SemanticIndexStatistics.defaultDailySearchBudget) requests/day) reached. Resets at UTC midnight."
+                }
+                return
+            }
+
             let contextFrames = await self.resolveContextFrames(
                 initial: initialContextFrames,
                 question: question
@@ -2719,6 +2730,7 @@ public class SearchViewModel: ObservableObject {
         model: String,
         temperature: Double
     ) async {
+        let requestID = await coordinator.recordSearchRequest(frameIDs: contextFrames.map(\.frameID))
         let client = OpenRouterClient()
         let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
         let stream = client.streamAnswerQuery(
@@ -2740,11 +2752,18 @@ public class SearchViewModel: ObservableObject {
             }
 
             let citations = OpenRouterClient.extractCitations(from: accumulated, contextFrames: contextFrames)
+            if let requestID {
+                await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "success", httpStatus: 200, errorMessage: nil)
+            }
             await MainActor.run { [weak self] in
                 self?.isAIGenerating = false
                 self?.aiCitations = citations
             }
         } catch {
+            if let requestID {
+                let httpCode = (error as NSError).code
+                await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "failed", httpStatus: httpCode > 0 ? httpCode : 500, errorMessage: error.localizedDescription)
+            }
             // A cancelled task must not touch shared state. Without this guard, a cancelled
             // URLSession stream throwing `URLError(.cancelled)` after the user has already
             // submitted a NEW query would overwrite that new task's fresh `isAIGenerating`/state

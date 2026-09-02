@@ -308,7 +308,8 @@ public actor SemanticIndexer {
         let dayStart = utcCalendar.startOfDay(for: now)
         let dayStartMs = Int64(dayStart.timeIntervalSince1970 * 1000)
 
-        let usedToday = try await database.countTotalSemanticRequestsToday(utcDayStartMs: dayStartMs)
+        // Visual indexing ONLY counts its own requests (lane != 'search') so direct timeline searches never consume this budget
+        let usedToday = try await database.countVisualIndexingSemanticRequestsToday(utcDayStartMs: dayStartMs)
         return max(0, Self.dailyBackfillBudget - usedToday)
     }
 

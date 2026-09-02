@@ -137,21 +137,15 @@ public actor SearchManager: SearchProtocol {
         // set" as an offset into either individual index). Restricting the merge to offset==0
         // means later pages fall back to OCR-only, which is a real limitation (semantic-only
         // matches beyond page 1 won't surface) but a correct one, rather than a subtly broken
-        // "correct-looking" merge on every page.
-        // Also skip when OCR alone already fills the page — a common case for well-populated
-        // OCR indexes with the default page size, and every semantic row fetched in that case
-        // would just be discarded by the merge's `mergedMatches.count < query.limit` guard
-        // below. Narrowing the limit to the remaining slots (rather than a flat `query.limit`)
-        // means semantic never fetches more than it could possibly contribute either.
-        let remainingSlots = query.limit - ftsMatches.count
+        // Search the AI semantic index on page 0 (offset == 0) to surface visual & topic descriptions.
         var semanticMatches: [FTSMatch] = []
-        if query.offset == 0 && remainingSlots > 0 {
+        if query.offset == 0 {
             let semanticFTSQuery = Self.buildSemanticFTSQuery(for: parsed, matchAny: matchAny)
             do {
                 semanticMatches = try await ftsEngine.searchSemantic(
                     query: semanticFTSQuery,
                     filters: filters,
-                    limit: remainingSlots,
+                    limit: query.limit,
                     offset: 0
                 )
             } catch {
@@ -161,19 +155,32 @@ public actor SearchManager: SearchProtocol {
             }
         }
 
-        // Merge: OCR matches win on conflict (already have a searchable snippet), but a frame
-        // that also has a corroborating semantic (AI visual) description is labeled `.both`
-        // rather than plain `.ocr` — that distinction is the whole point of the match-source
-        // signal, so a frame present in both indexes must not silently collapse to `.ocr`.
-        // Semantic-only matches fill in frames OCR search missed entirely. Truncate back to the
-        // requested page size — the merge can otherwise exceed `query.limit`.
+        // Merge results:
+        // 1. Corroborated frames that match BOTH OCR and Semantic index rank highest (.both).
+        // 2. High-signal semantic matches that OCR missed (.semantic).
+        // 3. Raw OCR-only matches (.ocr).
         let semanticFrameIDs = Set(semanticMatches.map(\.frameID))
-        var seenFrameIDs = Set(ftsMatches.map(\.frameID))
-        var mergedMatches: [(match: FTSMatch, matchSource: SearchResult.MatchSource)] =
-            ftsMatches.map { ($0, semanticFrameIDs.contains($0.frameID) ? .both : .ocr) }
+        var seenFrameIDs = Set<FrameID>()
+        var mergedMatches: [(match: FTSMatch, matchSource: SearchResult.MatchSource)] = []
+
+        // Pass 1: Corroborated matches (present in both OCR and semantic)
+        for match in ftsMatches where semanticFrameIDs.contains(match.frameID) {
+            guard mergedMatches.count < query.limit else { break }
+            mergedMatches.append((match, .both))
+            seenFrameIDs.insert(match.frameID)
+        }
+
+        // Pass 2: Semantic matches (visual summaries, on-device topic descriptions)
         for match in semanticMatches where !seenFrameIDs.contains(match.frameID) {
             guard mergedMatches.count < query.limit else { break }
             mergedMatches.append((match, .semantic))
+            seenFrameIDs.insert(match.frameID)
+        }
+
+        // Pass 3: Remaining OCR-only matches
+        for match in ftsMatches where !seenFrameIDs.contains(match.frameID) {
+            guard mergedMatches.count < query.limit else { break }
+            mergedMatches.append((match, .ocr))
             seenFrameIDs.insert(match.frameID)
         }
 

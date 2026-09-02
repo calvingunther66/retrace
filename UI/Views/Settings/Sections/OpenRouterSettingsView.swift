@@ -338,7 +338,7 @@ public struct OpenRouterSettingsView: View {
                         Text("Enable AI Visual Indexing")
                             .font(.retraceHeadline)
                             .foregroundColor(.retracePrimary)
-                        Text("Sends downscaled screenshots to an AI vision model via OpenRouter so search can match on visual content like icons, diagrams, and images — not just OCR text. Runs slowly in the background (self-limited to ~600 backfill requests/day). Screenshots from apps excluded from OCR are never sent.")
+                        Text("Processes frames in two stages: fast on-device Apple Intelligence baseline indexing (unlimited, zero network requests) followed by deep visual multi-layer cross-referencing (self-limited to 600 requests/day). Direct searches in the timeline have an independent dedicated quota of 100 requests/day. Screenshots from apps excluded from OCR are never sent.")
                             .font(.retraceCaption2)
                             .foregroundColor(.retraceSecondary.opacity(0.8))
                     }

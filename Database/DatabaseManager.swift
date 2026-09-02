@@ -3559,6 +3559,34 @@ public actor DatabaseManager: DatabaseProtocol {
         return try SemanticIndexQueries.countBackfillRequestsToday(db: db, utcDayStartMs: utcDayStartMs)
     }
 
+    public func countVisualIndexingSemanticRequestsToday(utcDayStartMs: Int64) async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.countVisualIndexingRequestsToday(db: db, utcDayStartMs: utcDayStartMs)
+    }
+
+    public func countSearchSemanticRequestsToday(utcDayStartMs: Int64) async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.countSearchRequestsToday(db: db, utcDayStartMs: utcDayStartMs)
+    }
+
+    public func recordSearchRequestDispatch(frameIDs: [Int64], requestedAtMs: Int64) async throws -> Int64 {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.recordDispatch(db: db, frameIDs: frameIDs, lane: "search", requestedAtMs: requestedAtMs)
+    }
+
+    public func updateSearchRequestOutcome(requestRowID: Int64, status: String, httpStatus: Int?, errorMessage: String?) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.updateRequestOutcome(db: db, requestRowID: requestRowID, status: status, httpStatus: httpStatus, errorMessage: errorMessage)
+    }
+
     public func countTotalSemanticRequestsToday(utcDayStartMs: Int64) async throws -> Int {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")

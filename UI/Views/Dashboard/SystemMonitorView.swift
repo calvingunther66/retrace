@@ -908,6 +908,15 @@ public struct SystemMonitorView: View {
                                         .font(.retraceCaption2)
                                         .foregroundColor(.retracePrimary)
                                 }
+                                HStack {
+                                    Text("Timeline AI Search:")
+                                        .font(.retraceCaption2)
+                                        .foregroundColor(.retraceSecondary)
+                                    Spacer()
+                                    Text("\(stats.searchRequestsToday) / \(stats.dailySearchBudget) reqs today")
+                                        .font(.retraceCaption2)
+                                        .foregroundColor(.retracePrimary)
+                                }
                             }
                         }
                         .padding(16)

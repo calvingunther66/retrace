@@ -494,7 +494,7 @@ public struct SpotlightSearchOverlay: View {
                 )
             }
             .buttonStyle(.plain)
-            .help("Ask Retrace AI (OpenRouter)")
+            .help("Ask Retrace AI (dedicated 100 searches/day)")
 
             // Filter button (expands to show filters)
             Button(action: {

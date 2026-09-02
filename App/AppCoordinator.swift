@@ -3281,7 +3281,8 @@ public actor AppCoordinator {
         var utcCalendar = Calendar(identifier: .gregorian)
         utcCalendar.timeZone = TimeZone(identifier: "UTC")!
         let dayStartMs = Int64(utcCalendar.startOfDay(for: Date()).timeIntervalSince1970 * 1000)
-        let requestsToday = (try? await services.database.countTotalSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
+        let visualRequestsToday = (try? await services.database.countVisualIndexingSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
+        let searchRequestsToday = (try? await services.database.countSearchSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
 
         let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
         let isEnabled = defaults.bool(forKey: OpenRouterCredentialsManager.semanticIndexingEnabledDefaultsKey)
@@ -3291,8 +3292,10 @@ public actor AppCoordinator {
         return SemanticIndexStatistics(
             indexed: detailed.indexed,
             eligibleTotal: detailed.eligibleTotal,
-            backfillRequestsToday: requestsToday,
+            backfillRequestsToday: visualRequestsToday,
             dailyBackfillBudget: SemanticIndexer.dailyBackfillBudget,
+            searchRequestsToday: searchRequestsToday,
+            dailySearchBudget: SemanticIndexStatistics.defaultDailySearchBudget,
             isEnabled: isEnabled,
             status: statusInfo.status,
             statusMessage: statusInfo.message,
@@ -3300,6 +3303,30 @@ public actor AppCoordinator {
             pendingCount: detailed.pending,
             baselineIndexedCount: detailed.baselineIndexed,
             deepIndexedCount: detailed.deepIndexed
+        )
+    }
+
+    /// Get the count of direct AI searches performed today against the dedicated 100-request quota.
+    public func getSearchRequestsTodayCount() async -> Int {
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        let dayStartMs = Int64(utcCalendar.startOfDay(for: Date()).timeIntervalSince1970 * 1000)
+        return (try? await services.database.countSearchSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
+    }
+
+    /// Record a timeline AI search dispatch in the budget tracker.
+    public func recordSearchRequest(frameIDs: [Int64]) async -> Int64? {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        return try? await services.database.recordSearchRequestDispatch(frameIDs: frameIDs, requestedAtMs: nowMs)
+    }
+
+    /// Update the outcome of a timeline AI search request.
+    public func updateSearchRequestOutcome(requestID: Int64, status: String, httpStatus: Int?, errorMessage: String?) async {
+        try? await services.database.updateSearchRequestOutcome(
+            requestRowID: requestID,
+            status: status,
+            httpStatus: httpStatus,
+            errorMessage: errorMessage
         )
     }
 
