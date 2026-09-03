@@ -23,6 +23,9 @@ public actor SemanticIndexer {
     private let database: DatabaseManager
     private let storage: StorageManager
     private let openRouterClient: OpenRouterClient
+    private let entityMesh: EntityMeshManager
+    private let cognitiveSessionizer: CognitiveSessionizer
+    private let vectorEngine: AcceleratedVectorEngine
     // Deliberately NOT `.allowAll` by default — see `hasReceivedPolicySync` below. The actual
     // policy value here doesn't matter until that flag is true, since `processNextBatch`
     // refuses to dispatch anything before then.
@@ -66,11 +69,17 @@ public actor SemanticIndexer {
     public init(
         database: DatabaseManager,
         storage: StorageManager,
-        openRouterClient: OpenRouterClient = OpenRouterClient()
+        openRouterClient: OpenRouterClient = OpenRouterClient(),
+        entityMesh: EntityMeshManager? = nil,
+        cognitiveSessionizer: CognitiveSessionizer? = nil,
+        vectorEngine: AcceleratedVectorEngine? = nil
     ) {
         self.database = database
         self.storage = storage
         self.openRouterClient = openRouterClient
+        self.entityMesh = entityMesh ?? EntityMeshManager(database: database)
+        self.cognitiveSessionizer = cognitiveSessionizer ?? CognitiveSessionizer(database: database)
+        self.vectorEngine = vectorEngine ?? AcceleratedVectorEngine(database: database)
     }
 
     // MARK: - Lifecycle
@@ -295,6 +304,32 @@ public actor SemanticIndexer {
                 description: finalDesc,
                 indexedAtMs: nowMs
             )
+
+            // Stage 1 Cognitive Memory System Integration
+            // 1. Harvest entities into Knowledge Mesh
+            _ = try? await entityMesh.harvestEntities(
+                from: ocrData?.mainText ?? "",
+                appName: frame.bundleID,
+                windowTitle: frame.windowName ?? ocrData?.title,
+                browserURL: frame.browserUrl ?? ocrData?.chromeText,
+                frameID: frame.frameID,
+                episodeID: nil
+            )
+
+            // 2. Cluster into cognitive episodes and score keyframe salience
+            let pending = PendingCognitiveFrame(
+                frameID: frame.frameID,
+                timestamp: Date(timeIntervalSince1970: Double(frame.createdAtMs) / 1000.0),
+                appName: frame.bundleID ?? "Unknown",
+                windowTitle: frame.windowName ?? ocrData?.title,
+                browserURL: frame.browserUrl ?? ocrData?.chromeText,
+                ocrText: ocrData?.mainText ?? ""
+            )
+            _ = try? await cognitiveSessionizer.clusterFrames([pending])
+
+            // 3. Generate on-device dense vector embedding
+            let embedding = await vectorEngine.embedTextOnDevice(finalDesc)
+            try? await vectorEngine.addVector(frameID: FrameID(value: frame.frameID), vector: embedding)
         }
     }
 
@@ -380,6 +415,10 @@ public actor SemanticIndexer {
                     indexedAtMs: indexedAtMs
                 )
                 writtenFrameIDs.append(result.frameID)
+
+                // Update vector embedding with deep visual affordances
+                let deepVec = await vectorEngine.embedTextOnDevice(result.description)
+                try? await vectorEngine.addVector(frameID: FrameID(value: result.frameID), vector: deepVec)
             }
             if !unparsedFrameIDs.isEmpty {
                 try await database.markSemanticFramesRetryPending(unparsedFrameIDs)

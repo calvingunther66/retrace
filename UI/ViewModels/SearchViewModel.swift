@@ -2680,6 +2680,24 @@ public class SearchViewModel: ObservableObject {
         initial: [OpenRouterContextFrame],
         question: String
     ) async -> [OpenRouterContextFrame] {
+        // Priority 1: Multi-hop associative retrieval via Cognitive Memory System (CMS)
+        if let cognitiveContext = try? await coordinator.planAndRetrieveCognitiveContext(
+            question: question,
+            limit: 30
+        ), !cognitiveContext.frames.isEmpty {
+            Log.info("[SearchViewModel] Using \(cognitiveContext.frames.count) cognitive storyboard frames across \(cognitiveContext.episodes.count) episodes for AI context", category: .search)
+            return cognitiveContext.frames.map { f in
+                OpenRouterContextFrame(
+                    frameID: f.frameID,
+                    timestamp: f.timestamp,
+                    appName: f.appName,
+                    windowTitle: f.windowTitle,
+                    browserURL: f.browserURL,
+                    extractedText: f.summaryText
+                )
+            }
+        }
+
         guard initial.isEmpty else { return initial }
 
         // A loosely-OR'd term match alone isn't enough: for a question like "when I last had the

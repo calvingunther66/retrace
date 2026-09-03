@@ -3632,6 +3632,194 @@ public actor DatabaseManager: DatabaseProtocol {
         return try SemanticIndexQueries.cleanDanglingDispatchedRequests(db: db)
     }
 
+    // MARK: - Cognitive Memory System Operations
+
+    public func insertCognitiveEpisode(_ episode: CognitiveEpisode) async throws -> Int64 {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.insertEpisode(db: db, episode: episode)
+    }
+
+    public func updateCognitiveEpisode(
+        episodeId: Int64,
+        endTime: Date,
+        title: String?,
+        summary: String?,
+        primaryAppBundleID: String?,
+        keyframeIDs: [Int64]
+    ) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try CognitiveMemoryQueries.updateEpisode(
+            db: db,
+            episodeId: episodeId,
+            endTime: endTime,
+            title: title,
+            summary: summary,
+            primaryAppBundleID: primaryAppBundleID,
+            keyframeIDs: keyframeIDs
+        )
+    }
+
+    public func getCognitiveEpisode(id: Int64) async throws -> CognitiveEpisode? {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getEpisode(db: db, id: id)
+    }
+
+    public func getLatestCognitiveEpisode() async throws -> CognitiveEpisode? {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getLatestEpisode(db: db)
+    }
+
+    public func getCognitiveEpisodeForFrame(frameId: Int64) async throws -> CognitiveEpisode? {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getEpisodeForFrame(db: db, frameId: frameId)
+    }
+
+    public func getCognitiveEpisodes(from startDate: Date, to endDate: Date, limit: Int = 50) async throws -> [CognitiveEpisode] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        let startMs = Schema.dateToTimestamp(startDate)
+        let endMs = Schema.dateToTimestamp(endDate)
+        return try CognitiveMemoryQueries.getEpisodes(db: db, from: startMs, to: endMs, limit: limit)
+    }
+
+    public func linkFrameToEpisode(
+        episodeId: Int64,
+        frameId: Int64,
+        salienceScore: Double,
+        isKeyframe: Bool
+    ) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try CognitiveMemoryQueries.linkFrameToEpisode(
+            db: db,
+            episodeId: episodeId,
+            frameId: frameId,
+            salienceScore: salienceScore,
+            isKeyframe: isKeyframe
+        )
+    }
+
+    public func getKeyframesForEpisode(episodeId: Int64) async throws -> [Int64] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getKeyframesForEpisode(db: db, episodeId: episodeId)
+    }
+
+    public func upsertMemoryEntity(
+        entityType: String,
+        normalizedValue: String,
+        displayName: String,
+        timestamp: Date = Date()
+    ) async throws -> Int64 {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        let tsMs = Schema.dateToTimestamp(timestamp)
+        return try CognitiveMemoryQueries.upsertEntity(
+            db: db,
+            entityType: entityType,
+            normalizedValue: normalizedValue,
+            displayName: displayName,
+            timestampMs: tsMs
+        )
+    }
+
+    public func findMemoryEntity(normalizedValue: String) async throws -> MemoryEntity? {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.findEntity(db: db, normalizedValue: normalizedValue)
+    }
+
+    public func findMemoryEntities(type: String? = nil, prefix: String? = nil, limit: Int = 20) async throws -> [MemoryEntity] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.findEntities(db: db, type: type, prefix: prefix, limit: limit)
+    }
+
+    public func recordEntityMention(entityId: Int64, frameId: Int64, confidence: Double = 1.0) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try CognitiveMemoryQueries.recordMention(db: db, entityId: entityId, frameId: frameId, confidence: confidence)
+    }
+
+    public func getEntitiesForFrame(frameId: Int64) async throws -> [MemoryEntity] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getEntitiesForFrame(db: db, frameId: frameId)
+    }
+
+    public func getFramesForEntity(entityId: Int64, limit: Int = 30) async throws -> [Int64] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getFramesForEntity(db: db, entityId: entityId, limit: limit)
+    }
+
+    public func recordEntityCoOccurrence(sourceEntityId: Int64, targetEntityId: Int64, timestamp: Date = Date()) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        let tsMs = Schema.dateToTimestamp(timestamp)
+        try CognitiveMemoryQueries.recordCoOccurrence(
+            db: db,
+            sourceEntityId: sourceEntityId,
+            targetEntityId: targetEntityId,
+            timestampMs: tsMs
+        )
+    }
+
+    public func getAssociatedEntities(sourceEntityId: Int64, limit: Int = 20) async throws -> [(entity: MemoryEntity, weight: Double)] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getAssociatedEntities(db: db, sourceEntityId: sourceEntityId, limit: limit)
+    }
+
+    public func recordKeyframeVectorMetadata(
+        frameId: Int64,
+        vectorOffset: Int,
+        dimensions: Int,
+        modelName: String,
+        createdAt: Date = Date()
+    ) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        let tsMs = Schema.dateToTimestamp(createdAt)
+        try CognitiveMemoryQueries.recordVectorMetadata(
+            db: db,
+            frameId: frameId,
+            vectorOffset: vectorOffset,
+            dimensions: dimensions,
+            modelName: modelName,
+            createdAtMs: tsMs
+        )
+    }
+
+    public func getAllKeyframeVectorMetadata() async throws -> [(frameId: Int64, offset: Int, dimensions: Int)] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getAllVectorMetadata(db: db)
+    }
+
     // MARK: - Maintenance Operations
 
     /// Checkpoint the WAL file (merge WAL into main database and truncate)

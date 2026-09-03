@@ -121,10 +121,14 @@ public actor ServiceContainer {
         //     config: audioProcessingConfig
         // )
 
-        // FTS-only search manager
+        // Cognitive Memory-enabled search manager (FTS5 + Dense Vector + Knowledge Mesh)
+        let vectorEngine = AcceleratedVectorEngine(database: database)
+        let entityMesh = EntityMeshManager(database: database)
         self.search = SearchManager(
             database: database,
-            ftsEngine: ftsEngine
+            ftsEngine: ftsEngine,
+            vectorEngine: vectorEngine,
+            entityMesh: entityMesh
         )
 
         // Migration depends on database and processing

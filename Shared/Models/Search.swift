@@ -395,3 +395,119 @@ public struct GroupedSearchResults: Codable, Sendable {
 
     public var isEmpty: Bool { daySections.isEmpty }
 }
+
+// MARK: - Cognitive Memory System Models
+
+/// Represents a multi-app coherent task episode (Level 2 Cognitive Context)
+public struct CognitiveEpisode: Codable, Sendable, Identifiable, Equatable {
+    public let id: Int64
+    public let startTime: Date
+    public let endTime: Date
+    public var title: String?
+    public var summary: String?
+    public var primaryAppBundleID: String?
+    public var keyframeIDs: [Int64]
+    public let createdAt: Date
+
+    public init(
+        id: Int64 = 0,
+        startTime: Date,
+        endTime: Date,
+        title: String? = nil,
+        summary: String? = nil,
+        primaryAppBundleID: String? = nil,
+        keyframeIDs: [Int64] = [],
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.startTime = startTime
+        self.endTime = endTime
+        self.title = title
+        self.summary = summary
+        self.primaryAppBundleID = primaryAppBundleID
+        self.keyframeIDs = keyframeIDs
+        self.createdAt = createdAt
+    }
+}
+
+/// Type of entity harvested for the knowledge mesh
+public enum MemoryEntityType: String, Codable, Sendable, CaseIterable {
+    case file
+    case url
+    case person
+    case ticket
+    case symbol
+    case topic
+}
+
+/// A canonical entity in the cross-referencing knowledge graph
+public struct MemoryEntity: Codable, Sendable, Identifiable, Equatable {
+    public let id: Int64
+    public let entityType: MemoryEntityType
+    public let normalizedValue: String
+    public let displayName: String
+    public var firstSeenAt: Date
+    public var lastSeenAt: Date
+    public var occurrenceCount: Int
+
+    public init(
+        id: Int64 = 0,
+        entityType: MemoryEntityType,
+        normalizedValue: String,
+        displayName: String,
+        firstSeenAt: Date,
+        lastSeenAt: Date,
+        occurrenceCount: Int = 1
+    ) {
+        self.id = id
+        self.entityType = entityType
+        self.normalizedValue = normalizedValue
+        self.displayName = displayName
+        self.firstSeenAt = firstSeenAt
+        self.lastSeenAt = lastSeenAt
+        self.occurrenceCount = occurrenceCount
+    }
+}
+
+/// An edge between co-occurring entities in the knowledge mesh
+public struct EntityAssociation: Codable, Sendable, Equatable {
+    public let sourceEntityId: Int64
+    public let targetEntityId: Int64
+    public var weight: Double
+    public var coOccurrenceCount: Int
+    public var lastCoOccurredAt: Date
+
+    public init(
+        sourceEntityId: Int64,
+        targetEntityId: Int64,
+        weight: Double = 1.0,
+        coOccurrenceCount: Int = 1,
+        lastCoOccurredAt: Date = Date()
+    ) {
+        self.sourceEntityId = sourceEntityId
+        self.targetEntityId = targetEntityId
+        self.weight = weight
+        self.coOccurrenceCount = coOccurrenceCount
+        self.lastCoOccurredAt = lastCoOccurredAt
+    }
+}
+
+/// Salience and keyframe scoring info for a frame within an episode
+public struct KeyframeInfo: Codable, Sendable, Equatable {
+    public let frameId: Int64
+    public let episodeId: Int64
+    public let salienceScore: Double
+    public let isKeyframe: Bool
+
+    public init(
+        frameId: Int64,
+        episodeId: Int64,
+        salienceScore: Double,
+        isKeyframe: Bool
+    ) {
+        self.frameId = frameId
+        self.episodeId = episodeId
+        self.salienceScore = salienceScore
+        self.isKeyframe = isKeyframe
+    }
+}

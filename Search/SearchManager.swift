@@ -11,6 +11,8 @@ public actor SearchManager: SearchProtocol {
     private let ftsEngine: any FTSProtocol
     private let queryParser: QueryParser
     private let resultRanker: ResultRanker
+    private let vectorEngine: AcceleratedVectorEngine?
+    private let entityMesh: EntityMeshManager?
     // ⚠️ RELEASE 2 ONLY - Search highlighting removed for Release 1
     // private let snippetGenerator: SnippetGenerator
 
@@ -27,10 +29,14 @@ public actor SearchManager: SearchProtocol {
 
     public init(
         database: any DatabaseProtocol,
-        ftsEngine: any FTSProtocol
+        ftsEngine: any FTSProtocol,
+        vectorEngine: AcceleratedVectorEngine? = nil,
+        entityMesh: EntityMeshManager? = nil
     ) {
         self.database = database
         self.ftsEngine = ftsEngine
+        self.vectorEngine = vectorEngine
+        self.entityMesh = entityMesh
         self.queryParser = QueryParser()
         self.resultRanker = ResultRanker()
         // ⚠️ RELEASE 2 ONLY - Search highlighting removed for Release 1
@@ -155,15 +161,24 @@ public actor SearchManager: SearchProtocol {
             }
         }
 
+        // Dense Vector Similarity Search
+        var vectorMatches: [FrameID] = []
+        if let vectorEngine {
+            let qVec = await vectorEngine.embedTextOnDevice(query.text)
+            let nearest = (try? await vectorEngine.searchNearest(queryVector: qVec, limit: query.limit)) ?? []
+            vectorMatches = nearest.filter { $0.similarity >= 0.20 }.map(\.frameID)
+        }
+        let vectorFrameIDs = Set(vectorMatches)
+
         // Merge results:
-        // 1. Corroborated frames that match BOTH OCR and Semantic index rank highest (.both).
+        // 1. Corroborated frames that match BOTH OCR and (Semantic FTS or Dense Vector) rank highest (.both).
         // 2. High-signal semantic matches that OCR missed (.semantic).
         // 3. Raw OCR-only matches (.ocr).
-        let semanticFrameIDs = Set(semanticMatches.map(\.frameID))
+        let semanticFrameIDs = Set(semanticMatches.map(\.frameID)).union(vectorFrameIDs)
         var seenFrameIDs = Set<FrameID>()
         var mergedMatches: [(match: FTSMatch, matchSource: SearchResult.MatchSource)] = []
 
-        // Pass 1: Corroborated matches (present in both OCR and semantic)
+        // Pass 1: Corroborated matches (present in both OCR and semantic/vector)
         for match in ftsMatches where semanticFrameIDs.contains(match.frameID) {
             guard mergedMatches.count < query.limit else { break }
             mergedMatches.append((match, .both))

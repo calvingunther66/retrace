@@ -3375,6 +3375,16 @@ public actor AppCoordinator {
         try await services.search.searchForAIContext(question: question, filters: filters, limit: limit)
     }
 
+    /// Plans and retrieves structured episodic storyboard context via the Cognitive Memory System
+    public nonisolated func planAndRetrieveCognitiveContext(question: String, limit: Int = 30) async throws -> CognitiveStoryboardContext {
+        let reasoner = CognitiveReasoner(
+            database: services.database,
+            ftsEngine: services.ftsEngine,
+            entityMesh: EntityMeshManager(database: services.database)
+        )
+        return try await reasoner.planAndRetrieveContext(query: question, maxFrames: limit)
+    }
+
     // MARK: - Frame Retrieval
 
     /// Get a specific frame image by timestamp
