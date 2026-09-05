@@ -6,6 +6,13 @@ import Shared
 /// This cache stores regions from full-frame OCR and allows incremental updates
 /// when only parts of the screen change.
 public actor FullFrameOCRCache {
+    /// Bounds for the single-frame cache (countLimit analogue: this cache only ever
+    /// holds the last frame, but pathological frames must not grow it without bound).
+    /// Sized far above any real display (8K at 64px tiles is ~8k tiles) so normal
+    /// frames are never truncated and behavior is identical.
+    private static let maxCachedRegions = 8192
+    private static let maxCachedTiles = 32768
+
     public struct MemoryEstimate: Sendable {
         public let totalBytes: Int64
         public let regionBytes: Int64
@@ -78,8 +85,12 @@ public actor FullFrameOCRCache {
 
     /// Store full-frame OCR results
     public func setFullFrameResults(regions: [TextRegion], tileGrid: [TileInfo]) {
-        cachedRegions = regions
-        cachedTileGrid = tileGrid
+        cachedRegions = regions.count > Self.maxCachedRegions
+            ? Array(regions.prefix(Self.maxCachedRegions))
+            : regions
+        cachedTileGrid = tileGrid.count > Self.maxCachedTiles
+            ? Array(tileGrid.prefix(Self.maxCachedTiles))
+            : tileGrid
         hitCount += 1
     }
 

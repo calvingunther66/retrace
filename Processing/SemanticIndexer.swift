@@ -549,28 +549,38 @@ public actor SemanticIndexer {
     /// plausible-sounding hallucinated description back, and write it into `semanticRanking` as
     /// if it were real, permanently poisoning search for that frame while still burning budget.
     private static func downscale(_ jpegData: Data, maxLongEdge: CGFloat, quality: CGFloat) throws -> Data {
-        guard let source = CGImageSourceCreateWithData(jpegData as CFData, nil) else {
-            throw ProcessingError.invalidVideoPath(path: "undecodable JPEG")
-        }
-        let thumbnailOptions: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: Int(maxLongEdge)
-        ]
-        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) else {
-            throw ProcessingError.invalidVideoPath(path: "failed to downscale JPEG")
-        }
+        // Per-image pool: ImageIO creates autoreleased temporaries per
+        // thumbnail/encode that would otherwise accumulate on the indexer.
+        try autoreleasepool {
+            // Never let ImageIO retain decoded surfaces behind our back; the
+            // caller holds only the re-encoded JPEG. MaxPixelSize stays exactly
+            // the needed long edge (no upscaling below it), so output is unchanged.
+            let sourceOptions: [CFString: Any] = [kCGImageSourceShouldCache: false]
+            guard let source = CGImageSourceCreateWithData(jpegData as CFData, sourceOptions as CFDictionary) else {
+                throw ProcessingError.invalidVideoPath(path: "undecodable JPEG")
+            }
+            let thumbnailOptions: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: Int(maxLongEdge),
+                kCGImageSourceShouldCache: false,
+                kCGImageSourceShouldCacheImmediately: false
+            ]
+            guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) else {
+                throw ProcessingError.invalidVideoPath(path: "failed to downscale JPEG")
+            }
 
-        let output = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(output, "public.jpeg" as CFString, 1, nil) else {
-            throw ProcessingError.invalidVideoPath(path: "failed to re-encode downscaled JPEG")
+            let output = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(output, "public.jpeg" as CFString, 1, nil) else {
+                throw ProcessingError.invalidVideoPath(path: "failed to re-encode downscaled JPEG")
+            }
+            let destinationOptions: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
+            CGImageDestinationAddImage(destination, thumbnail, destinationOptions as CFDictionary)
+            guard CGImageDestinationFinalize(destination) else {
+                throw ProcessingError.invalidVideoPath(path: "failed to re-encode downscaled JPEG")
+            }
+            return output as Data
         }
-        let destinationOptions: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
-        CGImageDestinationAddImage(destination, thumbnail, destinationOptions as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else {
-            throw ProcessingError.invalidVideoPath(path: "failed to re-encode downscaled JPEG")
-        }
-        return output as Data
     }
 
     // MARK: - Settings

@@ -1,4 +1,5 @@
 import CoreMedia
+import CoreVideo
 import Foundation
 import Shared
 
@@ -74,14 +75,30 @@ public actor SegmentWriterImpl: SegmentWriter {
         // This ensures exact timestamps: frame 0 = 0, frame 1 = 20, frame 11 = 220, etc.
         let timestamp = CMTime(value: Int64(frameCount) * 20, timescale: 600)
 
+        let pixelBuffer: CVPixelBuffer
         do {
-            let pixelBuffer = try await encoder.makePixelBuffer(from: frame)
-            try await encoder.encode(pixelBuffer: pixelBuffer, timestamp: timestamp)
-            await StorageVideoEncodingMemoryLedger.endPixelBuffer(pixelBufferToken)
+            pixelBuffer = try await encoder.makePixelBuffer(from: frame)
         } catch {
             await StorageVideoEncodingMemoryLedger.endPixelBuffer(pixelBufferToken)
             throw error
         }
+        do {
+            try await encoder.encode(pixelBuffer: pixelBuffer, timestamp: timestamp)
+        } catch {
+            await StorageVideoEncodingMemoryLedger.endPixelBuffer(pixelBufferToken)
+            if HEVCEncoder.isBackpressureDrop(error) {
+                // Coalesce: keep this timestamp slot so the next tick's
+                // fresher frame reuses it. Must still rethrow (not return
+                // normally): AppCoordinator's caller compares the encoder's
+                // frameCount before/after appendFrame and treats a same-count
+                // "success" as a fatal encoder mismatch, canceling the writer.
+                // Throwing routes this through AppCoordinator's existing
+                // generic frame-error handler instead (log + continue).
+                Log.verbose("[SegmentWriter] Coalesced frame under encoder backpressure at frameCount=\(frameCount)", category: .storage)
+            }
+            throw error
+        }
+        await StorageVideoEncodingMemoryLedger.endPixelBuffer(pixelBufferToken)
 
         frameCount += 1
         lastFrameTime = frame.timestamp

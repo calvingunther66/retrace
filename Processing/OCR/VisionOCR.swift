@@ -112,6 +112,8 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
     /// Uses the same .accurate pipeline as frame processing
     /// Returns TextRegions with **normalized coordinates** (0.0-1.0) for direct use with OCRNodeWithText
     public func recognizeTextFromCGImage(_ cgImage: CGImage) async throws -> [TextRegion] {
+        // Shared single CGImage per tick: Vision reads the caller's image
+        // directly (no BGRA/Data copy); scoped pool releases transients now.
         return try autoreleasepool {
             let memoryLease = VisionOCRMemoryLedger.begin(
                 tag: "processing.ocr.liveScreenshotVisionRequest",
@@ -616,9 +618,16 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
 
         do {
             let envelopeBaselineSnapshot = await Self.synchronizedLedgerSnapshot()
-            guard let cgImage = createCGImage(from: imageData, width: width, height: height, bytesPerRow: bytesPerRow) else {
+            // Single CGImage per tick: bridged once here, released immediately
+            // after performRecognition returns (scoped autoreleasepool).
+            guard let cgImage = autoreleasepool(invoking: {
+                createCGImage(from: imageData, width: width, height: height, bytesPerRow: bytesPerRow)
+            }) else {
                 throw ProcessingError.imageConversionFailed
             }
+            // NOTE: `cgImage` is last used by performRecognition below, so ARC
+            // releases it immediately after that call (before the ledger-tail
+            // snapshots); do not capture it past that point.
 
             let postImageBridgeSnapshot = await Self.synchronizedLedgerSnapshot()
             let imageBridgeBytes = Self.measuredLedgerResidualBytes(

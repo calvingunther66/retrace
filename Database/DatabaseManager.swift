@@ -3830,7 +3830,7 @@ public actor DatabaseManager: DatabaseProtocol {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")
         }
 
-        let sql = "PRAGMA wal_checkpoint(TRUNCATE);"
+        let sql = Schema.checkpointSQL
         var lastError: String?
 
         for attempt in 1...maxRetries {
@@ -4544,6 +4544,41 @@ public actor DatabaseManager: DatabaseProtocol {
         }
 
         return Int(sqlite3_column_int(stmt, 0))
+    }
+
+    /// Drop-oldest queue relief: delete oldest-enqueued `processing_queue` rows
+    /// so at most `maxDepth` rows remain, oldest evicted first.
+    /// Removes bookkeeping rows only — frame and OCR data are untouched, and
+    /// still-pending frames can be re-enqueued later.
+    /// - Returns: Number of queue rows dropped.
+    @discardableResult
+    public func dropOldestQueuedFrames(maxDepth: Int) async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        guard maxDepth >= 0 else { return 0 }
+
+        let sql = """
+            DELETE FROM processing_queue
+            WHERE id IN (
+                SELECT id FROM processing_queue
+                ORDER BY enqueuedAt ASC
+                LIMIT MAX(0, (SELECT COUNT(*) FROM processing_queue) - ?)
+            );
+        """
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        sqlite3_bind_int(stmt, 1, Int32(maxDepth))
+
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+
+        return Int(sqlite3_changes(db))
     }
 
     /// Get count of frames that are pending or currently processing (status 0, 1, or rewrite-processing 6)

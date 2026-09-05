@@ -14,6 +14,18 @@ struct EnvelopeRecognitionOutput {
 }
 
 extension VisionOCR {
+    /// Shared colorspace reused for every OCR bridge (avoids per-call create).
+    static let sharedOCRColorSpace: CGColorSpace = CGColorSpaceCreateDeviceRGB()
+    static let sharedOCRBitmapInfo = CGBitmapInfo(
+        rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue |
+            CGBitmapInfo.byteOrder32Little.rawValue
+    )
+    /// Downscale before BGRA bridging so oversized frames never pay
+    /// full-surface cost. Identity below the cap (no resizing, so normal
+    /// displays are unaffected); above it, Vision sees a downscaled image,
+    /// trading a memory/cost win for lower recognition resolution on very
+    /// large or ultra-wide displays.
+    static let ocrBridgeMaxDimension = 2560
     static func recognitionLevel(for config: ProcessingConfig) -> VNRequestTextRecognitionLevel {
         switch config.ocrAccuracyLevel {
         case .fast:
@@ -78,12 +90,49 @@ extension VisionOCR {
     }
 
     func createCGImage(from data: Data, width: Int, height: Int, bytesPerRow: Int) -> CGImage? {
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGBitmapInfo(rawValue:
-            CGImageAlphaInfo.premultipliedFirst.rawValue |
-            CGBitmapInfo.byteOrder32Little.rawValue
-        )
+        // Single CGImage per tick: shared colorspace/bitmap-info, provider
+        // holds the caller's buffer only for this bridge; the CGImage is
+        // released by the caller immediately after performRecognition.
+        // Downscale before BGRA bridging when oversized.
+        let targetWidth: Int
+        let targetHeight: Int
+        let targetBytesPerRow: Int
+        let bridgeData: Data
+        let longest = max(width, height)
+        if longest > Self.ocrBridgeMaxDimension, longest > 0 {
+            let scale = Double(Self.ocrBridgeMaxDimension) / Double(longest)
+            targetWidth = max(1, Int(Double(width) * scale))
+            targetHeight = max(1, Int(Double(height) * scale))
+            targetBytesPerRow = targetWidth * 4
+            guard let full = bridgeCGImage(
+                from: data, width: width, height: height, bytesPerRow: bytesPerRow
+            ) else { return nil }
+            guard let context = CGContext(
+                data: nil,
+                width: targetWidth,
+                height: targetHeight,
+                bitsPerComponent: 8,
+                bytesPerRow: targetBytesPerRow,
+                space: Self.sharedOCRColorSpace,
+                bitmapInfo: Self.sharedOCRBitmapInfo.rawValue
+            ) else { return full }
+            context.interpolationQuality = .medium
+            context.draw(full, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
+            guard let downscaled = context.makeImage() else { return full }
+            // Release the full-size bridge immediately; only one live CGImage survives.
+            return downscaled
+        } else {
+            targetWidth = width
+            targetHeight = height
+            targetBytesPerRow = bytesPerRow
+            bridgeData = data
+            return bridgeCGImage(
+                from: bridgeData, width: targetWidth, height: targetHeight, bytesPerRow: targetBytesPerRow
+            )
+        }
+    }
 
+    private func bridgeCGImage(from data: Data, width: Int, height: Int, bytesPerRow: Int) -> CGImage? {
         guard let provider = CGDataProvider(data: data as CFData) else {
             return nil
         }
@@ -94,8 +143,8 @@ extension VisionOCR {
             bitsPerComponent: 8,
             bitsPerPixel: 32,
             bytesPerRow: bytesPerRow,
-            space: colorSpace,
-            bitmapInfo: bitmapInfo,
+            space: Self.sharedOCRColorSpace,
+            bitmapInfo: Self.sharedOCRBitmapInfo,
             provider: provider,
             decode: nil,
             shouldInterpolate: false,

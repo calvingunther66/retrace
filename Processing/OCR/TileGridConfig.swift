@@ -2,7 +2,11 @@ import Foundation
 
 /// Configuration for tile-based change detection and region-based OCR
 public struct TileGridConfig: Sendable {
-    /// Tile size in pixels (128x128 is a good balance between granularity and overhead)
+    /// Tile size in pixels (128x128 is a good balance between granularity and overhead;
+    /// larger tiles mean ~4x fewer tiles than 64px at the same resolution, which bounds
+    /// tile-grid memory and OCR re-check work. Tradeoff: a small change confined to one
+    /// 128px tile is less likely to trip changeThreshold than it would in a 64px tile
+    /// covering less area, so a coarser tile grid can miss narrower text edits.)
     public let tileSize: Int
 
     /// Minimum fraction of pixels that must differ (0-1) to consider a tile "changed"
@@ -17,7 +21,7 @@ public struct TileGridConfig: Sendable {
     public let samplingStride: Int
 
     public init(
-        tileSize: Int = 64,  // Smaller tiles = finer granularity for change detection
+        tileSize: Int = 128,
         changeThreshold: Double = 0.02,
         pixelDifferenceThreshold: Int = 13,
         samplingStride: Int = 2

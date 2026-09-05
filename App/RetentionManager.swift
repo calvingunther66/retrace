@@ -97,12 +97,7 @@ public actor RetentionManager {
     /// Calculate the cutoff date based on retention settings
     /// Returns nil if retention is set to "Forever"
     public nonisolated func getCutoffDate() -> Date? {
-        guard let retentionDays = getRetentionDays() else {
-            return nil // Forever - no cleanup
-        }
-
-        let cutoffDate = Date().addingTimeInterval(-TimeInterval(retentionDays) * 86400)
-        return cutoffDate
+        DatabaseConfig.cutoffDate(retentionDays: getRetentionDays())
     }
 
     /// Get apps excluded from retention cleanup (data from these apps won't be deleted)
@@ -227,14 +222,15 @@ public actor RetentionManager {
             }
             Log.info("[RetentionManager] Deleted \(deletedVideoCount) video segments, reclaimed \(formatBytes(reclaimedBytes))", category: .app)
 
-            // Step 5: Clean up orphaned nodes (OCR data) for deleted frames
+            // Step 5: Clean up orphaned frame-linked rows (OCR nodes + V21
+            // cognitive-memory links) for deleted frames
             let deletedNodesCount = try await cleanupOrphanedNodes()
             if deletedNodesCount > 0 {
-                Log.info("[RetentionManager] Cleaned up \(deletedNodesCount) orphaned OCR nodes", category: .app)
+                Log.info("[RetentionManager] Cleaned up \(deletedNodesCount) orphaned frame-linked rows", category: .app)
             }
 
             // Step 6: Vacuum database to reclaim space (do this less frequently)
-            if deletedFrameCount > 1000 || deletedVideoCount > 10 {
+            if deletedFrameCount > DatabaseConfig.retentionVacuumFrameThreshold || deletedVideoCount > DatabaseConfig.retentionVacuumVideoThreshold {
                 try await database.vacuum()
                 Log.info("[RetentionManager] Database vacuumed", category: .app)
             }
@@ -415,20 +411,61 @@ public actor RetentionManager {
             SELECT f.id FROM frame f
             JOIN segment s ON f.segmentId = s.id
             WHERE \(whereClause)
+            ORDER BY f.id
             """
-        try deleteSemanticIndexRows(
-            db: db,
-            frameIDSubquery: frameIDSubquery,
-            cutoffMs: cutoffMs,
-            excludingApps: excludingApps,
-            excludingTagIds: excludingTagIds
-        )
 
+        // Chunked batches: one bounded DELETE per iteration keeps WAL growth
+        // and lock hold time flat under retention pressure. Same rows are
+        // removed as a single DELETE — just spread across iterations.
+        let batchSize = DatabaseConfig.retentionDeleteBatchSize
+        var totalDeleted = 0
+        while true {
+            try deleteSemanticIndexRows(
+                db: db,
+                frameIDSubquery: frameIDSubquery,
+                batchSize: batchSize,
+                cutoffMs: cutoffMs,
+                excludingApps: excludingApps,
+                excludingTagIds: excludingTagIds
+            )
+
+            let deleted = try deleteFrameBatch(
+                db: db,
+                whereClause: whereClause,
+                batchSize: batchSize,
+                cutoffMs: cutoffMs,
+                excludingApps: excludingApps,
+                excludingTagIds: excludingTagIds
+            )
+            totalDeleted += deleted
+            if deleted < batchSize { break }
+        }
+
+        return totalDeleted
+    }
+
+    /// Delete one bounded batch of frames matching the retention WHERE clause.
+    /// - Returns: Number of frame rows deleted in this batch.
+    private func deleteFrameBatch(
+        db: OpaquePointer,
+        whereClause: String,
+        batchSize: Int,
+        cutoffMs: Int64,
+        excludingApps: Set<String>,
+        excludingTagIds: Set<Int64>
+    ) throws -> Int {
+        // ORDER BY f.id must match frameIDSubquery's ordering: the semantic-index
+        // batch above and this frame batch need to select the same row set, or a
+        // frame can be deleted before its semanticRanking/semantic_doc_frame rows
+        // are, permanently orphaning them (cleanupOrphanedNodes doesn't sweep
+        // those two tables).
         let sql = """
             DELETE FROM frame WHERE id IN (
                 SELECT f.id FROM frame f
                 JOIN segment s ON f.segmentId = s.id
                 WHERE \(whereClause)
+                ORDER BY f.id
+                LIMIT \(batchSize)
             );
         """
 
@@ -467,6 +504,7 @@ public actor RetentionManager {
     private func deleteSemanticIndexRows(
         db: OpaquePointer,
         frameIDSubquery: String,
+        batchSize: Int,
         cutoffMs: Int64,
         excludingApps: Set<String>,
         excludingTagIds: Set<Int64>
@@ -498,11 +536,11 @@ public actor RetentionManager {
 
         try bindAndExecute(sql: """
             DELETE FROM semanticRanking WHERE rowid IN (
-                SELECT docid FROM semantic_doc_frame WHERE frameId IN (\(frameIDSubquery))
+                SELECT docid FROM semantic_doc_frame WHERE frameId IN (\(frameIDSubquery) LIMIT \(batchSize))
             );
             """)
         try bindAndExecute(sql: """
-            DELETE FROM semantic_doc_frame WHERE frameId IN (\(frameIDSubquery));
+            DELETE FROM semantic_doc_frame WHERE frameId IN (\(frameIDSubquery) LIMIT \(batchSize));
             """)
     }
 
@@ -566,15 +604,44 @@ public actor RetentionManager {
         return Int(sqlite3_changes(db))
     }
 
-    /// Clean up OCR nodes that reference deleted frames
+    /// Clean up rows that reference deleted frames: OCR nodes plus the V21
+    /// cognitive-memory frame links (episode_frame, entity_mention,
+    /// keyframe_vector_metadata). None of these tables has an FK to frame,
+    /// so retention must remove dangling rows explicitly (same precedent as
+    /// the semantic index cleanup above).
     private func cleanupOrphanedNodes() async throws -> Int {
         guard let db = await database.getConnection() else {
             throw RetentionError.databaseNotConnected
         }
 
-        // Delete nodes where frameId doesn't exist in frame table
+        var total = 0
+        total += try deleteOrphanedFrameLinks(db: db, table: "node", column: "frameId")
+        total += try deleteOrphanedFrameLinks(db: db, table: "episode_frame", column: "frameId")
+        total += try deleteOrphanedFrameLinks(db: db, table: "entity_mention", column: "frameId")
+        total += try deleteOrphanedFrameLinks(db: db, table: "keyframe_vector_metadata", column: "frameId")
+        return total
+    }
+
+    /// Delete one table's rows whose frame link no longer exists, in bounded
+    /// batches. Table/column names are internal constants, never user input.
+    private func deleteOrphanedFrameLinks(db: OpaquePointer, table: String, column: String) throws -> Int {
+        let batchSize = DatabaseConfig.retentionDeleteBatchSize
+        var total = 0
+        while true {
+            let deleted = try deleteOrphanedFrameLinkBatch(db: db, table: table, column: column, batchSize: batchSize)
+            total += deleted
+            if deleted < batchSize { break }
+        }
+        return total
+    }
+
+    private func deleteOrphanedFrameLinkBatch(db: OpaquePointer, table: String, column: String, batchSize: Int) throws -> Int {
         let sql = """
-            DELETE FROM node WHERE frameId NOT IN (SELECT id FROM frame);
+            DELETE FROM \(table) WHERE rowid IN (
+                SELECT rowid FROM \(table)
+                WHERE \(column) NOT IN (SELECT id FROM frame)
+                LIMIT \(batchSize)
+            );
         """
 
         var statement: OpaquePointer?

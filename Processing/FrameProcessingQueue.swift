@@ -524,6 +524,11 @@ public actor FrameProcessingQueue {
     private static let phraseRedactionExtraTokenSlack = 2
     private static let phraseRedactionMaxNodeSpan = 8
     private var isPausedForMemoryPressure = false
+    /// Latest system pressure level delivered via ResourcePressureMonitor
+    /// fan-out. Selects the (possibly shortened) backpressure poll interval.
+    private var lastSystemPressureLevel: ResourcePressureLevel = .nominal
+    /// Fan-out subscription token; removed on stop (teardown).
+    private var pressureHandlerToken: UUID?
     private var activeRewriteVideoIDs: Set<Int64> = []
     private var rewriteVideosNeedingRedrain: Set<Int64> = []
     private var isRewriteTimelineVisible = false
@@ -994,7 +999,49 @@ public actor FrameProcessingQueue {
     public func enqueue(frameID: Int64, priority: Int = 0) async throws {
         try await databaseManager.enqueueFrameForProcessing(frameID: frameID, priority: priority)
         currentQueueDepth += 1
+        // Enforce maxDepth with drop-oldest relief (config.maxQueueSize was
+        // previously declared but never enforced — the queue grew unbounded).
+        await trimQueueToMaxDepthIfNeeded()
         // Log.info("[Queue-DIAG] Successfully enqueued frame \(frameID), local depth: \(currentQueueDepth), isRunning: \(isRunning)", category: .processing)
+    }
+
+    /// Shed oldest-enqueued rows beyond `config.maxQueueSize` (drop-oldest).
+    /// No-op when the cap is non-positive or the queue is within budget.
+    private func trimQueueToMaxDepthIfNeeded() async {
+        let maxDepth = config.maxQueueSize
+        guard maxDepth > 0 else { return }
+        do {
+            let dropped = try await databaseManager.dropOldestQueuedFrames(maxDepth: maxDepth)
+            if dropped > 0 {
+                currentQueueDepth = max(0, currentQueueDepth - dropped)
+                Log.warning(
+                    "[Queue-Depth] dropped \(dropped) oldest frame(s) at maxDepth=\(maxDepth)",
+                    category: .processing
+                )
+            }
+        } catch {
+            Log.warning("[Queue-Depth] drop-oldest trim failed: \(error)", category: .processing)
+        }
+    }
+
+    /// Fan-out relief from ResourcePressureMonitor: track the latest system
+    /// level for pressured polling, and shed beyond-cap backlog immediately
+    /// on critical pressure instead of waiting for the next enqueue.
+    private func handlePressureLevel(_ level: ResourcePressureLevel) async {
+        lastSystemPressureLevel = level
+        if level == .critical {
+            await trimQueueToMaxDepthIfNeeded()
+        }
+    }
+
+    /// Backpressure poll interval: shortened while system pressure is critical
+    /// so paused workers re-check promptly on relief.
+    private func backpressurePollIntervalNs() -> UInt64 {
+        let policy = OCRMemoryBackpressurePolicy.current()
+        if lastSystemPressureLevel == .critical {
+            return policy.pressuredPollIntervalNs
+        }
+        return policy.pollIntervalNs
     }
 
     /// Enqueue multiple frames (batch operation)
@@ -1055,6 +1102,14 @@ public actor FrameProcessingQueue {
 
         startMemoryReporting()
 
+        // Fan-out subscription: system pressure relief + pressured polling.
+        // Weak capture so a deallocated queue never receives stale callbacks.
+        pressureHandlerToken = ResourcePressureMonitor.shared.addLevelHandler { [weak self] level in
+            Task {
+                await self?.handlePressureLevel(level)
+            }
+        }
+
         Log.info("[Queue] Started \(workers.count) workers (priority=\(priority))", category: .processing)
     }
 
@@ -1073,6 +1128,13 @@ public actor FrameProcessingQueue {
         workers.removeAll()
         memoryReportTask?.cancel()
         memoryReportTask = nil
+        // Teardown: drop the pressure fan-out subscription so the shared
+        // monitor stops fanning out to this queue.
+        if let token = pressureHandlerToken {
+            ResourcePressureMonitor.shared.removeLevelHandler(token)
+            pressureHandlerToken = nil
+        }
+        lastSystemPressureLevel = .nominal
         rewriteResumeTask?.cancel()
         rewriteResumeTask = nil
         retryableRewriteRetryTask?.cancel()
@@ -1115,8 +1177,9 @@ public actor FrameProcessingQueue {
             }
 
             if await applyMemoryBackpressureIfNeeded() {
+                // Shortened poll while system pressure is critical.
                 try? await Task.sleep(
-                    for: .nanoseconds(Int64(OCRMemoryBackpressurePolicy.current().pollIntervalNs)),
+                    for: .nanoseconds(Int64(backpressurePollIntervalNs())),
                     clock: .continuous
                 )
                 if Task.isCancelled { break }
@@ -1638,13 +1701,20 @@ public actor FrameProcessingQueue {
             let sourceOptions = [
                 kCGImageSourceShouldCache: false,
             ] as CFDictionary
-            let imageOptions = [
+            // Decode at the size OCR actually needs: the Vision bridge downscales
+            // to ocrBridgeMaxDimension before recognition anyway, so decoding a
+            // thumbnail capped there avoids ever materializing a full oversized
+            // surface. Identity below the cap (no upscaling), so normal frames
+            // decode exactly as before.
+            let decodeOptions = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: VisionOCR.ocrBridgeMaxDimension,
                 kCGImageSourceShouldCache: false,
                 kCGImageSourceShouldCacheImmediately: false,
             ] as CFDictionary
 
             guard let imageSource = CGImageSourceCreateWithData(jpegData as CFData, sourceOptions),
-                  let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, imageOptions) else {
+                  let cgImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, decodeOptions) else {
                 return nil
             }
 
@@ -3511,12 +3581,15 @@ struct OCRMemoryBackpressurePolicy: Sendable {
     static let pauseThresholdDefaultsKey = "retrace.debug.ocrMemoryPauseThresholdMB"
     static let resumeThresholdDefaultsKey = "retrace.debug.ocrMemoryResumeThresholdMB"
     static let pollIntervalDefaultsKey = "retrace.debug.ocrMemoryBackpressurePollMs"
+    static let pressuredPollIntervalDefaultsKey = "retrace.debug.ocrMemoryBackpressurePressuredPollMs"
 
     static let defaultPauseThresholdMB = 1_536
     static let defaultResumeThresholdMB = 1_434
     static let defaultPauseThresholdBytes: UInt64 = UInt64(defaultPauseThresholdMB) * oneMiB
     static let defaultResumeThresholdBytes: UInt64 = UInt64(defaultResumeThresholdMB) * oneMiB
     static let defaultPollIntervalNs: UInt64 = 1_000_000_000
+    /// Shortened re-check cadence while system pressure is critical.
+    static let defaultPressuredPollIntervalNs: UInt64 = 250_000_000
     static let referenceDisplayPixelCount: UInt64 = 2_560 * 1_440
     static let maximumAutoScaleFactor: Double = 2.0
 
@@ -3524,6 +3597,7 @@ struct OCRMemoryBackpressurePolicy: Sendable {
     let pauseThresholdBytes: UInt64
     let resumeThresholdBytes: UInt64
     let pollIntervalNs: UInt64
+    let pressuredPollIntervalNs: UInt64
 
     static func current(
         defaults: UserDefaults = .standard,
@@ -3557,11 +3631,19 @@ struct OCRMemoryBackpressurePolicy: Sendable {
             ? Int(defaultPollIntervalNs / 1_000_000)
             : max(defaults.integer(forKey: pollIntervalDefaultsKey), 100)
 
+        // Shortened under-pressure cadence: at least 100ms, never slower than
+        // the nominal poll (a "pressured" poll slower than nominal is a config
+        // mistake, not relief).
+        let pressuredPollIntervalMs = defaults.object(forKey: pressuredPollIntervalDefaultsKey) == nil
+            ? Int(defaultPressuredPollIntervalNs / 1_000_000)
+            : max(defaults.integer(forKey: pressuredPollIntervalDefaultsKey), 100)
+
         return OCRMemoryBackpressurePolicy(
             enabled: enabled,
             pauseThresholdBytes: UInt64(max(pauseThresholdMB, 1)) * oneMiB,
             resumeThresholdBytes: UInt64(max(min(resumeThresholdMB, pauseThresholdMB - 1), 1)) * oneMiB,
-            pollIntervalNs: UInt64(pollIntervalMs) * 1_000_000
+            pollIntervalNs: UInt64(pollIntervalMs) * 1_000_000,
+            pressuredPollIntervalNs: UInt64(min(pressuredPollIntervalMs, pollIntervalMs)) * 1_000_000
         )
     }
 

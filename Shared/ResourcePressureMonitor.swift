@@ -13,17 +13,29 @@ public enum ResourcePressureLevel: Int, Comparable, Sendable {
 
 public final class ResourcePressureMonitor: @unchecked Sendable {
     public static let shared = ResourcePressureMonitor()
-    
+
+    /// Footprint poll cadence. Shortened under pressure so the queue, caches,
+    /// and encoder shed load promptly, then relaxed back when nominal.
+    public static let nominalPollInterval: TimeInterval = 5.0
+    public static let elevatedPollInterval: TimeInterval = 2.0
+    public static let criticalPollInterval: TimeInterval = 1.0
+
     private let monitorQueue = DispatchQueue(label: "com.retrace.resourceMonitor", qos: .utility)
     private var memoryPressureSource: DispatchSourceMemoryPressure?
     private var timerSource: DispatchSourceTimer?
     private var thermalObserver: NSObjectProtocol?
-    
+    private var currentPollInterval: TimeInterval = nominalPollInterval
+
     private let lock = NSLock()
     private var _currentLevel: ResourcePressureLevel = .nominal
-    
+
     // Publishers
     private var streamContinuations: [UUID: AsyncStream<ResourcePressureLevel>.Continuation] = [:]
+
+    /// Fan-out relief handlers (queue, caches, encoder). Invoked on
+    /// monitorQueue whenever the level changes. Keep handlers fast and
+    /// non-blocking; heavy relief belongs in the subscriber's own task.
+    private var levelHandlers: [UUID: @Sendable (ResourcePressureLevel) -> Void] = [:]
     
     // Thresholds
     public let elevatedFootprintBytes: UInt64
@@ -102,9 +114,9 @@ public final class ResourcePressureMonitor: @unchecked Sendable {
             }
         }
         
-        // Polling Timer for footprint
+        // Polling Timer for footprint (nominal cadence; shortened under pressure)
         let timer = DispatchSource.makeTimerSource(queue: monitorQueue)
-        timer.schedule(deadline: .now() + 5.0, repeating: 5.0)
+        timer.schedule(deadline: .now() + Self.nominalPollInterval, repeating: Self.nominalPollInterval)
         timer.setEventHandler { [weak self] in
             self?.evaluatePressure(trigger: "pollingTimer")
         }
@@ -121,26 +133,62 @@ public final class ResourcePressureMonitor: @unchecked Sendable {
         }
     }
     
+    /// Register a fan-out relief handler, invoked on every level change.
+    /// Used by the processing queue, OCR caches, and the video encoder to
+    /// shed load under pressure. Returns a token for removal.
+    @discardableResult
+    public func addLevelHandler(_ handler: @escaping @Sendable (ResourcePressureLevel) -> Void) -> UUID {
+        let id = UUID()
+        lock.lock()
+        levelHandlers[id] = handler
+        let current = _currentLevel
+        lock.unlock()
+        // Deliver the current level immediately so late subscribers converge.
+        handler(current)
+        return id
+    }
+
+    public func removeLevelHandler(_ id: UUID) {
+        lock.lock()
+        levelHandlers.removeValue(forKey: id)
+        lock.unlock()
+    }
+
     public func stop() {
         lock.lock()
-        
+        teardownLocked()
+        lock.unlock()
+    }
+
+    deinit {
+        lock.lock()
+        teardownLocked()
+        lock.unlock()
+    }
+
+    /// Lock must be held. Cancels sources/observers, finishes streams, and
+    /// drops fan-out handlers so a restarted monitor never notifies stale
+    /// subscribers.
+    private func teardownLocked() {
         memoryPressureSource?.cancel()
         memoryPressureSource = nil
-        
+
         timerSource?.cancel()
         timerSource = nil
-        
+
         if let observer = thermalObserver {
             NotificationCenter.default.removeObserver(observer)
             thermalObserver = nil
         }
-        
+
         for cont in streamContinuations.values {
             cont.finish()
         }
         streamContinuations.removeAll()
-        
-        lock.unlock()
+        levelHandlers.removeAll()
+
+        _currentLevel = .nominal
+        currentPollInterval = Self.nominalPollInterval
     }
     
     private func evaluatePressure(trigger: String, memoryPressureTrigger: ResourcePressureLevel? = nil) {
@@ -176,18 +224,35 @@ public final class ResourcePressureMonitor: @unchecked Sendable {
         lock.lock()
         let oldLevel = _currentLevel
         let continuations = Array(streamContinuations.values)
+        let handlers = Array(levelHandlers.values)
         if oldLevel != nextLevel {
             _currentLevel = nextLevel
+            // Shorten the footprint poll under pressure so relief converges
+            // fast; relax back to nominal cadence on recovery.
+            let targetInterval: TimeInterval
+            switch nextLevel {
+            case .nominal: targetInterval = Self.nominalPollInterval
+            case .elevated: targetInterval = Self.elevatedPollInterval
+            case .critical: targetInterval = Self.criticalPollInterval
+            }
+            if targetInterval != currentPollInterval {
+                currentPollInterval = targetInterval
+                timerSource?.schedule(deadline: .now() + targetInterval, repeating: targetInterval)
+            }
             lock.unlock()
-            
+
             for cont in continuations {
                 cont.yield(nextLevel)
             }
-            
+            // Fan-out to queue/caches/encoder relief handlers.
+            for handler in handlers {
+                handler(nextLevel)
+            }
+
             let footprintGb = String(format: "%.2fGB", Double(footprint) / 1_073_741_824.0)
             let thermalStr = thermalString(thermal)
             let msg = "[ResourcePressure] level=\(nextLevel) trigger=\(triggeredBy) footprint=\(footprintGb) thermal=\(thermalStr)"
-            
+
             if nextLevel == .nominal {
                 Log.info(msg, category: .app)
             } else {
