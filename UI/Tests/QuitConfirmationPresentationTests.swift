@@ -132,6 +132,78 @@ final class QuitConfirmationPresentationTests: XCTestCase {
             .exitDueToLockFailure
         )
     }
+
+    func testTerminateActionFlushesImmediatelyWhenFlushInProgress() {
+        XCTAssertEqual(
+            AppDelegate.terminateAction(
+                systemIsPoweringOff: true,
+                isTerminationFlushInProgress: true,
+                isTerminationDecisionInProgress: false,
+                bypassQuitConfirmationPromptOnce: false
+            ),
+            .terminateNow
+        )
+    }
+
+    func testTerminateActionBypassesConfirmationForSystemPowerOff() {
+        XCTAssertEqual(
+            AppDelegate.terminateAction(
+                systemIsPoweringOff: true,
+                isTerminationFlushInProgress: false,
+                isTerminationDecisionInProgress: false,
+                bypassQuitConfirmationPromptOnce: false
+            ),
+            .flushForSystemPowerOff
+        )
+    }
+
+    func testTerminateActionPrefersPowerOffOverPendingDecision() {
+        XCTAssertEqual(
+            AppDelegate.terminateAction(
+                systemIsPoweringOff: true,
+                isTerminationFlushInProgress: false,
+                isTerminationDecisionInProgress: true,
+                bypassQuitConfirmationPromptOnce: false
+            ),
+            .flushForSystemPowerOff
+        )
+    }
+
+    func testTerminateActionWaitsForInFlightDecision() {
+        XCTAssertEqual(
+            AppDelegate.terminateAction(
+                systemIsPoweringOff: false,
+                isTerminationFlushInProgress: false,
+                isTerminationDecisionInProgress: true,
+                bypassQuitConfirmationPromptOnce: false
+            ),
+            .waitForInFlightDecision
+        )
+    }
+
+    func testTerminateActionFlushesWhenBypassRequestedOnce() {
+        XCTAssertEqual(
+            AppDelegate.terminateAction(
+                systemIsPoweringOff: false,
+                isTerminationFlushInProgress: false,
+                isTerminationDecisionInProgress: false,
+                bypassQuitConfirmationPromptOnce: true
+            ),
+            .flushSkippingConfirmation
+        )
+    }
+
+    func testTerminateActionPresentsConfirmationByDefault() {
+        XCTAssertEqual(
+            AppDelegate.terminateAction(
+                systemIsPoweringOff: false,
+                isTerminationFlushInProgress: false,
+                isTerminationDecisionInProgress: false,
+                bypassQuitConfirmationPromptOnce: false
+            ),
+            .presentConfirmation
+        )
+    }
 }
 
 private final class StubQuitConfirmationWindow: NSWindow {

@@ -530,6 +530,12 @@ public actor FrameProcessingQueue {
     /// Fan-out subscription token; removed on stop (teardown).
     private var pressureHandlerToken: UUID?
     private var activeRewriteVideoIDs: Set<Int64> = []
+    /// Consecutive WAL-source deferrals per frame. Bounds the `.deferredSourceNotReady`
+    /// re-enqueue path so a frame whose source never becomes readable (e.g. its WAL
+    /// segment was quarantined or lost in an unclean shutdown) fails terminally instead
+    /// of spinning workers forever. Entries live only while a frame is actively cycling;
+    /// they are cleared on success, failure, or error retry.
+    private var deferredAttemptCounts: [Int64: Int] = [:]
     private var rewriteVideosNeedingRedrain: Set<Int64> = []
     private var isRewriteTimelineVisible = false
     private var isRewriteTimelineScrubbing = false
@@ -1211,6 +1217,21 @@ public actor FrameProcessingQueue {
 
                     // Handle deferred processing result
                     if case .deferredSourceNotReady = result {
+                        let deferredCount = trackDeferredAttempt(frameID: queuedFrame.frameID)
+                        if deferredCount >= config.maxDeferredAttempts {
+                            // The source never became readable (e.g. its WAL segment was
+                            // quarantined or lost in an unclean shutdown). Fail the frame
+                            // instead of re-enqueueing forever — an unbounded backlog of
+                            // such frames wedges startup after a mac restart.
+                            clearDeferredAttempts(frameID: queuedFrame.frameID)
+                            let exhaustedError = ProcessingError.ocrFailed(
+                                underlying: "WAL source for frame \(queuedFrame.frameID) never became readable after \(deferredCount) attempts"
+                            )
+                            Log.error("[Queue] Frame \(queuedFrame.frameID) marked as failed: source never became readable", category: .processing)
+                            totalFailed += 1
+                            try await markFrameAsFailed(queuedFrame.frameID, error: exhaustedError)
+                            continue
+                        }
                         // Dequeue now moves frames to `.processing` atomically, so deferred work
                         // must explicitly return the frame to pending before re-enqueueing it.
                         try await updateFrameProcessingStatus(queuedFrame.frameID, status: .pending)
@@ -1222,6 +1243,7 @@ public actor FrameProcessingQueue {
                         continue
                     }
 
+                    clearDeferredAttempts(frameID: queuedFrame.frameID)
                     totalProcessed += 1
 
                     let elapsed = Date().timeIntervalSince(startTime)
@@ -1236,6 +1258,7 @@ public actor FrameProcessingQueue {
 
                 } catch {
                     totalFailed += 1
+                    clearDeferredAttempts(frameID: queuedFrame.frameID)
 
                     // Check if this is an unrecoverable error (damaged/missing video file)
                     // These errors won't be fixed by retrying, so fail immediately
@@ -3151,6 +3174,17 @@ public actor FrameProcessingQueue {
         )
     }
 
+    /// Record a WAL-source deferral for a frame, returning the updated consecutive count.
+    private func trackDeferredAttempt(frameID: Int64) -> Int {
+        let updated = (deferredAttemptCounts[frameID] ?? 0) + 1
+        deferredAttemptCounts[frameID] = updated
+        return updated
+    }
+
+    private func clearDeferredAttempts(frameID: Int64) {
+        deferredAttemptCounts.removeValue(forKey: frameID)
+    }
+
     /// Retry a failed frame
     private func retryFrame(_ queuedFrame: QueuedFrame, error: Error) async throws {
         // Reset status to pending so it can be dequeued again
@@ -3775,17 +3809,20 @@ public struct ProcessingQueueConfig: Sendable {
     public let maxRetryAttempts: Int
     public let maxQueueSize: Int
     public let retryableRewriteRetryDelayNs: UInt64
+    public let maxDeferredAttempts: Int
 
     public init(
         workerCount: Int = 1,
         maxRetryAttempts: Int = 3,
         maxQueueSize: Int = 1000,
-        retryableRewriteRetryDelayNs: UInt64 = 5_000_000_000
+        retryableRewriteRetryDelayNs: UInt64 = 5_000_000_000,
+        maxDeferredAttempts: Int = 60
     ) {
         self.workerCount = workerCount
         self.maxRetryAttempts = maxRetryAttempts
         self.maxQueueSize = maxQueueSize
         self.retryableRewriteRetryDelayNs = retryableRewriteRetryDelayNs
+        self.maxDeferredAttempts = maxDeferredAttempts
     }
 
     public static let `default` = ProcessingQueueConfig()

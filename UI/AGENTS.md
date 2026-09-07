@@ -138,7 +138,7 @@ UI/
     ├── CrashRecoverySupportTests.swift   # Crash-recovery bundle resolution and registration policy coverage
     ├── CrashReportSupportTests.swift     # Dashboard crash/WAL report discovery and launch-context coverage
     ├── CumulativeScreenTimeTrackerTests.swift # Persisted screen-time reconciliation coverage for milestone/reminder thresholds
-    ├── QuitConfirmationPresentationTests.swift # Quit alert anchor-window selection coverage
+    ├── QuitConfirmationPresentationTests.swift # Quit alert anchor-window selection + system power-off bypass coverage
     ├── FeedbackExportTests.swift         # Feedback report export formatting coverage
     ├── FeedbackSubmissionProgressTests.swift # Feedback sending-state sequence coverage
     ├── HyperlinkMappingTests.swift       # Stored hyperlink row to OCR-node mapping coverage

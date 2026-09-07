@@ -261,7 +261,8 @@ public actor ServiceContainer {
 
         // 3. Initialize storage (creates directories, loads encryption key)
         try await storage.initialize(config: storageConfig)
-        if let walIssue = await storage.currentWALAvailabilityIssue() {
+        let startupWALIssue = await storage.currentWALAvailabilityIssue()
+        if let walIssue = startupWALIssue {
             Log.error(
                 "⚠️ Storage initialized in degraded mode - startup WAL initialization failed at \(walIssue.walRootPath): \(walIssue.reason)",
                 category: .app
@@ -287,10 +288,18 @@ public actor ServiceContainer {
         }
         Log.info("Chunks folder exists: \(fm.fileExists(atPath: chunksPath))", category: .app)
 
-        // SAFETY: If database exists but chunks folder is missing, clear processing queue
-        // This prevents infinite retry loops from orphaned frame records
-        if let dbPath, fm.fileExists(atPath: dbPath), !fm.fileExists(atPath: chunksPath) {
-            Log.error("⚠️ CRITICAL: Database exists but chunks folder missing!", category: .app)
+        // SAFETY: If database exists but its video sources are unavailable (chunks folder
+        // missing) or WAL writes are down (degraded mode), clear the processing queue.
+        // Stale rows would otherwise send workers into endless deferral/retry churn on
+        // frames whose sources can never become readable. This only deletes queue rows;
+        // frame statuses stay pending, so a later healthy startup still re-discovers them.
+        if let dbPath, fm.fileExists(atPath: dbPath), (!fm.fileExists(atPath: chunksPath) || startupWALIssue != nil) {
+            if !fm.fileExists(atPath: chunksPath) {
+                Log.error("⚠️ CRITICAL: Database exists but chunks folder missing!", category: .app)
+            }
+            if startupWALIssue != nil {
+                Log.error("⚠️ CRITICAL: Storage in degraded WAL mode at startup - queued frames are unprocessable!", category: .app)
+            }
             Log.warning("Clearing processing queue to prevent failures...", category: .app)
 
             // Clear processing queue - frames can't be processed without video files
