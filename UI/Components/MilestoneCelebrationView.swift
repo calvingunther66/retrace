@@ -517,21 +517,6 @@ struct MilestoneCelebrationView: View {
             }
         }
 
-#if SWIFT_PACKAGE
-        let moduleResourcePath = Bundle.module.resourcePath ?? ""
-        let moduleCandidates: [(label: String, path: String)] = [
-            ("module/CreatorProfile.png", "\(moduleResourcePath)/CreatorProfile.png"),
-            ("module/haseab.png", "\(moduleResourcePath)/haseab.png"),
-            ("module/Assets.xcassets/CreatorProfile.imageset/haseab.png", "\(moduleResourcePath)/Assets.xcassets/CreatorProfile.imageset/haseab.png")
-        ]
-        for candidate in moduleCandidates where fileManager.fileExists(atPath: candidate.path) {
-            if let image = NSImage(contentsOfFile: candidate.path) {
-                Log.warning("\(logContext) Loaded creator profile via SwiftPM module file fallback \(candidate.label)", category: .ui)
-                return image
-            }
-        }
-#endif
-
         let debugWorkingTreePath = "\(fileManager.currentDirectoryPath)/UI/Assets.xcassets/CreatorProfile.imageset/haseab.png"
         if fileManager.fileExists(atPath: debugWorkingTreePath),
            let image = NSImage(contentsOfFile: debugWorkingTreePath) {
