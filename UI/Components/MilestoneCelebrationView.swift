@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 import Shared
 
 /// A celebration dialog shown when users reach screen time milestones
@@ -500,13 +501,6 @@ struct MilestoneCelebrationView: View {
             Log.info("\(logContext) Loaded CreatorProfile via Bundle.main.image(forResource:)", category: .ui)
             return image
         }
-
-#if SWIFT_PACKAGE
-        if let image = Bundle.module.image(forResource: imageName) {
-            Log.info("\(logContext) Loaded CreatorProfile via Bundle.module.image(forResource:)", category: .ui)
-            return image
-        }
-#endif
 
         let fileManager = FileManager.default
         let resourcePath = Bundle.main.resourcePath ?? ""
