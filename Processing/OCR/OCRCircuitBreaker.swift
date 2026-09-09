@@ -70,11 +70,15 @@ final class OCRCircuitBreaker: @unchecked Sendable {
         return tripped
     }
 
-    /// Restores a fresh, untripped state. Used by tests and by the
-    /// user-initiated "Restart OCR" recovery action (VisionOCR.resetCircuitBreaker()) —
-    /// deliberately does NOT run automatically, since the underlying Vision wedge this
-    /// breaker guards against doesn't self-heal and retrying on a timer would just
-    /// reproduce the original unbounded leak.
+    /// Restores a fresh, untripped state. Used by tests, by the user-initiated
+    /// "Restart OCR" recovery action, and by
+    /// `FrameProcessingQueue.attemptOCRAutoRecoveryIfEligible()` (via
+    /// `VisionOCR.resetCircuitBreaker()`) once system resource pressure has been
+    /// nominal for a sustained period. Deliberately never resets on a bare timer —
+    /// the underlying Vision wedge this breaker guards against doesn't self-heal on
+    /// its own, so retrying on a fixed schedule regardless of system state would just
+    /// reproduce the original unbounded leak; gating on pressure having actually
+    /// recovered is what makes the automatic retry safe.
     func reset() {
         lock.lock()
         defer { lock.unlock() }

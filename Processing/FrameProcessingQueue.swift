@@ -527,6 +527,19 @@ public actor FrameProcessingQueue {
     /// Latest system pressure level delivered via ResourcePressureMonitor
     /// fan-out. Selects the (possibly shortened) backpressure poll interval.
     private var lastSystemPressureLevel: ResourcePressureLevel = .nominal
+    /// Uptime timestamp (ns) since system pressure was last observed as
+    /// `.nominal` while the OCR circuit breaker was tripped. Nil whenever
+    /// the breaker is closed or pressure isn't currently nominal.
+    private var ocrDegradedNominalSinceUptimeNanos: UInt64?
+    /// Uptime timestamp (ns) of the last automatic OCR circuit-breaker
+    /// recovery attempt, so a persistently wedged Vision queue is retried
+    /// on a bounded cadence instead of once per poll.
+    private var lastOCRAutoRecoveryAttemptUptimeNanos: UInt64?
+    /// How long system pressure must stay nominal before auto-retrying a
+    /// tripped OCR circuit breaker. See `attemptOCRAutoRecoveryIfEligible`.
+    private static let ocrAutoRecoveryRequiredNominalSeconds: TimeInterval = 60
+    /// Minimum spacing between automatic OCR recovery attempts.
+    private static let ocrAutoRecoveryCooldownSeconds: TimeInterval = 180
     /// Fan-out subscription token; removed on stop (teardown).
     private var pressureHandlerToken: UUID?
     private var activeRewriteVideoIDs: Set<Int64> = []
@@ -3353,9 +3366,11 @@ public actor FrameProcessingQueue {
         }
     }
 
-    // MARK: - OCR Pipeline Restart (user-initiated recovery)
+    // MARK: - OCR Pipeline Restart (user-initiated and automatic recovery)
 
-    /// User-initiated recovery for a stalled OCR pipeline, without restarting the whole app.
+    /// Recovery for a stalled OCR pipeline, without restarting the whole app. Called both
+    /// from the "Restart OCR" UI action and automatically by
+    /// `attemptOCRAutoRecoveryIfEligible` once system pressure has recovered.
     ///
     /// This is a best-effort reset of everything on *our* side of the pipeline: it cannot
     /// unwedge Vision's own internal `VNControlledCapacityTasksQueue` if that's genuinely
@@ -3365,7 +3380,7 @@ public actor FrameProcessingQueue {
     /// `VisionOCR.isPermanentlyDegraded` shortly after calling this and, if still true,
     /// tell the user a full relaunch is required.
     public func restartOCRPipeline() async throws {
-        Log.warning("[Queue] Restarting OCR pipeline (user-initiated)", category: .processing)
+        Log.warning("[Queue] Restarting OCR pipeline", category: .processing)
 
         VisionOCR.resetCircuitBreaker()
 
@@ -3549,7 +3564,68 @@ public actor FrameProcessingQueue {
         )
     }
 
+    /// Automatically retries a tripped OCR circuit breaker once system resource
+    /// pressure has been nominal for a sustained period, instead of leaving OCR
+    /// permanently dead for the rest of the process's lifetime until the user
+    /// notices and clicks "Restart OCR" (the only path before this).
+    ///
+    /// Deliberately gated on pressure having *recovered*, not a bare timer:
+    /// production evidence (emergency hang diagnostics showing critical memory
+    /// pressure and near-full swap at the moment Vision's queue wedges) ties the
+    /// wedge this breaker guards against to system-wide memory pressure/swap
+    /// thrashing, not a purely internal Vision fault. Retrying only once pressure
+    /// has verifiably cleared makes each retry far more likely to actually
+    /// succeed, and the cooldown still bounds the worst case — Vision wedged for
+    /// a reason unrelated to memory pressure — to `OCRCircuitBreaker.threshold`
+    /// abandoned watchdog threads per cooldown window, not the original unbounded
+    /// leak.
+    private func attemptOCRAutoRecoveryIfEligible() async {
+        guard VisionOCR.isPermanentlyDegraded else {
+            ocrDegradedNominalSinceUptimeNanos = nil
+            return
+        }
+
+        guard ResourcePressureMonitor.shared.currentLevel == .nominal else {
+            ocrDegradedNominalSinceUptimeNanos = nil
+            return
+        }
+
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard let nominalSince = ocrDegradedNominalSinceUptimeNanos else {
+            ocrDegradedNominalSinceUptimeNanos = now
+            return
+        }
+
+        let nominalDuration = TimeInterval(now - nominalSince) / 1_000_000_000
+        guard nominalDuration >= Self.ocrAutoRecoveryRequiredNominalSeconds else {
+            return
+        }
+
+        if let lastAttempt = lastOCRAutoRecoveryAttemptUptimeNanos {
+            let sinceLastAttempt = TimeInterval(now - lastAttempt) / 1_000_000_000
+            guard sinceLastAttempt >= Self.ocrAutoRecoveryCooldownSeconds else {
+                return
+            }
+        }
+
+        lastOCRAutoRecoveryAttemptUptimeNanos = now
+        ocrDegradedNominalSinceUptimeNanos = nil
+
+        Log.warning(
+            "[Queue] OCR circuit breaker auto-recovery: system pressure nominal for \(String(format: "%.0f", nominalDuration))s, retrying Vision",
+            category: .processing
+        )
+
+        do {
+            try await restartOCRPipeline()
+        } catch {
+            Log.error("[Queue] OCR auto-recovery restart failed: \(error)", category: .processing)
+        }
+    }
+
     private func applyMemoryBackpressureIfNeeded() async -> Bool {
+        await attemptOCRAutoRecoveryIfEligible()
+
         // Check system-wide resource pressure (thermal, system memory, footprint)
         let systemPressure = ResourcePressureMonitor.shared.currentLevel
         if systemPressure == .critical {

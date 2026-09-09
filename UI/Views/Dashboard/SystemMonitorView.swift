@@ -833,6 +833,7 @@ public struct SystemMonitorView: View {
                         case .idle: return ("Idle", .retraceSecondary)
                         case .disabled: return ("Off", .retraceSecondary)
                         case .restarting: return ("Restarting", .orange)
+                        case .pausedForPressure: return ("Paused (Memory)", .orange)
                         }
                     }()
                     statusBadge(

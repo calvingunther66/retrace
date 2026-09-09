@@ -12,6 +12,7 @@ public enum SemanticIndexStatus: String, Sendable, Equatable {
     case awaitingKey = "No API Key"
     case disabled = "Off"
     case restarting = "Restarting"
+    case pausedForPressure = "Paused (Memory Pressure)"
 }
 
 /// Snapshot of AI visual semantic-indexing progress, for the System Monitor.

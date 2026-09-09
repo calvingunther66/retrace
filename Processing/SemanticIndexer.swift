@@ -105,6 +105,8 @@ public actor SemanticIndexer {
                     delay = .seconds(max(retryAfterSeconds, 5))
                 case .error:
                     delay = self.idlePollInterval
+                case .pausedForPressure:
+                    delay = self.idlePollInterval
                 }
                 try? await Task.sleep(for: delay, clock: .continuous)
             }
@@ -177,6 +179,7 @@ public actor SemanticIndexer {
         case awaitingPolicySync
         case rateLimited(retryAfterSeconds: Int)
         case error(String)
+        case pausedForPressure
     }
 
     private let appleFoundationModelService = AppleFoundationModelService.shared
@@ -188,6 +191,22 @@ public actor SemanticIndexer {
             Log.debug("[SemanticIndexer] Skipping cycle: disabled in Settings", category: .processing)
             return .disabled
         }
+
+        // Both stages below do local, memory-resident work (on-device NL/Foundation
+        // Model inference, CGImageSource decoding, growing the in-memory vector
+        // buffer in AcceleratedVectorEngine) on top of capture/encoding/OCR, which
+        // are already the machine's biggest consumers. Skipping a cycle entirely
+        // under critical system pressure — rather than only reacting to this
+        // actor's own footprint — keeps this background indexing from adding load
+        // at exactly the moment the system can least afford it (see
+        // FrameProcessingQueue's OCR backpressure for the same reasoning).
+        guard ResourcePressureMonitor.shared.currentLevel != .critical else {
+            currentStatus = .pausedForPressure
+            currentStatusMessage = "Paused: system memory pressure is critical"
+            Log.warning("[SemanticIndexer] Skipping cycle: system pressure critical", category: .processing)
+            return .pausedForPressure
+        }
+
         // Never dispatch before the real app-exclusion policy has arrived from
         // AppCoordinator — see `hasReceivedPolicySync`'s doc comment.
         guard hasReceivedPolicySync else {
