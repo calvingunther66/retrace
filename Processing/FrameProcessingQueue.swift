@@ -524,6 +524,11 @@ public actor FrameProcessingQueue {
     private static let phraseRedactionExtraTokenSlack = 2
     private static let phraseRedactionMaxNodeSpan = 8
     private var isPausedForMemoryPressure = false
+    /// True while `applyMemoryBackpressureIfNeeded` is skipping dequeues because
+    /// `VisionOCR.isPermanentlyDegraded` -- tracked separately from
+    /// `isPausedForMemoryPressure` purely so the paused/resumed log lines aren't spammed
+    /// on every poll.
+    private var isPausedForOCRDegraded = false
     /// Latest system pressure level delivered via ResourcePressureMonitor
     /// fan-out. Selects the (possibly shortened) backpressure poll interval.
     private var lastSystemPressureLevel: ResourcePressureLevel = .nominal
@@ -540,6 +545,21 @@ public actor FrameProcessingQueue {
     private static let ocrAutoRecoveryRequiredNominalSeconds: TimeInterval = 60
     /// Minimum spacing between automatic OCR recovery attempts.
     private static let ocrAutoRecoveryCooldownSeconds: TimeInterval = 180
+    /// Uptime timestamp (ns) of the last failed-frame backlog top-up. See
+    /// `topUpFailedFrameBacklogIfEligible`.
+    private var lastFailedBacklogTopUpUptimeNanos: UInt64?
+    /// Minimum spacing between failed-frame backlog top-ups. Only needs to prevent
+    /// redundant back-to-back batches when multiple workers hit the idle branch at once
+    /// (each top-up only fires once `dequeue()` has already proven the queue is idle), so
+    /// this is short rather than a real rate limit.
+    private static let failedBacklogTopUpCooldownSeconds: TimeInterval = 5
+    /// Frames requeued per top-up. Deliberately small and well under
+    /// `config.maxQueueSize`: see `topUpFailedFrameBacklogIfEligible`.
+    private static let failedBacklogTopUpBatchSize = 25
+    /// Priority for backlog-recovery re-enqueues: below both the default (0) and the
+    /// WAL-deferred re-enqueue priority (-1), so live captures and in-flight retries
+    /// always dequeue first and old backlog only drains during otherwise-idle time.
+    private static let failedBacklogTopUpPriority = -5
     /// Fan-out subscription token; removed on stop (teardown).
     private var pressureHandlerToken: UUID?
     private var activeRewriteVideoIDs: Set<Int64> = []
@@ -1216,7 +1236,9 @@ public actor FrameProcessingQueue {
             do {
                 // Try to dequeue a frame
                 guard let queuedFrame = try await dequeue() else {
-                    // Queue empty - wait before polling again
+                    // Queue empty - opportunistically drain a few previously-failed
+                    // frames (see topUpFailedFrameBacklogIfEligible) before waiting.
+                    await topUpFailedFrameBacklogIfEligible()
                     try await Task.sleep(for: .nanoseconds(Int64(100_000_000)), clock: .continuous) // 100ms
                     continue
                 }
@@ -3623,8 +3645,106 @@ public actor FrameProcessingQueue {
         }
     }
 
+    /// Gives previously-failed frames (`processingStatus == .failed`) another shot at OCR,
+    /// a small batch at a time, whenever the live queue is idle and OCR is healthy.
+    ///
+    /// This is the other half of the OCR circuit-breaker fix above: that guard stops
+    /// *new* backlog from forming, but frames marked `.failed` while it was open before
+    /// this fix existed have no other path back to `.pending` -- nothing else in this
+    /// file requeues `.failed` frames automatically.
+    ///
+    /// Deliberately a small batch (`failedBacklogTopUpBatchSize`), well under
+    /// `config.maxQueueSize` (default 1000), and only when `dequeue()` just returned nil:
+    /// bulk-requeuing the entire backlog at once would blow past that cap, and
+    /// `trimQueueToMaxDepthIfNeeded`'s drop-oldest eviction (by `enqueuedAt`, ignoring
+    /// priority) would silently drop most of the batch back out of the queue -- leaving
+    /// those frames stuck at `.pending` with no queue row at all, which is worse than the
+    /// `.failed` status they started in. Small batches at low priority keep this well
+    /// clear of that cap and never compete with live captures for a worker slot.
+    private func topUpFailedFrameBacklogIfEligible() async {
+        guard !VisionOCR.isPermanentlyDegraded,
+              ResourcePressureMonitor.shared.currentLevel != .critical,
+              !isPausedForMemoryPressure else {
+            return
+        }
+
+        let now = DispatchTime.now().uptimeNanoseconds
+        if let lastAttempt = lastFailedBacklogTopUpUptimeNanos {
+            let sinceLastAttempt = TimeInterval(now - lastAttempt) / 1_000_000_000
+            guard sinceLastAttempt >= Self.failedBacklogTopUpCooldownSeconds else { return }
+        }
+        lastFailedBacklogTopUpUptimeNanos = now
+
+        let frameIDs: [Int64]
+        do {
+            frameIDs = try await databaseManager.getFailedFrameIDs(limit: Self.failedBacklogTopUpBatchSize)
+        } catch {
+            Log.warning("[Queue-Backlog] Failed to look up failed-frame backlog: \(error)", category: .processing)
+            return
+        }
+        guard !frameIDs.isEmpty else { return }
+
+        var requeued = 0
+        for frameID in frameIDs {
+            do {
+                try await updateFrameProcessingStatus(frameID, status: .pending)
+                try await databaseManager.enqueueFrameForProcessing(
+                    frameID: frameID,
+                    priority: Self.failedBacklogTopUpPriority
+                )
+                currentQueueDepth += 1
+                requeued += 1
+            } catch {
+                // The status flip above may have already landed even though the
+                // subsequent enqueue insert failed. Revert to `.failed` rather than
+                // leaving this one frame stuck at `.pending` with no queue row --
+                // exactly the orphaned state this whole function exists to avoid.
+                // Best-effort: a failure here just means the next top-up (or a
+                // "Restart OCR") tries again.
+                try? await updateFrameProcessingStatus(frameID, status: .failed)
+                Log.warning(
+                    "[Queue-Backlog] Failed to requeue previously-failed frame \(frameID): \(error)",
+                    category: .processing
+                )
+            }
+        }
+
+        if requeued > 0 {
+            Log.info(
+                "[Queue-Backlog] Requeued \(requeued) previously-failed frame(s) for a retry",
+                category: .processing
+            )
+        }
+    }
+
     private func applyMemoryBackpressureIfNeeded() async -> Bool {
         await attemptOCRAutoRecoveryIfEligible()
+
+        // While the circuit breaker is open, don't dequeue at all. Before this guard,
+        // workers kept dequeuing normally: performWithWatchdog fast-fails immediately
+        // (see VisionOCR.swift) without waiting on Vision, so every already-queued frame
+        // burned through its retries in well under a second and landed at `.failed`
+        // permanently -- confirmed against this machine's own logs, where a single
+        // breaker trip produced ~150 back-to-back "marked as failed after max retries"
+        // lines within one second, and against live DB state, where ~24% of all frames
+        // are stuck at `.failed` with no path back to `.pending`. Pausing here instead
+        // leaves those frames untouched at `.pending` so they're processed normally once
+        // the breaker clears (auto-recovery above, or the user's "Restart OCR" action).
+        guard !VisionOCR.isPermanentlyDegraded else {
+            if !isPausedForOCRDegraded {
+                isPausedForOCRDegraded = true
+                let counts = await refreshLiveQueueCounts()
+                Log.warning(
+                    "[Queue-Backpressure] paused (OCR circuit breaker open) ocrQueueDepth=\(counts.ocrDepth) ocrPending=\(counts.ocrPending) ocrProcessing=\(counts.ocrProcessing)",
+                    category: .processing
+                )
+            }
+            return true
+        }
+        if isPausedForOCRDegraded {
+            isPausedForOCRDegraded = false
+            Log.info("[Queue-Backpressure] resumed (OCR circuit breaker cleared)", category: .processing)
+        }
 
         // Check system-wide resource pressure (thermal, system memory, footprint)
         let systemPressure = ResourcePressureMonitor.shared.currentLevel

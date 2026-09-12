@@ -4691,6 +4691,40 @@ public actor DatabaseManager: DatabaseProtocol {
         return frameIDs
     }
 
+    /// Get up to `limit` frame IDs currently marked permanently failed (processingStatus = 3),
+    /// oldest first, excluding frames pending deletion. Used by FrameProcessingQueue's
+    /// gradual backlog recovery (`topUpFailedFrameBacklogIfEligible`) to give frames that
+    /// exhausted their retries -- most commonly while the OCR circuit breaker was open --
+    /// another shot at OCR once it's healthy again.
+    public func getFailedFrameIDs(limit: Int) async throws -> [Int64] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        guard limit > 0 else { return [] }
+
+        let sql = """
+            SELECT id FROM frame
+            WHERE processingStatus = 3
+              AND (rewritePurpose IS NULL OR rewritePurpose != 'deletion')
+            ORDER BY id ASC
+            LIMIT ?;
+        """
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        sqlite3_bind_int(stmt, 1, Int32(limit))
+
+        var frameIDs: [Int64] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            frameIDs.append(sqlite3_column_int64(stmt, 0))
+        }
+
+        return frameIDs
+    }
+
     /// Get count of frames processed per minute for the last N minutes
     /// Returns dictionary of [minuteOffset: count] where offset 0 = current minute
     public func getFramesProcessedPerMinute(lastMinutes: Int) async throws -> [Int: Int] {

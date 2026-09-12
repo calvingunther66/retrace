@@ -3775,6 +3775,40 @@ final class DatabaseManagerTests: XCTestCase {
         XCTAssertTrue(crashedFrames.contains(frameID))
     }
 
+    func testGetFailedFrameIDsReturnsFailedFramesOldestFirstExcludingPendingDeletion() async throws {
+        let failedStatus = 3
+        let completedStatus = 2
+
+        let firstFailed = try await insertTestFrame(browserURL: nil).value
+        let secondFailed = try await insertTestFrame(browserURL: nil).value
+        let pendingDeletion = try await insertTestFrame(browserURL: nil).value
+        let completedFrame = try await insertTestFrame(browserURL: nil).value
+
+        try await database.updateFrameProcessingStatus(frameID: firstFailed, status: failedStatus)
+        try await database.updateFrameProcessingStatus(frameID: secondFailed, status: failedStatus)
+        try await database.updateFrameProcessingStatus(frameID: pendingDeletion, status: failedStatus)
+        try await executeRawSQL("UPDATE frame SET rewritePurpose = 'deletion' WHERE id = \(pendingDeletion);")
+        try await database.updateFrameProcessingStatus(frameID: completedFrame, status: completedStatus)
+
+        let failedFrameIDs = try await database.getFailedFrameIDs(limit: 10)
+
+        XCTAssertEqual(failedFrameIDs, [firstFailed, secondFailed])
+    }
+
+    func testGetFailedFrameIDsRespectsLimit() async throws {
+        let failedStatus = 3
+        let firstFailed = try await insertTestFrame(browserURL: nil).value
+        _ = try await insertTestFrame(browserURL: nil).value
+        try await database.updateFrameProcessingStatus(frameID: firstFailed, status: failedStatus)
+
+        let secondFrameID = try await insertTestFrame(browserURL: nil).value
+        try await database.updateFrameProcessingStatus(frameID: secondFrameID, status: failedStatus)
+
+        let limited = try await database.getFailedFrameIDs(limit: 1)
+
+        XCTAssertEqual(limited, [firstFailed])
+    }
+
     // MARK: - Helpers
 
     private func insertTestAppSegment(bundleID: String) async throws -> SegmentID {
