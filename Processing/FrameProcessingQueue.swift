@@ -1083,11 +1083,21 @@ public actor FrameProcessingQueue {
         return policy.pollIntervalNs
     }
 
-    /// Enqueue multiple frames (batch operation)
+    /// Enqueue multiple frames (batch operation).
+    ///
+    /// Inserts each frame without the per-frame drop-oldest trim `enqueue(frameID:priority:)`
+    /// does, then trims once for the whole batch. The trim (`trimQueueToMaxDepthIfNeeded`) is a
+    /// `COUNT(*)` + ordered `DELETE` against `processing_queue`, serialized on the same database
+    /// actor the live capture pipeline and UI use; calling it once per frame during a large batch
+    /// (e.g. orphaned-frame recovery re-enqueuing tens of thousands of rows) pegs that actor and
+    /// starves everything else waiting on it, including starting a new recording. One trim after
+    /// the batch reaches the same end state at a fraction of the DB round trips.
     public func enqueueBatch(frameIDs: [Int64], priority: Int = 0) async throws {
         for frameID in frameIDs {
-            try await enqueue(frameID: frameID, priority: priority)
+            try await databaseManager.enqueueFrameForProcessing(frameID: frameID, priority: priority)
+            currentQueueDepth += 1
         }
+        await trimQueueToMaxDepthIfNeeded()
     }
 
     /// Dequeue the next frame for processing
