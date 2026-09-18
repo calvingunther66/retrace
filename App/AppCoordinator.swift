@@ -978,6 +978,7 @@ public actor AppCoordinator {
 
         do {
             let batchSize = 500
+            let maxQueueDepth = ProcessingQueueConfig.default.maxQueueSize
             var totalEnqueued = 0
             var hasLoggedDiscovery = false
 
@@ -987,7 +988,24 @@ public actor AppCoordinator {
                     return
                 }
 
-                let frameIDs = try await services.database.getPendingFrameIDsNotInQueue(limit: batchSize)
+                // Only enqueue as many frames as the queue actually has room for.
+                // Enqueueing a full batch regardless of capacity used to push the
+                // queue past maxQueueSize, which drop-oldest-trims it right back
+                // out (their processingStatus never changes), so the very same
+                // frames get rediscovered as "pending and not in queue" on the
+                // next iteration - an infinite enqueue/drop cycle that pegs the
+                // CPU and the DB actor. Waiting for headroom instead lets workers
+                // actually drain the queue between batches.
+                let currentDepth = try await queue.getQueueDepth()
+                let availableCapacity = maxQueueDepth - currentDepth
+                guard availableCapacity > 0 else {
+                    try? await Task.sleep(for: .seconds(5), clock: .continuous)
+                    continue
+                }
+
+                let frameIDs = try await services.database.getPendingFrameIDsNotInQueue(
+                    limit: min(batchSize, availableCapacity)
+                )
                 if frameIDs.isEmpty {
                     break
                 }
