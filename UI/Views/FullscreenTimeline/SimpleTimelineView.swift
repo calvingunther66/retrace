@@ -6622,9 +6622,15 @@ struct DeveloperActionsMenu: View {
 
                     do {
                         let process = Process()
-                        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-                        process.arguments = DeveloperActionsMenu.quickTimeOpenScriptLines(path: tempURL.path, timeInSeconds: timeInSeconds)
-                            .flatMap { ["-e", $0] }
+                        let scriptLines = DeveloperActionsMenu.quickTimeOpenScriptLines(path: tempURL.path, timeInSeconds: timeInSeconds)
+                        if let helperURL = AppPaths.appleScriptHelperExecutableURL() {
+                            process.executableURL = helperURL
+                            process.arguments = [scriptLines.joined(separator: "\n")]
+                        } else {
+                            Log.warning("[Dev] Bundled AppleScript helper not found, falling back to /usr/bin/osascript (will show a Dock icon flash)", category: .ui)
+                            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                            process.arguments = scriptLines.flatMap { ["-e", $0] }
+                        }
                         try process.run()
                         process.waitUntilExit()
 

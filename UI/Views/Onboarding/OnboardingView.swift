@@ -4777,8 +4777,14 @@ public struct OnboardingView: View {
     ) async -> AutomationPreflightStatus {
         let startTime = Date()
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", source]
+        if let helperURL = AppPaths.appleScriptHelperExecutableURL() {
+            process.executableURL = helperURL
+            process.arguments = [source]
+        } else {
+            Log.warning("[OnboardingView] Bundled AppleScript helper not found, falling back to /usr/bin/osascript (will show a Dock icon flash)", category: .ui)
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", source]
+        }
         Log.info(
             "[OnboardingView] AppleScript preflight start bundle=\(bundleID), script=\(scriptLabel), mode=\(mode), timeoutSeconds=\(timeoutSeconds)",
             category: .ui

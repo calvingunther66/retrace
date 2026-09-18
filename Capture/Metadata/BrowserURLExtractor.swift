@@ -90,6 +90,11 @@ actor BrowserURLAppleScriptCoordinator {
         var nextAllowedAt: Date?
     }
 
+    private struct BundleDeniedBackoffState: Sendable {
+        var deniedFailures: Int = 0
+        var nextAllowedAt: Date?
+    }
+
     private struct BenchmarkCounters: Sendable {
         var periodStart: Date = Date()
         var attempts: Int = 0
@@ -116,12 +121,15 @@ actor BrowserURLAppleScriptCoordinator {
     private let maxTimeoutBackoffSeconds: TimeInterval
     private let maxDeniedBackoffSeconds: TimeInterval
     private let maxSyntaxBackoffSeconds: TimeInterval
+    private let deniedBundleBaseBackoffSeconds: TimeInterval
+    private let maxDeniedBundleBackoffSeconds: TimeInterval
     private let benchmarkLogIntervalSeconds: TimeInterval
 
     private var permissionStateByBrowser: [String: PermissionState] = [:]
     private var inFlight: [BrowserURLAppleScriptKey: Task<BrowserURLAppleScriptResult, Never>] = [:]
     private var cache: [BrowserURLAppleScriptKey: CacheEntry] = [:]
     private var backoffByKey: [BrowserURLAppleScriptKey: BackoffState] = [:]
+    private var deniedBackoffByBundle: [String: BundleDeniedBackoffState] = [:]
     private var benchmark = BenchmarkCounters()
 
     init(
@@ -134,6 +142,8 @@ actor BrowserURLAppleScriptCoordinator {
         maxTimeoutBackoffSeconds: TimeInterval = 30.0,
         maxDeniedBackoffSeconds: TimeInterval = 120.0,
         maxSyntaxBackoffSeconds: TimeInterval = 300.0,
+        deniedBundleBaseBackoffSeconds: TimeInterval = 60.0,
+        maxDeniedBundleBackoffSeconds: TimeInterval = 1800.0,
         benchmarkLogIntervalSeconds: TimeInterval = 30.0,
         runner: @escaping Runner
     ) {
@@ -146,6 +156,8 @@ actor BrowserURLAppleScriptCoordinator {
         self.maxTimeoutBackoffSeconds = maxTimeoutBackoffSeconds
         self.maxDeniedBackoffSeconds = maxDeniedBackoffSeconds
         self.maxSyntaxBackoffSeconds = maxSyntaxBackoffSeconds
+        self.deniedBundleBaseBackoffSeconds = deniedBundleBaseBackoffSeconds
+        self.maxDeniedBundleBackoffSeconds = maxDeniedBundleBackoffSeconds
         self.benchmarkLogIntervalSeconds = benchmarkLogIntervalSeconds
         self.runner = runner
     }
@@ -192,6 +204,11 @@ actor BrowserURLAppleScriptCoordinator {
             return BrowserURLAppleScriptResult(skippedByCooldown: true)
         }
 
+        if let bundleDeniedUntil = deniedBackoffByBundle[browserBundleID]?.nextAllowedAt, bundleDeniedUntil > now {
+            benchmark.cooldownSkips += 1
+            return BrowserURLAppleScriptResult(skippedByCooldown: true)
+        }
+
         let permissionState = permissionStateByBrowser[browserBundleID] ?? .unknown
         let isBootstrapTimeout = permissionState == .unknown
         let timeoutSeconds = isBootstrapTimeout ? bootstrapTimeoutSeconds : normalTimeoutSeconds
@@ -228,6 +245,7 @@ actor BrowserURLAppleScriptCoordinator {
                 expiresAt: now.addingTimeInterval(effectiveCacheTTL)
             )
             backoffByKey.removeValue(forKey: key)
+            deniedBackoffByBundle[browserBundleID] = nil
             return BrowserURLAppleScriptResult(
                 output: rawOutput,
                 didTimeOut: result.didTimeOut,
@@ -276,6 +294,15 @@ actor BrowserURLAppleScriptCoordinator {
                     deniedBaseBackoffSeconds * pow(2.0, Double(max(0, backoff.deniedFailures - 1)))
                 )
                 backoff.nextAllowedAt = now.addingTimeInterval(delay)
+
+                var bundleBackoff = deniedBackoffByBundle[browserBundleID] ?? BundleDeniedBackoffState()
+                bundleBackoff.deniedFailures += 1
+                let bundleDelay = min(
+                    maxDeniedBundleBackoffSeconds,
+                    deniedBundleBaseBackoffSeconds * pow(2.0, Double(max(0, bundleBackoff.deniedFailures - 1)))
+                )
+                bundleBackoff.nextAllowedAt = now.addingTimeInterval(bundleDelay)
+                deniedBackoffByBundle[browserBundleID] = bundleBackoff
             } else if result.scriptSyntaxError {
                 backoff.syntaxFailures += 1
                 backoff.timeoutFailures = 0
@@ -348,6 +375,10 @@ actor BrowserURLAppleScriptCoordinator {
             entry.expiresAt > now
         }
         backoffByKey = backoffByKey.filter { _, state in
+            guard let nextAllowedAt = state.nextAllowedAt else { return false }
+            return nextAllowedAt > now
+        }
+        deniedBackoffByBundle = deniedBackoffByBundle.filter { _, state in
             guard let nextAllowedAt = state.nextAllowedAt else { return false }
             return nextAllowedAt > now
         }
@@ -1428,8 +1459,14 @@ struct BrowserURLExtractor: Sendable {
         }
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", source]
+        if let helperURL = resolveAppleScriptHelperURL() {
+            process.executableURL = helperURL
+            process.arguments = [source]
+        } else {
+            Log.warning("[AppleScript] [\(browserBundleID)] [\(scriptLabel)] Bundled AppleScript helper not found, falling back to /usr/bin/osascript (will show a Dock icon flash)", category: .capture)
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", source]
+        }
 
         let outputPipe = Pipe()
         let errorPipe = Pipe()
@@ -1532,6 +1569,31 @@ struct BrowserURLExtractor: Sendable {
             completedWithoutTimeout: true,
             elapsedMs: elapsedMs()
         )
+    }
+
+    /// Resolves the bundled `RetraceAppleScriptHelper` used to run AppleScript without spawning
+    /// the bare `/usr/bin/osascript` binary directly (see `Capture/AppleScriptHelper/main.swift`
+    /// for why: osascript has no Info.plist, so LaunchServices/RunningBoard can't tell it should
+    /// be treated as non-interactive, and a transient Dock tile appears for it on every call).
+    /// Falls back to `nil` (callers fall back to plain osascript) if the app bundle is missing the
+    /// helper, so older/incomplete bundles degrade gracefully instead of breaking entirely.
+    private static func resolveAppleScriptHelperURL() -> URL? {
+        let bundledURL = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Library/Helpers/RetraceAppleScriptHelper")
+        if FileManager.default.isExecutableFile(atPath: bundledURL.path) {
+            return bundledURL
+        }
+
+        #if DEBUG
+        let devCandidate = URL(fileURLWithPath: CommandLine.arguments[0])
+            .deletingLastPathComponent()
+            .appendingPathComponent("RetraceAppleScriptHelper")
+        if FileManager.default.isExecutableFile(atPath: devCandidate.path) {
+            return devCandidate
+        }
+        #endif
+
+        return nil
     }
 
     private static func parseAppleScriptFailureCode(from stderr: String) -> Int? {

@@ -4855,8 +4855,22 @@ public actor AppCoordinator {
             let task: Task<String?, Error>
         }
 
+        private struct BundleFailureBackoffState {
+            var consecutiveFailures: Int = 0
+            var nextAllowedAt: Date?
+        }
+
         private var inFlightByKey: [CaptureKey: Task<String?, Error>] = [:]
         private var inFlightByBundle: [String: BundleTaskState] = [:]
+        private var failureBackoffByBundle: [String: BundleFailureBackoffState] = [:]
+
+        private let baseBackoffSeconds: TimeInterval
+        private let maxBackoffSeconds: TimeInterval
+
+        init(baseBackoffSeconds: TimeInterval = 5.0, maxBackoffSeconds: TimeInterval = 120.0) {
+            self.baseBackoffSeconds = baseBackoffSeconds
+            self.maxBackoffSeconds = maxBackoffSeconds
+        }
 
         func capture(
             bundleID: String,
@@ -4870,6 +4884,15 @@ public actor AppCoordinator {
 
             if let existingTask = inFlightByKey[key] {
                 return try await existingTask.value
+            }
+
+            // A capture that just failed for this app (e.g. Automation permission
+            // denied) will fail again immediately on the very next click/frame -
+            // back off instead of spawning a fresh AppleScript subprocess on every
+            // single capture until this cools down.
+            let now = Date()
+            if let nextAllowedAt = failureBackoffByBundle[bundleID]?.nextAllowedAt, nextAllowedAt > now {
+                return nil
             }
 
             // Arc/Safari automation can time out when multiple in-page scripts hit the same
@@ -4896,7 +4919,22 @@ public actor AppCoordinator {
                     inFlightByBundle[bundleID] = nil
                 }
             }
-            return try await task.value
+
+            do {
+                let result = try await task.value
+                failureBackoffByBundle[bundleID] = nil
+                return result
+            } catch {
+                var backoff = failureBackoffByBundle[bundleID] ?? BundleFailureBackoffState()
+                backoff.consecutiveFailures += 1
+                let delay = min(
+                    maxBackoffSeconds,
+                    baseBackoffSeconds * pow(2.0, Double(max(0, backoff.consecutiveFailures - 1)))
+                )
+                backoff.nextAllowedAt = Date().addingTimeInterval(delay)
+                failureBackoffByBundle[bundleID] = backoff
+                throw error
+            }
         }
     }
 
@@ -5457,8 +5495,14 @@ public actor AppCoordinator {
         try await Task.detached(priority: .utility) {
             let startTime = CFAbsoluteTimeGetCurrent()
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            process.arguments = lines.flatMap { ["-e", $0] }
+            if let helperURL = AppPaths.appleScriptHelperExecutableURL() {
+                process.executableURL = helperURL
+                process.arguments = [lines.joined(separator: "\n")]
+            } else {
+                Log.warning("[InPageURL] Bundled AppleScript helper not found, falling back to /usr/bin/osascript (will show a Dock icon flash)", category: .app)
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process.arguments = lines.flatMap { ["-e", $0] }
+            }
 
             let stdout = Pipe()
             let stderr = Pipe()
