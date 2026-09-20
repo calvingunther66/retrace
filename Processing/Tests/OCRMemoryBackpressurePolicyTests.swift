@@ -20,7 +20,18 @@ final class OCRMemoryBackpressurePolicyTests: XCTestCase {
         XCTAssertFalse(policy.shouldPause(footprintBytes: 59, currentlyPaused: true))
     }
 
-    func testDefaultsDisableBackpressureForReferenceDisplaySize() {
+    func testDefaultsEnableBackpressureForReferenceDisplaySize() {
+        // Stable-release-audit finding #29 (2026-09-18): this test previously
+        // asserted `policy.enabled == false` by default and had been failing
+        // since ae82bad. OCRMemoryBackpressurePolicy.current()
+        // (FrameProcessingQueue.swift) defaults `enabled` to `true` whenever
+        // `retrace.debug.ocrMemoryBackpressureEnabled` is unset, and that default
+        // is the intentional side: `guard policy.enabled` (FrameProcessingQueue.swift)
+        // gates the real OOM-protection backpressure ae82bad added, the defaults
+        // key is a "debug" override (nowhere exposed as a Settings opt-in), and
+        // defaulting a memory-safety guard to off would be an odd product choice.
+        // The old assertion was the stale side; corrected here to match the
+        // documented, intentional default.
         let suiteName = "OCRMemoryBackpressurePolicyTests.reference.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
 
@@ -29,7 +40,7 @@ final class OCRMemoryBackpressurePolicyTests: XCTestCase {
             largestDisplayPixelCount: OCRMemoryBackpressurePolicy.referenceDisplayPixelCount
         )
 
-        XCTAssertFalse(policy.enabled)
+        XCTAssertTrue(policy.enabled)
         XCTAssertEqual(policy.pauseThresholdBytes, OCRMemoryBackpressurePolicy.defaultPauseThresholdBytes)
         XCTAssertEqual(policy.resumeThresholdBytes, OCRMemoryBackpressurePolicy.defaultResumeThresholdBytes)
         XCTAssertEqual(policy.pollIntervalNs, 1_000_000_000)

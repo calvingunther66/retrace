@@ -4546,8 +4546,13 @@ public actor DatabaseManager: DatabaseProtocol {
         return Int(sqlite3_column_int(stmt, 0))
     }
 
-    /// Drop-oldest queue relief: delete oldest-enqueued `processing_queue` rows
-    /// so at most `maxDepth` rows remain, oldest evicted first.
+    /// Drop-oldest queue relief: delete `processing_queue` rows so at most `maxDepth`
+    /// rows remain, lowest-priority then oldest-enqueued evicted first.
+    /// Priority-aware to match `dequeueFrameForProcessing`'s own
+    /// `ORDER BY priority DESC, enqueuedAt ASC` precedent: without this, eviction by
+    /// `enqueuedAt` alone can drop newly-enqueued, ordinary-priority live-capture frames
+    /// while sparing an older, lower-priority backlog-recovery batch that was inserted
+    /// more recently, silently losing frames that would otherwise dequeue first.
     /// Removes bookkeeping rows only — frame and OCR data are untouched, and
     /// still-pending frames can be re-enqueued later.
     /// - Returns: Number of queue rows dropped.
@@ -4562,7 +4567,7 @@ public actor DatabaseManager: DatabaseProtocol {
             DELETE FROM processing_queue
             WHERE id IN (
                 SELECT id FROM processing_queue
-                ORDER BY enqueuedAt ASC
+                ORDER BY priority ASC, enqueuedAt ASC
                 LIMIT MAX(0, (SELECT COUNT(*) FROM processing_queue) - ?)
             );
         """
@@ -4692,11 +4697,17 @@ public actor DatabaseManager: DatabaseProtocol {
     }
 
     /// Get up to `limit` frame IDs currently marked permanently failed (processingStatus = 3),
-    /// oldest first, excluding frames pending deletion. Used by FrameProcessingQueue's
-    /// gradual backlog recovery (`topUpFailedFrameBacklogIfEligible`) to give frames that
-    /// exhausted their retries -- most commonly while the OCR circuit breaker was open --
-    /// another shot at OCR once it's healthy again.
-    public func getFailedFrameIDs(limit: Int) async throws -> [Int64] {
+    /// lowest-ID-above-`afterFrameID` first, excluding frames pending deletion. Used by
+    /// FrameProcessingQueue's gradual backlog recovery (`topUpFailedFrameBacklogIfEligible`)
+    /// to give frames that exhausted their retries -- most commonly while the OCR circuit
+    /// breaker was open -- another shot at OCR once it's healthy again.
+    ///
+    /// - Parameter afterFrameID: Only return frames with `id` strictly greater than this.
+    ///   The caller advances this as a rotating cursor across successive calls so a small,
+    ///   fixed set of permanently-broken frames (lowest ID, never fixed by a retry) can't
+    ///   sort first on every call and starve the rest of the backlog from ever getting a
+    ///   turn. Pass 0 (the default) to start from the lowest failed ID.
+    public func getFailedFrameIDs(limit: Int, afterFrameID: Int64 = 0) async throws -> [Int64] {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")
         }
@@ -4706,16 +4717,20 @@ public actor DatabaseManager: DatabaseProtocol {
             SELECT id FROM frame
             WHERE processingStatus = 3
               AND (rewritePurpose IS NULL OR rewritePurpose != 'deletion')
+              AND id > ?
             ORDER BY id ASC
             LIMIT ?;
         """
+
         var stmt: OpaquePointer?
         defer { sqlite3_finalize(stmt) }
 
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
         }
-        sqlite3_bind_int(stmt, 1, Int32(limit))
+
+        sqlite3_bind_int64(stmt, 1, afterFrameID)
+        sqlite3_bind_int(stmt, 2, Int32(limit))
 
         var frameIDs: [Int64] = []
         while sqlite3_step(stmt) == SQLITE_ROW {

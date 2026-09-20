@@ -784,4 +784,92 @@ final class IntegrationTests: XCTestCase {
         let retrieved = try await database.getVideoSegment(id: storedVideoID)
         XCTAssertNotNil(retrieved)
     }
+
+    // ╔═════════════════════════════════════════════════════════════════════════╗
+    // ║           CMS ORPHAN CLEANUP ON MANUAL FRAME DELETE                      ║
+    // ╚═════════════════════════════════════════════════════════════════════════╝
+
+    // ┌─────────────────────────────────────────────────────────────────────────┐
+    // │ Regression coverage for the audit finding that memory_entity/          │
+    // │ cognitive_episode rows (raw PII harvested by the knowledge mesh) had   │
+    // │ no deletion path anywhere. Exercises the real deleteFrame -> FrameQueries│
+    // │ .deleteFrameIDChunk -> CognitiveMemoryQueries.cleanupOrphanedCMSData    │
+    // │ path against a real on-disk SQLite database.                          │
+    // └─────────────────────────────────────────────────────────────────────────┘
+    func testDeleteFrameCleansUpOrphanedMemoryEntityAndCognitiveEpisode() async throws {
+        let timestamp = Date()
+
+        let videoSegment = VideoSegment(
+            id: VideoSegmentID(value: 0),
+            startTime: timestamp,
+            endTime: timestamp.addingTimeInterval(60),
+            frameCount: 1,
+            fileSizeBytes: 1024,
+            relativePath: "cms-orphan-test.mp4",
+            width: 1920,
+            height: 1080,
+            source: .native
+        )
+        let storedVideoID = try await insertVideoSegment(videoSegment)
+
+        let appSegmentID = try await database.insertSegment(
+            bundleID: "com.apple.Terminal",
+            startDate: timestamp,
+            endDate: timestamp.addingTimeInterval(60),
+            windowName: "Terminal",
+            browserUrl: nil,
+            type: 0
+        )
+
+        let storedFrame = try await insertFrame(FrameReference(
+            id: FrameID(value: 0),
+            timestamp: timestamp,
+            segmentID: AppSegmentID(value: appSegmentID),
+            videoID: storedVideoID,
+            frameIndexInSegment: 0,
+            metadata: FrameMetadata(
+                appBundleID: "com.apple.Terminal",
+                appName: "Terminal",
+                windowName: "Terminal",
+                browserURL: nil
+            )
+        ))
+        let frameId = storedFrame.id.value
+
+        // Simulate the knowledge mesh harvesting a PII-bearing entity from this frame
+        let entityId = try await database.upsertMemoryEntity(
+            entityType: "person",
+            normalizedValue: "jane@example.com",
+            displayName: "jane@example.com",
+            timestamp: timestamp
+        )
+        try await database.recordEntityMention(entityId: entityId, frameId: frameId)
+
+        // Simulate the cognitive episode clustering this frame
+        let episodeId = try await database.insertCognitiveEpisode(
+            CognitiveEpisode(
+                startTime: timestamp,
+                endTime: timestamp.addingTimeInterval(60),
+                keyframeIDs: [frameId],
+                createdAt: timestamp
+            )
+        )
+        try await database.linkFrameToEpisode(episodeId: episodeId, frameId: frameId, salienceScore: 1.0, isKeyframe: true)
+
+        // Sanity check: both rows exist before deletion
+        let entityBefore = try await database.findMemoryEntity(normalizedValue: "jane@example.com")
+        XCTAssertNotNil(entityBefore, "Entity should exist before frame deletion")
+        let episodeBefore = try await database.getCognitiveEpisode(id: episodeId)
+        XCTAssertNotNil(episodeBefore, "Episode should exist before frame deletion")
+
+        // Manual/explicit frame deletion (outside time-based retention)
+        try await database.deleteFrame(id: storedFrame.id)
+
+        // The entity's only mention was this frame, and the episode's only
+        // frame link was this frame - both should now be gone, not orphaned forever.
+        let entityAfter = try await database.findMemoryEntity(normalizedValue: "jane@example.com")
+        XCTAssertNil(entityAfter, "Orphaned memory_entity row should be deleted after its last mention is gone")
+        let episodeAfter = try await database.getCognitiveEpisode(id: episodeId)
+        XCTAssertNil(episodeAfter, "Orphaned cognitive_episode row should be deleted after its last frame link is gone")
+    }
 }

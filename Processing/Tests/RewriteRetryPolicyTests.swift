@@ -328,20 +328,26 @@ final class RewriteRetryPolicyTests: XCTestCase {
     }
 
     func testFailedRewriteRetriesOnceThenStopsRetryingAutomatically() async throws {
+        // stable-release-audit finding #29 (2026-09-18): this test originally used a
+        // *redaction* rewrite plan, which requires a Keychain-backed master key
+        // (ReversibleOCRScrambler.currentAppWideSecret() -> MasterKeyManager); with
+        // no key available in this sandbox, processPendingRewrites short-circuited
+        // via `.deferred(.missingMasterKey)` before ever calling
+        // storage.applySegmentRewrite, so the frame never reached status 8. This
+        // test exercises retry/backoff behavior, not redaction semantics, so it is
+        // rewritten here as a *deletion* rewrite plan instead: per
+        // FrameProcessingQueue.processPendingRewrites, `plan.hasRedactionTargets &&
+        // secret == nil` only short-circuits when the plan has redaction targets —
+        // a deletion-only plan (rewritePurpose "deletion", no indexed/redacted
+        // nodes) falls straight through to storage.applySegmentRewrite regardless
+        // of the master key, so this now runs for real without touching
+        // Shared/MasterKeyManager.swift.
         let fixture = try await insertFrameFixture()
-
-        try await insertIndexedNode(
-            frameID: fixture.frameID,
-            segmentID: fixture.segmentID,
-            text: "secret phrase",
-            bounds: CGRect(x: 100, y: 200, width: 300, height: 50),
-            redactedNodeOrders: [0]
-        )
 
         try await database.updateFrameProcessingStatus(
             frameID: fixture.frameID.value,
             status: 5,
-            rewritePurpose: "redaction"
+            rewritePurpose: "deletion"
         )
 
         _ = try? await queue.processPendingRewrites(for: fixture.videoID.value)
@@ -364,6 +370,22 @@ final class RewriteRetryPolicyTests: XCTestCase {
     }
 
     func testDeferredRewriteForActiveVideoRedrainsAfterCurrentRewriteFinishes() async throws {
+        // stable-release-audit finding #22 (2026-09-18): this test hung because it
+        // used a *redaction* rewrite plan, which requires a Keychain-backed master
+        // key; with none available in this sandbox, the FIRST processPendingRewrites
+        // call returned `.deferred(.missingMasterKey)` immediately without ever
+        // calling BlockingRewriteStorage.applySegmentRewrite, so
+        // `waitForFirstRewriteToStart()` below awaited a continuation that never
+        // resumed. The audit's original theory (a deadlock in
+        // schedulePendingRewriteRedrainIfNeeded/activeRewriteVideoIDs) did not hold
+        // up under tracing. Rewritten here as a *deletion* rewrite plan (rewritePurpose
+        // "deletion", no indexed/redacted nodes): per
+        // FrameProcessingQueue.processPendingRewrites, the missing-master-key
+        // short-circuit only fires when `plan.hasRedactionTargets`, so a
+        // deletion-only plan reaches storage.applySegmentRewrite regardless of the
+        // master key. This now runs for real and exercises the redrain path
+        // (schedulePendingRewriteRedrainIfNeeded/activeRewriteVideoIDs) end to end,
+        // without touching Shared/MasterKeyManager.swift.
         let blockingStorage = BlockingRewriteStorage()
         let blockingQueue = FrameProcessingQueue(
             database: database,
@@ -378,7 +400,38 @@ final class RewriteRetryPolicyTests: XCTestCase {
             )
         )
 
-        let fixture = try await insertVideoFixture(frameCount: 2)
+        let fixture = try await insertVideoFixture(frameCount: 3)
+        // Anchor frame with no rewrite purpose: buildVideoRewritePlan treats a
+        // video as a *whole-video* delete (SegmentRewriteOperation.wholeVideoDelete)
+        // when every existing frame row for it is deletion-purposed at plan-build
+        // time, and finalizeVideoRewrite then sweeps up *every* rewritePurpose ==
+        // 'deletion' row for the video rather than just the plan's own targets.
+        // Without this anchor, the first (single-frame) plan below would qualify
+        // as whole-video-delete, and its finalize would then also delete
+        // `secondFrameID` as soon as it appears — before the redrain this test is
+        // exercising ever gets to process it via its own plan/storage call.
+        // Keeping one always-visible frame in the video keeps both deletions as
+        // independent partial rewrites, matching the original redaction-based
+        // version of this test (a redaction-purposed frame counts as "visible"
+        // and never tripped this path).
+        let anchorFrameID = try await insertFrameReference(
+            segmentID: fixture.segmentID,
+            videoID: fixture.videoID,
+            timestamp: fixture.timestamp.addingTimeInterval(-1),
+            frameIndexInSegment: 2
+        )
+        // Newly-inserted frames default to processingStatus 4 ("not yet
+        // readable"), and videoHasFramesAwaitingOCR treats status IN (0, 1, 4) as
+        // OCR-pending, which would make processPendingRewrites defer with
+        // `.pendingOCR` before ever reaching the rewrite logic below. Mark the
+        // anchor `.completed` (already-processed, no rewrite pending) so it only
+        // affects the "is this a whole-video delete" visibility check above.
+        try await database.updateFrameProcessingStatus(
+            frameID: anchorFrameID.value,
+            status: FrameProcessingStatus.completed.rawValue,
+            rewritePurpose: nil
+        )
+
         let firstFrameID = try await insertFrameReference(
             segmentID: fixture.segmentID,
             videoID: fixture.videoID,
@@ -386,17 +439,10 @@ final class RewriteRetryPolicyTests: XCTestCase {
             frameIndexInSegment: 0
         )
 
-        try await insertIndexedNode(
-            frameID: firstFrameID,
-            segmentID: fixture.segmentID,
-            text: "first secret phrase",
-            bounds: CGRect(x: 100, y: 200, width: 300, height: 50),
-            redactedNodeOrders: [0]
-        )
         try await database.updateFrameProcessingStatus(
             frameID: firstFrameID.value,
             status: FrameProcessingStatus.rewritePending.rawValue,
-            rewritePurpose: "redaction"
+            rewritePurpose: "deletion"
         )
 
         let firstRewriteTask = Task {
@@ -410,17 +456,10 @@ final class RewriteRetryPolicyTests: XCTestCase {
             timestamp: fixture.timestamp.addingTimeInterval(1),
             frameIndexInSegment: 1
         )
-        try await insertIndexedNode(
-            frameID: secondFrameID,
-            segmentID: fixture.segmentID,
-            text: "second secret phrase",
-            bounds: CGRect(x: 150, y: 260, width: 320, height: 60),
-            redactedNodeOrders: [0]
-        )
         try await database.updateFrameProcessingStatus(
             frameID: secondFrameID.value,
             status: FrameProcessingStatus.rewritePending.rawValue,
-            rewritePurpose: "redaction"
+            rewritePurpose: "deletion"
         )
 
         let deferredOutcome = try await blockingQueue.processPendingRewrites(for: fixture.videoID.value)
@@ -432,11 +471,16 @@ final class RewriteRetryPolicyTests: XCTestCase {
 
         try await waitForRewriteAttemptCount(2, in: blockingStorage)
 
+        // Unlike redaction, a completed *deletion* rewrite removes the frame row
+        // outright (DatabaseManager.finalizeVideoRewrite calls FrameQueries.delete
+        // for deletion targets rather than marking processingStatus = 7), so a
+        // successful redrain of both frames is verified by their absence here
+        // rather than by a rewriteCompleted status value.
         let statuses = try await database.getFrameProcessingStatuses(
             frameIDs: [firstFrameID.value, secondFrameID.value]
         )
-        XCTAssertEqual(statuses[firstFrameID.value], FrameProcessingStatus.rewriteCompleted.rawValue)
-        XCTAssertEqual(statuses[secondFrameID.value], FrameProcessingStatus.rewriteCompleted.rawValue)
+        XCTAssertNil(statuses[firstFrameID.value])
+        XCTAssertNil(statuses[secondFrameID.value])
     }
 
     private func waitForRewriteAttemptCount<Storage: RewriteAttemptCountingStorage>(

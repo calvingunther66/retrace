@@ -13,6 +13,13 @@ import Shared
 public actor IncrementalSegmentWriter: SegmentWriter {
     public let segmentID: VideoSegmentID
     public private(set) var frameCount: Int = 0
+    /// Physical frame count in the WAL (frames.bin), incremented unconditionally on every
+    /// successful WAL append -- independent of `frameCount`, which only advances after a
+    /// successful encode. A backpressure-coalesced frame (WAL write succeeds, encode throws)
+    /// advances this counter without advancing `frameCount`, so the two can drift apart.
+    /// WAL-relative frame indexing (WALManager.registerFrameID) must key off this counter,
+    /// never off `frameCount`, or OCR can silently resolve to the wrong physical WAL frame.
+    public private(set) var walFrameCount: Int = 0
     public let startTime: Date
     public let relativePath: String
     public private(set) var frameWidth: Int = 0
@@ -77,6 +84,7 @@ public actor IncrementalSegmentWriter: SegmentWriter {
         var session = walSession!
         try await walManager.appendFrame(frame, to: &session)
         walSession = session
+        walFrameCount += 1
 
         // Record write latency for health monitoring
         let walLatencyMs = (CFAbsoluteTimeGetCurrent() - writeStart) * 1000

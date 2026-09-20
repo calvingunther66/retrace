@@ -257,7 +257,8 @@ public enum CognitiveMemoryQueries {
         let sql = """
             INSERT INTO memory_entity (entityType, normalizedValue, displayName, firstSeenAt, lastSeenAt, occurrenceCount)
             VALUES (?, ?, ?, ?, ?, 1)
-            ON CONFLICT(normalizedValue) DO UPDATE SET
+            ON CONFLICT(entityType, normalizedValue) DO UPDATE SET
+                entityType = excluded.entityType,
                 lastSeenAt = MAX(lastSeenAt, excluded.lastSeenAt),
                 occurrenceCount = occurrenceCount + 1,
                 displayName = CASE WHEN LENGTH(excluded.displayName) > LENGTH(displayName) THEN excluded.displayName ELSE displayName END;
@@ -280,8 +281,10 @@ public enum CognitiveMemoryQueries {
             throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
         }
 
-        // Return entity id
-        if let existing = try findEntity(db: db, normalizedValue: normalizedValue) {
+        // Return entity id. Looked up by the same (entityType, normalizedValue) pair the
+        // uniqueness constraint and ON CONFLICT target use, since normalizedValue alone can
+        // now be shared across distinct entityTypes.
+        if let existing = try findEntity(db: db, entityType: entityType, normalizedValue: normalizedValue) {
             return existing.id
         }
         return sqlite3_last_insert_rowid(db)
@@ -302,6 +305,33 @@ public enum CognitiveMemoryQueries {
         }
 
         sqlite3_bind_text(statement, 1, normalizedValue, -1, SQLITE_TRANSIENT)
+
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            return nil
+        }
+
+        return parseEntity(statement: statement!)
+    }
+
+    /// Looks up an entity by the full uniqueness key `(entityType, normalizedValue)`. Used
+    /// internally by `upsertEntity` so the post-upsert id lookup can't cross-match a different
+    /// entityType that happens to share the same normalizedValue.
+    public static func findEntity(db: OpaquePointer, entityType: String, normalizedValue: String) throws -> MemoryEntity? {
+        let sql = """
+            SELECT id, entityType, normalizedValue, displayName, firstSeenAt, lastSeenAt, occurrenceCount
+            FROM memory_entity
+            WHERE entityType = ? AND normalizedValue = ?;
+            """
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+
+        sqlite3_bind_text(statement, 1, entityType, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 2, normalizedValue, -1, SQLITE_TRANSIENT)
 
         guard sqlite3_step(statement) == SQLITE_ROW else {
             return nil
@@ -438,6 +468,12 @@ public enum CognitiveMemoryQueries {
 
     // MARK: - Entity Associations (Knowledge Graph Edges)
 
+    /// Records a symmetric co-occurrence edge as two directional `INSERT`s.
+    ///
+    /// Wrapped in a transaction (matching `SemanticIndexQueries.writeDescription`'s pattern) —
+    /// a mid-sequence failure (WAL busy, disk pressure, cancellation) between the two directional
+    /// inserts would otherwise leave a permanently asymmetric edge in the knowledge graph, silently
+    /// and unrecoverably, since the caller (`SemanticIndexer`) swallows this call with `try?`.
     public static func recordCoOccurrence(
         db: OpaquePointer,
         sourceEntityId: Int64,
@@ -446,6 +482,27 @@ public enum CognitiveMemoryQueries {
     ) throws {
         guard sourceEntityId != targetEntityId else { return }
 
+        try execute(db: db, sql: "BEGIN IMMEDIATE TRANSACTION;", int64Params: [])
+        do {
+            try recordCoOccurrenceUnguarded(
+                db: db,
+                sourceEntityId: sourceEntityId,
+                targetEntityId: targetEntityId,
+                timestampMs: timestampMs
+            )
+            try execute(db: db, sql: "COMMIT;", int64Params: [])
+        } catch {
+            try? execute(db: db, sql: "ROLLBACK;", int64Params: [])
+            throw error
+        }
+    }
+
+    private static func recordCoOccurrenceUnguarded(
+        db: OpaquePointer,
+        sourceEntityId: Int64,
+        targetEntityId: Int64,
+        timestampMs: Int64
+    ) throws {
         // Always record bi-directional edges (symmetric graph)
         let pairs = [(sourceEntityId, targetEntityId), (targetEntityId, sourceEntityId)]
         let sql = """
@@ -565,6 +622,322 @@ public enum CognitiveMemoryQueries {
         return results
     }
 
+    // MARK: - Orphan Cleanup
+
+    /// Deletes frame-linked CMS rows (`episode_frame`, `entity_mention`,
+    /// `keyframe_vector_metadata`) for the given frame IDs. None of these
+    /// tables has an FK to `frame`, so a caller deleting frame rows outside
+    /// time-based retention must clean these up explicitly or the rows
+    /// dangle forever.
+    public static func deleteFrameLinks(db: OpaquePointer, frameIDs: [Int64]) throws {
+        guard !frameIDs.isEmpty else { return }
+        let placeholders = frameIDs.map { _ in "?" }.joined(separator: ", ")
+
+        func execute(table: String) throws {
+            let sql = "DELETE FROM \(table) WHERE frameId IN (\(placeholders));"
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+
+            guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+                throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+            }
+
+            for (index, frameId) in frameIDs.enumerated() {
+                sqlite3_bind_int64(statement, Int32(index + 1), frameId)
+            }
+
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+            }
+        }
+
+        try execute(table: "episode_frame")
+        try execute(table: "entity_mention")
+        try execute(table: "keyframe_vector_metadata")
+    }
+
+    /// Deletes `memory_entity` rows that no longer have any `entity_mention`
+    /// row pointing at them, cascading into `entity_association` (which also
+    /// has no FK to `memory_entity`) so knowledge-graph edges don't outlive
+    /// the nodes they connect. Callers must remove dangling `entity_mention`
+    /// rows first (e.g. via `deleteFrameLinks`) so the zero-mentions check
+    /// here reflects the current frame set.
+    @discardableResult
+    public static func deleteOrphanedEntities(db: OpaquePointer) throws -> Int {
+        let batchSize = DatabaseConfig.retentionDeleteBatchSize
+        var total = 0
+        while true {
+            let orphanIDs = try selectOrphanedEntityIDs(db: db, limit: batchSize)
+            if orphanIDs.isEmpty { break }
+            try deleteEntityAssociations(db: db, entityIDs: orphanIDs)
+            try deleteEntities(db: db, entityIDs: orphanIDs)
+            total += orphanIDs.count
+            if orphanIDs.count < batchSize { break }
+        }
+        return total
+    }
+
+    /// Deletes `cognitive_episode` rows that no longer have any
+    /// `episode_frame` link (every frame it clustered has been deleted).
+    @discardableResult
+    public static func deleteOrphanedEpisodes(db: OpaquePointer) throws -> Int {
+        let batchSize = DatabaseConfig.retentionDeleteBatchSize
+        var total = 0
+        while true {
+            let deleted = try deleteOrphanedEpisodesBatch(db: db, batchSize: batchSize)
+            total += deleted
+            if deleted < batchSize { break }
+        }
+        return total
+    }
+
+    /// Convenience for callers that delete specific frame rows directly
+    /// (outside time-based retention): removes this frame batch's CMS links,
+    /// then sweeps only the entities/episodes those specific links could
+    /// have orphaned.
+    ///
+    /// Deliberately scoped to `deletedFrameIDs` rather than delegating to the
+    /// full-table `deleteOrphanedEntities(db:)`/`deleteOrphanedEpisodes(db:)`
+    /// sweeps: this is called once per retention delete chunk (every 500
+    /// frames) and once per manual/explicit single-frame delete from the UI
+    /// (`FrameQueries.delete` → `deleteFrameIDChunk`), so an unscoped full
+    /// `memory_entity`/`cognitive_episode` scan here would turn a single
+    /// timeline delete into a synchronous whole-database GC pass, and would
+    /// repeat that full scan on every chunk of a large retention run. The
+    /// unscoped sweeps remain public and unchanged for `RetentionManager`'s
+    /// Step 5, where a periodic global pass is the intended behavior.
+    @discardableResult
+    public static func cleanupOrphanedCMSData(db: OpaquePointer, deletedFrameIDs: [Int64]) throws -> Int {
+        guard !deletedFrameIDs.isEmpty else { return 0 }
+
+        // Must read which entities/episodes these frames referenced BEFORE
+        // deleteFrameLinks removes those links below.
+        let candidateEntityIDs = try selectEntityIDsMentionedInFrames(db: db, frameIDs: deletedFrameIDs)
+        let candidateEpisodeIDs = try selectEpisodeIDsLinkedToFrames(db: db, frameIDs: deletedFrameIDs)
+
+        try deleteFrameLinks(db: db, frameIDs: deletedFrameIDs)
+
+        var total = 0
+        if !candidateEntityIDs.isEmpty {
+            total += try deleteOrphanedEntities(db: db, candidateEntityIDs: candidateEntityIDs)
+        }
+        if !candidateEpisodeIDs.isEmpty {
+            total += try deleteOrphanedEpisodes(db: db, candidateEpisodeIDs: candidateEpisodeIDs)
+        }
+        return total
+    }
+
+    /// Distinct `entityId`s mentioned in any of `frameIDs`, per `entity_mention`.
+    private static func selectEntityIDsMentionedInFrames(db: OpaquePointer, frameIDs: [Int64]) throws -> [Int64] {
+        guard !frameIDs.isEmpty else { return [] }
+        let placeholders = frameIDs.map { _ in "?" }.joined(separator: ", ")
+        let sql = "SELECT DISTINCT entityId FROM entity_mention WHERE frameId IN (\(placeholders));"
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        for (index, frameId) in frameIDs.enumerated() {
+            sqlite3_bind_int64(statement, Int32(index + 1), frameId)
+        }
+
+        var ids: [Int64] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            ids.append(sqlite3_column_int64(statement, 0))
+        }
+        return ids
+    }
+
+    /// Distinct `episodeId`s linked to any of `frameIDs`, per `episode_frame`.
+    private static func selectEpisodeIDsLinkedToFrames(db: OpaquePointer, frameIDs: [Int64]) throws -> [Int64] {
+        guard !frameIDs.isEmpty else { return [] }
+        let placeholders = frameIDs.map { _ in "?" }.joined(separator: ", ")
+        let sql = "SELECT DISTINCT episodeId FROM episode_frame WHERE frameId IN (\(placeholders));"
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        for (index, frameId) in frameIDs.enumerated() {
+            sqlite3_bind_int64(statement, Int32(index + 1), frameId)
+        }
+
+        var ids: [Int64] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            ids.append(sqlite3_column_int64(statement, 0))
+        }
+        return ids
+    }
+
+    /// Deletes only those of `candidateEntityIDs` that no longer have any
+    /// `entity_mention` row pointing at them, cascading into
+    /// `entity_association` first. Used by `cleanupOrphanedCMSData` to scope
+    /// the zero-mentions check to entities a just-deleted frame batch could
+    /// plausibly have orphaned, instead of re-scanning the whole table.
+    @discardableResult
+    private static func deleteOrphanedEntities(db: OpaquePointer, candidateEntityIDs: [Int64]) throws -> Int {
+        guard !candidateEntityIDs.isEmpty else { return 0 }
+        let placeholders = candidateEntityIDs.map { _ in "?" }.joined(separator: ", ")
+        let sql = """
+            SELECT id FROM memory_entity
+            WHERE id IN (\(placeholders))
+              AND id NOT IN (SELECT DISTINCT entityId FROM entity_mention);
+            """
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        for (index, id) in candidateEntityIDs.enumerated() {
+            sqlite3_bind_int64(statement, Int32(index + 1), id)
+        }
+
+        var orphanIDs: [Int64] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            orphanIDs.append(sqlite3_column_int64(statement, 0))
+        }
+        guard !orphanIDs.isEmpty else { return 0 }
+
+        try deleteEntityAssociations(db: db, entityIDs: orphanIDs)
+        try deleteEntities(db: db, entityIDs: orphanIDs)
+        return orphanIDs.count
+    }
+
+    /// Deletes only those of `candidateEpisodeIDs` that no longer have any
+    /// `episode_frame` link. Scoped counterpart to `deleteOrphanedEpisodes(db:)`
+    /// for the same reason as `deleteOrphanedEntities(db:candidateEntityIDs:)` above.
+    @discardableResult
+    private static func deleteOrphanedEpisodes(db: OpaquePointer, candidateEpisodeIDs: [Int64]) throws -> Int {
+        guard !candidateEpisodeIDs.isEmpty else { return 0 }
+        let placeholders = candidateEpisodeIDs.map { _ in "?" }.joined(separator: ", ")
+        let sql = """
+            DELETE FROM cognitive_episode
+            WHERE id IN (\(placeholders))
+              AND id NOT IN (SELECT DISTINCT episodeId FROM episode_frame);
+            """
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        for (index, id) in candidateEpisodeIDs.enumerated() {
+            sqlite3_bind_int64(statement, Int32(index + 1), id)
+        }
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        return Int(sqlite3_changes(db))
+    }
+
+    private static func selectOrphanedEntityIDs(db: OpaquePointer, limit: Int) throws -> [Int64] {
+        let sql = """
+            SELECT id FROM memory_entity
+            WHERE id NOT IN (SELECT DISTINCT entityId FROM entity_mention)
+            LIMIT ?;
+            """
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+
+        sqlite3_bind_int(statement, 1, Int32(limit))
+
+        var ids: [Int64] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            ids.append(sqlite3_column_int64(statement, 0))
+        }
+        return ids
+    }
+
+    /// Deletes `entity_association` rows referencing any of `entityIDs`, as
+    /// either endpoint. Two single-column `IN` statements instead of one
+    /// OR'd statement so the bound-parameter count per statement stays at
+    /// `entityIDs.count` rather than doubling (SQLite's default bound
+    /// variable limit is 999).
+    private static func deleteEntityAssociations(db: OpaquePointer, entityIDs: [Int64]) throws {
+        guard !entityIDs.isEmpty else { return }
+        let placeholders = entityIDs.map { _ in "?" }.joined(separator: ", ")
+
+        func execute(column: String) throws {
+            let sql = "DELETE FROM entity_association WHERE \(column) IN (\(placeholders));"
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+
+            guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+                throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+            }
+
+            for (index, id) in entityIDs.enumerated() {
+                sqlite3_bind_int64(statement, Int32(index + 1), id)
+            }
+
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+            }
+        }
+
+        try execute(column: "sourceEntityId")
+        try execute(column: "targetEntityId")
+    }
+
+    private static func deleteEntities(db: OpaquePointer, entityIDs: [Int64]) throws {
+        guard !entityIDs.isEmpty else { return }
+        let placeholders = entityIDs.map { _ in "?" }.joined(separator: ", ")
+        let sql = "DELETE FROM memory_entity WHERE id IN (\(placeholders));"
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+
+        for (index, id) in entityIDs.enumerated() {
+            sqlite3_bind_int64(statement, Int32(index + 1), id)
+        }
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+    }
+
+    private static func deleteOrphanedEpisodesBatch(db: OpaquePointer, batchSize: Int) throws -> Int {
+        let sql = """
+            DELETE FROM cognitive_episode WHERE id IN (
+                SELECT id FROM cognitive_episode
+                WHERE id NOT IN (SELECT DISTINCT episodeId FROM episode_frame)
+                LIMIT ?
+            );
+            """
+
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+
+        sqlite3_bind_int(statement, 1, Int32(batchSize))
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+
+        return Int(sqlite3_changes(db))
+    }
+
     // MARK: - Parsers & Helpers
 
     private static func parseEpisode(statement: OpaquePointer) -> CognitiveEpisode {
@@ -632,5 +1005,22 @@ public enum CognitiveMemoryQueries {
     private static func getTextOrEmpty(_ statement: OpaquePointer, _ index: Int32) -> String {
         guard let text = sqlite3_column_text(statement, index) else { return "" }
         return String(cString: text)
+    }
+
+    /// Executes a statement with no result rows (transaction control, or any statement whose
+    /// only parameters are Int64), matching `SemanticIndexQueries`'s helper of the same name.
+    private static func execute(db: OpaquePointer, sql: String, int64Params: [Int64]) throws {
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        for (offset, value) in int64Params.enumerated() {
+            sqlite3_bind_int64(statement, Int32(1 + offset), value)
+        }
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
     }
 }

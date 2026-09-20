@@ -128,13 +128,23 @@ public actor SearchManager: SearchProtocol {
             )
         }
 
-        // Execute FTS search (local OCR text — the primary, higher-fidelity index)
-        let ftsMatches = try await ftsEngine.search(
-            query: searchableColumnsFTSQuery,
-            filters: filters,
-            limit: query.limit,
-            offset: query.offset
-        )
+        // Execute FTS search (local OCR text — the primary, higher-fidelity index).
+        // Sanitization in QueryTokenizer.sanitizeFTSTerm should strip all FTS5-significant
+        // characters before a query reaches here, but this defensive fallback (mirroring the
+        // semantic-index call below) ensures any edge case that slips through produces empty
+        // results instead of crashing search outright.
+        var ftsMatches: [FTSMatch] = []
+        do {
+            ftsMatches = try await ftsEngine.search(
+                query: searchableColumnsFTSQuery,
+                filters: filters,
+                limit: query.limit,
+                offset: query.offset
+            )
+        } catch {
+            Log.warning("[SearchManager] OCR FTS search failed for query '\(searchableColumnsFTSQuery)', returning no OCR matches: \(error.localizedDescription)", category: .search)
+            ftsMatches = []
+        }
 
         // Also search the AI-generated visual-description index — but only on the first page.
         // OCR and semantic are two independent FTS indexes each paginated by their own
@@ -261,8 +271,13 @@ public actor SearchManager: SearchProtocol {
         }
 
         // Use prefix search to find matching terms
-        // Search for "prefix*" to get documents containing words starting with prefix
-        let prefixQuery = scopeToSearchableColumns("\(prefix)*")
+        // Search for "prefix*" to get documents containing words starting with prefix.
+        // Sanitize first: an unescaped literal paren/quote/etc. in `prefix` (e.g. typed while
+        // autocompleting `foo(bar`) would otherwise flow straight into the text:()/otherText:()
+        // wrap below and produce a malformed FTS5 MATCH expression — the same root cause as
+        // finding #19, just for the suggestions path rather than the main search path.
+        let sanitizedPrefix = QueryTokenizer.sanitizeFTSTerm(prefix)
+        let prefixQuery = scopeToSearchableColumns("\(sanitizedPrefix)*")
 
         do {
             let results = try await ftsEngine.search(

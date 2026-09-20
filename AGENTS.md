@@ -4,7 +4,7 @@
 
 Retrace is a local-first screen recording and search application for macOS, inspired by Rewind AI. It captures screens, extracts text via OCR, and makes everything searchable—all locally on-device.
 
-**Status**: Core screen capture (CGWindowListCapture), OCR (Vision), full-text search (FTS5), HEVC encoding, and Rewind import are working. Audio transcription and vector search are planned for future releases.
+**Status**: Core screen capture (CGWindowListCapture), OCR (Vision), full-text search (FTS5), dense vector/semantic search and the Cognitive Memory System (`Search/VectorSearch/`, `Search/EntityMesh/`, `Search/Episodic/`, `Search/Reasoning/`), HEVC encoding, and Rewind import are working. Audio transcription is planned for a future release.
 
 ---
 
@@ -220,8 +220,12 @@ retrace/
 │       ├── DatabaseProtocol.swift
 │       ├── StorageProtocol.swift
 │       ├── CaptureProtocol.swift
+│       ├── AudioCaptureProtocol.swift
 │       ├── ProcessingProtocol.swift
 │       ├── SearchProtocol.swift
+│       ├── VectorSearchProtocol.swift # Legacy EmbeddingProtocol/VectorStoreProtocol (pre-CMS, unused)
+│       ├── CognitiveMemoryProtocols.swift # CMS: entity mesh, episodic sessionizer, vector engine, reasoner
+│       ├── TranscriptionProtocol.swift
 │       └── MigrationProtocol.swift
 │
 ├── Database/                    # SQLite + FTS5 storage
@@ -232,8 +236,8 @@ retrace/
 │   ├── FTSManager.swift         # Full-text search management
 │   ├── IDMappingService.swift   # ID mapping between sources
 │   ├── Schema.swift             # Current schema definition
-│   ├── Migrations/              # Schema migration scripts
-│   ├── Queries/                 # Query implementations
+│   ├── Migrations/              # Schema migration scripts (incl. V21_CognitiveMemorySystem.swift)
+│   ├── Queries/                 # Query implementations (incl. CognitiveMemoryQueries.swift)
 │   └── Tests/
 │
 ├── Storage/                     # File I/O, HEVC encoding
@@ -253,6 +257,7 @@ retrace/
 │   ├── ScreenCapture/           # Screen capture implementation
 │   ├── Deduplication/           # Perceptual hash deduplication
 │   ├── Metadata/                # AppInfoProvider, BrowserURLExtractor
+│   ├── AppleScriptHelper/       # Bundled non-interactive helper executable for AppleScript-based browser URL extraction
 │   └── Tests/
 │
 ├── Processing/                  # OCR and text extraction
@@ -260,18 +265,23 @@ retrace/
 │   ├── ProcessingManager.swift
 │   ├── FrameProcessingQueue.swift # Async frame processing queue
 │   ├── URLExtractor.swift       # URL extraction from OCR text
+│   ├── SemanticIndexer.swift    # OpenRouter-backed CMS semantic indexing actor
 │   ├── OCR/                     # Vision framework OCR
 │   ├── Accessibility/           # Accessibility API integration
 │   ├── TextMerger/              # Text merging utilities
 │   └── Tests/
 │
-├── Search/                      # Full-text search
+├── Search/                      # Full-text search + Cognitive Memory System (CMS)
 │   ├── AGENTS.md
 │   ├── SearchManager.swift
 │   ├── IngestionManager.swift   # Search index ingestion
 │   ├── QueryParser/             # Query parsing (app:, date:, -exclude)
 │   ├── Ranking/                 # Result ranking implementation
-│   ├── VectorSearchTODO/        # Planned for Release 2 (excluded from build)
+│   ├── VectorSearch/            # AcceleratedVectorEngine: Accelerate BLAS + NaturalLanguage embeddings
+│   ├── EntityMesh/              # EntityMeshManager: knowledge graph over extracted entities
+│   ├── Episodic/                # CognitiveSessionizer: episodic clustering of frames
+│   ├── Reasoning/               # CognitiveReasoner: multi-hop reasoning over mesh + episodes
+│   ├── OpenRouter/              # OpenRouter-backed semantic indexing pipeline
 │   └── Tests/
 │
 ├── Migration/                   # Import from other apps
@@ -339,7 +349,7 @@ retrace/
 | **STORAGE**    | `Storage/`    | `Storage/AGENTS.md`    | File I/O, HEVC video encoding (working, not optimized), encryption |
 | **CAPTURE**    | `Capture/`    | `Capture/AGENTS.md`    | CGWindowListCapture API, frame deduplication, metadata extraction  |
 | **PROCESSING** | `Processing/` | `Processing/AGENTS.md` | Vision OCR, Accessibility API (no audio transcription yet)         |
-| **SEARCH**     | `Search/`     | `Search/AGENTS.md`     | Query parsing, FTS5 queries, result ranking (no vector search yet) |
+| **SEARCH**     | `Search/`     | `Search/AGENTS.md`     | Query parsing, FTS5 queries, result ranking, Cognitive Memory System (dense vector search, entity mesh, episodic clustering, multi-hop reasoning) |
 | **MIGRATION**  | `Migration/`  | `Migration/AGENTS.md`  | Import from Rewind AI (Rewind only, others planned)                |
 | **APP**        | `App/`        | —                      | Coordinator, DI container, data adapter, lifecycle management      |
 | **UI**         | `UI/`         | `UI/AGENTS.md`         | SwiftUI interface (timeline, dashboard, settings, search)          |
@@ -490,7 +500,7 @@ frame (1) ──< (1) doc_segment >── (1) searchRanking_content
 | Database            | SQLite + FTS5           | Full-text search built-in              |
 | Encryption          | CryptoKit (AES-256-GCM) | Optional on-device encryption          |
 | Audio Transcription | whisper.cpp             | Planned (bundled but disabled)         |
-| Vector Search       | llama.cpp               | Planned (prepared but not active)      |
+| Vector Search       | Accelerate (BLAS) + NaturalLanguage | Implemented — `AcceleratedVectorEngine` (Cognitive Memory System) |
 
 ---
 

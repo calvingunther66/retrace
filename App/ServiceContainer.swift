@@ -124,6 +124,7 @@ public actor ServiceContainer {
         // Cognitive Memory-enabled search manager (FTS5 + Dense Vector + Knowledge Mesh)
         let vectorEngine = AcceleratedVectorEngine(database: database)
         let entityMesh = EntityMeshManager(database: database)
+        let cognitiveSessionizer = CognitiveSessionizer(database: database)
         self.search = SearchManager(
             database: database,
             ftsEngine: ftsEngine,
@@ -151,7 +152,10 @@ public actor ServiceContainer {
         // AI visual semantic indexer (opt-in; enabled state read from Settings at loop start)
         self.semanticIndexer = SemanticIndexer(
             database: database,
-            storage: storage
+            storage: storage,
+            entityMesh: entityMesh,
+            cognitiveSessionizer: cognitiveSessionizer,
+            vectorEngine: vectorEngine
         )
 
         Log.info("ServiceContainer created", category: .app)
@@ -214,6 +218,9 @@ public actor ServiceContainer {
             database: database,
             ftsEngine: ftsEngine
         )
+        let vectorEngine = AcceleratedVectorEngine(database: database)
+        let entityMesh = EntityMeshManager(database: database)
+        let cognitiveSessionizer = CognitiveSessionizer(database: database)
 
         self.migration = MigrationManager(
             database: database,
@@ -234,7 +241,10 @@ public actor ServiceContainer {
         // AI visual semantic indexer (opt-in; enabled state read from Settings at loop start)
         self.semanticIndexer = SemanticIndexer(
             database: database,
-            storage: storage
+            storage: storage,
+            entityMesh: entityMesh,
+            cognitiveSessionizer: cognitiveSessionizer,
+            vectorEngine: vectorEngine
         )
 
         Log.info("ServiceContainer created (in-memory mode)", category: .app)

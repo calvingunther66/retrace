@@ -15,6 +15,13 @@ struct BrowserURLAppleScriptResult: Sendable {
     let scriptSyntaxError: Bool
     let failureCode: Int?
     let elapsedMs: Double?
+    /// True only for a genuinely unclassified process-level failure (a non-zero exit, or a
+    /// failure to launch the subprocess at all, that isn't already a timeout/permission-denied/
+    /// syntax-error). Distinguishes that case from a *successful* run (exit code 0) that simply
+    /// produced no usable output — e.g. no browser window/tab currently has a URL to report, or
+    /// the output was a rejected diagnostic token — which is a normal, frequent outcome and must
+    /// not receive the same cooldown treatment as an actual process failure.
+    let unclassifiedProcessFailure: Bool
 
     init(
         output: String? = nil,
@@ -25,7 +32,8 @@ struct BrowserURLAppleScriptResult: Sendable {
         returnedFromCache: Bool = false,
         scriptSyntaxError: Bool = false,
         failureCode: Int? = nil,
-        elapsedMs: Double? = nil
+        elapsedMs: Double? = nil,
+        unclassifiedProcessFailure: Bool = false
     ) {
         self.output = output
         self.didTimeOut = didTimeOut
@@ -36,6 +44,7 @@ struct BrowserURLAppleScriptResult: Sendable {
         self.scriptSyntaxError = scriptSyntaxError
         self.failureCode = failureCode
         self.elapsedMs = elapsedMs
+        self.unclassifiedProcessFailure = unclassifiedProcessFailure
     }
 }
 
@@ -143,7 +152,7 @@ actor BrowserURLAppleScriptCoordinator {
         maxDeniedBackoffSeconds: TimeInterval = 120.0,
         maxSyntaxBackoffSeconds: TimeInterval = 300.0,
         deniedBundleBaseBackoffSeconds: TimeInterval = 60.0,
-        maxDeniedBundleBackoffSeconds: TimeInterval = 1800.0,
+        maxDeniedBundleBackoffSeconds: TimeInterval = 180.0,
         benchmarkLogIntervalSeconds: TimeInterval = 30.0,
         runner: @escaping Runner
     ) {
@@ -273,46 +282,64 @@ actor BrowserURLAppleScriptCoordinator {
             benchmark.emptyOutputs += 1
         }
 
-        if result.didTimeOut || result.permissionDenied || result.scriptSyntaxError {
-            var backoff = backoffByKey[key] ?? BackoffState()
+        var backoff = backoffByKey[key] ?? BackoffState()
 
-            if result.didTimeOut {
-                backoff.timeoutFailures += 1
-                backoff.deniedFailures = 0
-                backoff.syntaxFailures = 0
-                let delay = min(
-                    maxTimeoutBackoffSeconds,
-                    timeoutBaseBackoffSeconds * pow(2.0, Double(max(0, backoff.timeoutFailures - 1)))
-                )
-                backoff.nextAllowedAt = now.addingTimeInterval(delay)
-            } else if result.permissionDenied {
-                backoff.deniedFailures += 1
-                backoff.timeoutFailures = 0
-                backoff.syntaxFailures = 0
-                let delay = min(
-                    maxDeniedBackoffSeconds,
-                    deniedBaseBackoffSeconds * pow(2.0, Double(max(0, backoff.deniedFailures - 1)))
-                )
-                backoff.nextAllowedAt = now.addingTimeInterval(delay)
+        if result.didTimeOut {
+            backoff.timeoutFailures += 1
+            backoff.deniedFailures = 0
+            backoff.syntaxFailures = 0
+            let delay = min(
+                maxTimeoutBackoffSeconds,
+                timeoutBaseBackoffSeconds * pow(2.0, Double(max(0, backoff.timeoutFailures - 1)))
+            )
+            backoff.nextAllowedAt = now.addingTimeInterval(delay)
+            backoffByKey[key] = backoff
+        } else if result.permissionDenied {
+            backoff.deniedFailures += 1
+            backoff.timeoutFailures = 0
+            backoff.syntaxFailures = 0
+            let delay = min(
+                maxDeniedBackoffSeconds,
+                deniedBaseBackoffSeconds * pow(2.0, Double(max(0, backoff.deniedFailures - 1)))
+            )
+            backoff.nextAllowedAt = now.addingTimeInterval(delay)
 
-                var bundleBackoff = deniedBackoffByBundle[browserBundleID] ?? BundleDeniedBackoffState()
-                bundleBackoff.deniedFailures += 1
-                let bundleDelay = min(
-                    maxDeniedBundleBackoffSeconds,
-                    deniedBundleBaseBackoffSeconds * pow(2.0, Double(max(0, bundleBackoff.deniedFailures - 1)))
-                )
-                bundleBackoff.nextAllowedAt = now.addingTimeInterval(bundleDelay)
-                deniedBackoffByBundle[browserBundleID] = bundleBackoff
-            } else if result.scriptSyntaxError {
-                backoff.syntaxFailures += 1
-                backoff.timeoutFailures = 0
-                backoff.deniedFailures = 0
-                let delay = min(
-                    maxSyntaxBackoffSeconds,
-                    syntaxBaseBackoffSeconds * pow(2.0, Double(max(0, backoff.syntaxFailures - 1)))
-                )
-                backoff.nextAllowedAt = now.addingTimeInterval(delay)
-            }
+            var bundleBackoff = deniedBackoffByBundle[browserBundleID] ?? BundleDeniedBackoffState()
+            bundleBackoff.deniedFailures += 1
+            let bundleDelay = min(
+                maxDeniedBundleBackoffSeconds,
+                deniedBundleBaseBackoffSeconds * pow(2.0, Double(max(0, bundleBackoff.deniedFailures - 1)))
+            )
+            bundleBackoff.nextAllowedAt = now.addingTimeInterval(bundleDelay)
+            deniedBackoffByBundle[browserBundleID] = bundleBackoff
+            backoffByKey[key] = backoff
+        } else if result.scriptSyntaxError {
+            backoff.syntaxFailures += 1
+            backoff.timeoutFailures = 0
+            backoff.deniedFailures = 0
+            let delay = min(
+                maxSyntaxBackoffSeconds,
+                syntaxBaseBackoffSeconds * pow(2.0, Double(max(0, backoff.syntaxFailures - 1)))
+            )
+            backoff.nextAllowedAt = now.addingTimeInterval(delay)
+            backoffByKey[key] = backoff
+        } else if result.unclassifiedProcessFailure {
+            // Genuinely unclassified process failure (e.g. AppleScript runtime errors like
+            // -600 "not running" or -1728 "can't get object" from a browser quitting/closing
+            // mid-script, or a failure to even launch the subprocess). Reuse the syntax-error
+            // bucket so these still get a cooldown instead of spawning a fresh subprocess on
+            // every capture tick. Deliberately does NOT cover a successful run (exit code 0)
+            // that simply had no usable output (no URL available, or a rejected diagnostic
+            // token) — that's a normal, frequent outcome and must stay backoff-free, matching
+            // the pre-existing `emptyOutputs` behavior.
+            backoff.syntaxFailures += 1
+            backoff.timeoutFailures = 0
+            backoff.deniedFailures = 0
+            let delay = min(
+                maxSyntaxBackoffSeconds,
+                syntaxBaseBackoffSeconds * pow(2.0, Double(max(0, backoff.syntaxFailures - 1)))
+            )
+            backoff.nextAllowedAt = now.addingTimeInterval(delay)
             backoffByKey[key] = backoff
         }
 
@@ -1459,7 +1486,7 @@ struct BrowserURLExtractor: Sendable {
         }
 
         let process = Process()
-        if let helperURL = resolveAppleScriptHelperURL() {
+        if let helperURL = AppPaths.appleScriptHelperExecutableURL() {
             process.executableURL = helperURL
             process.arguments = [source]
         } else {
@@ -1477,7 +1504,7 @@ struct BrowserURLExtractor: Sendable {
             try process.run()
         } catch {
             Log.error("[AppleScript] [\(browserBundleID)] [\(scriptLabel)] Failed to launch osascript subprocess", category: .capture, error: error)
-            return BrowserURLAppleScriptResult(elapsedMs: elapsedMs())
+            return BrowserURLAppleScriptResult(elapsedMs: elapsedMs(), unclassifiedProcessFailure: true)
         }
 
         let didTimeout = await waitForProcessExitOrTimeout(
@@ -1505,7 +1532,11 @@ struct BrowserURLExtractor: Sendable {
             if !stderr.isEmpty {
                 Log.error("[AppleScript] [\(browserBundleID)] [\(scriptLabel)] osascript stderr: \(stderr)", category: .capture)
             }
-            return BrowserURLAppleScriptResult(completedWithoutTimeout: true, elapsedMs: elapsedMs())
+            return BrowserURLAppleScriptResult(
+                completedWithoutTimeout: true,
+                elapsedMs: elapsedMs(),
+                unclassifiedProcessFailure: true
+            )
         }
 
         guard process.terminationStatus == 0 else {
@@ -1536,7 +1567,8 @@ struct BrowserURLExtractor: Sendable {
                 completedWithoutTimeout: true,
                 scriptSyntaxError: scriptSyntaxError,
                 failureCode: failureCode,
-                elapsedMs: elapsedMs()
+                elapsedMs: elapsedMs(),
+                unclassifiedProcessFailure: !permissionDenied && !scriptSyntaxError
             )
         }
 
@@ -1569,31 +1601,6 @@ struct BrowserURLExtractor: Sendable {
             completedWithoutTimeout: true,
             elapsedMs: elapsedMs()
         )
-    }
-
-    /// Resolves the bundled `RetraceAppleScriptHelper` used to run AppleScript without spawning
-    /// the bare `/usr/bin/osascript` binary directly (see `Capture/AppleScriptHelper/main.swift`
-    /// for why: osascript has no Info.plist, so LaunchServices/RunningBoard can't tell it should
-    /// be treated as non-interactive, and a transient Dock tile appears for it on every call).
-    /// Falls back to `nil` (callers fall back to plain osascript) if the app bundle is missing the
-    /// helper, so older/incomplete bundles degrade gracefully instead of breaking entirely.
-    private static func resolveAppleScriptHelperURL() -> URL? {
-        let bundledURL = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/Library/Helpers/RetraceAppleScriptHelper")
-        if FileManager.default.isExecutableFile(atPath: bundledURL.path) {
-            return bundledURL
-        }
-
-        #if DEBUG
-        let devCandidate = URL(fileURLWithPath: CommandLine.arguments[0])
-            .deletingLastPathComponent()
-            .appendingPathComponent("RetraceAppleScriptHelper")
-        if FileManager.default.isExecutableFile(atPath: devCandidate.path) {
-            return devCandidate
-        }
-        #endif
-
-        return nil
     }
 
     private static func parseAppleScriptFailureCode(from stderr: String) -> Int? {

@@ -279,6 +279,14 @@ public actor WALManager {
 
     /// Persist a stable mapping from database frameID -> WAL frame offset.
     /// This lets OCR load the exact raw payload by frameID, avoiding index drift.
+    ///
+    /// - Parameter frameIndex: The frame's *physical* index within this session's `frames.bin`
+    ///   (i.e. the number of `appendFrame` calls that had completed for this session when this
+    ///   frame was written, minus one) -- NOT the encoder/video frame index. `appendFrame` writes
+    ///   to the WAL unconditionally before encoding, so a backpressure-coalesced frame (WAL write
+    ///   succeeds, encode throws) still advances the WAL's physical index while the encoder's
+    ///   frame count does not. Passing the encoder-side index here resolves `frameID` to the
+    ///   wrong physical frame for every frame appended after such a coalesce, with no error.
     public func registerFrameID(videoID: VideoSegmentID, frameID: Int64, frameIndex: Int) async throws {
         guard frameIndex >= 0 else {
             throw StorageError.fileWriteFailed(

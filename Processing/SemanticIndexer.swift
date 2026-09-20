@@ -23,9 +23,9 @@ public actor SemanticIndexer {
     private let database: DatabaseManager
     private let storage: StorageManager
     private let openRouterClient: OpenRouterClient
-    private let entityMesh: EntityMeshManager
-    private let cognitiveSessionizer: CognitiveSessionizer
-    private let vectorEngine: AcceleratedVectorEngine
+    private let entityMesh: any EntityMeshProtocol
+    private let cognitiveSessionizer: any CognitiveSessionizerProtocol
+    private let vectorEngine: any AcceleratedVectorEngineProtocol
     // Deliberately NOT `.allowAll` by default — see `hasReceivedPolicySync` below. The actual
     // policy value here doesn't matter until that flag is true, since `processNextBatch`
     // refuses to dispatch anything before then.
@@ -69,17 +69,17 @@ public actor SemanticIndexer {
     public init(
         database: DatabaseManager,
         storage: StorageManager,
-        openRouterClient: OpenRouterClient = OpenRouterClient(),
-        entityMesh: EntityMeshManager? = nil,
-        cognitiveSessionizer: CognitiveSessionizer? = nil,
-        vectorEngine: AcceleratedVectorEngine? = nil
+        entityMesh: any EntityMeshProtocol,
+        cognitiveSessionizer: any CognitiveSessionizerProtocol,
+        vectorEngine: any AcceleratedVectorEngineProtocol,
+        openRouterClient: OpenRouterClient = OpenRouterClient()
     ) {
         self.database = database
         self.storage = storage
         self.openRouterClient = openRouterClient
-        self.entityMesh = entityMesh ?? EntityMeshManager(database: database)
-        self.cognitiveSessionizer = cognitiveSessionizer ?? CognitiveSessionizer(database: database)
-        self.vectorEngine = vectorEngine ?? AcceleratedVectorEngine(database: database)
+        self.entityMesh = entityMesh
+        self.cognitiveSessionizer = cognitiveSessionizer
+        self.vectorEngine = vectorEngine
     }
 
     // MARK: - Lifecycle

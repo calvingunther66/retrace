@@ -1578,32 +1578,35 @@ public struct SpotlightSearchOverlay: View {
         appIconPrefetchTask?.cancel()
 
         let bundleIDs = orderedUniqueAppBundleIDs(from: results)
-        guard !bundleIDs.isEmpty else {
+        let missingBundleIDs = bundleIDs.filter { viewModel.appIconCache[$0] == nil }
+        guard !missingBundleIDs.isEmpty else {
             appIconPrefetchTask = nil
             return
         }
 
         appIconPrefetchTask = Task { @MainActor in
-            let appPathsByBundleID = await Task.detached(priority: .utility) {
-                Self.resolveInstalledAppPaths(bundleIDs: bundleIDs)
-            }.value
+            let iconsByBundleID = await Task.detached(priority: .utility) {
+                let appPathsByBundleID = Self.resolveInstalledAppPaths(bundleIDs: missingBundleIDs)
+                var icons: [String: NSImage] = [:]
+                for bundleID in missingBundleIDs {
+                    guard let appPath = appPathsByBundleID[bundleID] else { continue }
+                    let icon = NSWorkspace.shared.icon(forFile: appPath)
+                    icon.size = NSSize(width: 20, height: 20)
+                    icons[bundleID] = icon
+                }
+                return AppIconMapBox(iconsByBundleID: icons)
+            }.value.iconsByBundleID
 
             guard !Task.isCancelled else { return }
 
-            for (index, bundleID) in bundleIDs.enumerated() {
+            for bundleID in missingBundleIDs {
                 guard !Task.isCancelled else { return }
                 guard viewModel.appIconCache[bundleID] == nil,
-                      let appPath = appPathsByBundleID[bundleID] else {
+                      let icon = iconsByBundleID[bundleID] else {
                     continue
                 }
 
-                let icon = NSWorkspace.shared.icon(forFile: appPath)
-                icon.size = NSSize(width: 20, height: 20)
                 viewModel.appIconCache[bundleID] = icon
-
-                if (index + 1).isMultiple(of: 3) {
-                    await Task.yield()
-                }
             }
         }
     }
@@ -1961,6 +1964,12 @@ public struct SpotlightSearchOverlay: View {
         let nextIndex = max(0, min(results.count - 1, currentIndex + offset))
         keyboardSelectedResultIndex = nextIndex
     }
+}
+
+/// Wraps a `[bundleID: NSImage]` map so it can cross the `Task.detached` boundary; `NSImage` isn't
+/// `Sendable`, but the map is built off-main and handed to the main actor without further mutation.
+private struct AppIconMapBox: @unchecked Sendable {
+    let iconsByBundleID: [String: NSImage]
 }
 
 // MARK: - Gallery Result Card

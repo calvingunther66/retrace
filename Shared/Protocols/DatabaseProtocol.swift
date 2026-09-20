@@ -81,6 +81,9 @@ public protocol DatabaseProtocol: Actor {
     ///     5=rewrite pending, 6=rewrite processing, 7=rewrite completed, 8=rewrite failed
     func updateFrameProcessingStatus(frameID: Int64, status: Int) async throws
 
+    /// Get a frame joined with its owning video segment's metadata
+    func getFrameWithVideoInfoByID(id: FrameID) async throws -> FrameWithVideoInfo?
+
     // MARK: - Video Segment Operations (Video Files)
 
     /// Insert a new video segment (150-frame video chunk) and return the auto-generated ID
@@ -232,10 +235,168 @@ public protocol DatabaseProtocol: Actor {
     /// Delete FTS content for a frame
     func deleteFTSContent(frameId: Int64) async throws
 
+    /// Get a frame's OCR text content (main text, chrome text, window title) by frame ID
+    func getOCRTextForFrame(frameID: Int64) async throws -> (mainText: String, chromeText: String?, title: String?)?
+
     // MARK: - Statistics
 
     /// Get database statistics
     func getStatistics() async throws -> DatabaseStatistics
+
+    // MARK: - Cognitive Memory System Operations (Episodes, Entities, Vectors)
+
+    /// Insert a new cognitive episode and return its auto-generated ID
+    func insertCognitiveEpisode(_ episode: CognitiveEpisode) async throws -> Int64
+
+    /// Update an existing cognitive episode's mutable fields
+    func updateCognitiveEpisode(
+        episodeId: Int64,
+        endTime: Date,
+        title: String?,
+        summary: String?,
+        primaryAppBundleID: String?,
+        keyframeIDs: [Int64]
+    ) async throws
+
+    /// Get a cognitive episode by ID
+    func getCognitiveEpisode(id: Int64) async throws -> CognitiveEpisode?
+
+    /// Get the most recently created cognitive episode (for resuming clustering on restart)
+    func getLatestCognitiveEpisode() async throws -> CognitiveEpisode?
+
+    /// Get the cognitive episode a given frame belongs to, if any
+    func getCognitiveEpisodeForFrame(frameId: Int64) async throws -> CognitiveEpisode?
+
+    /// Get cognitive episodes overlapping a time range
+    func getCognitiveEpisodes(from startDate: Date, to endDate: Date, limit: Int) async throws -> [CognitiveEpisode]
+
+    /// Link a frame to a cognitive episode, recording its salience score and keyframe status
+    func linkFrameToEpisode(episodeId: Int64, frameId: Int64, salienceScore: Double, isKeyframe: Bool) async throws
+
+    /// Get the keyframe IDs recorded for a cognitive episode
+    func getKeyframesForEpisode(episodeId: Int64) async throws -> [Int64]
+
+    /// Insert or update a memory entity (file/URL/ticket/person/etc.) keyed by its normalized value
+    func upsertMemoryEntity(
+        entityType: String,
+        normalizedValue: String,
+        displayName: String,
+        timestamp: Date
+    ) async throws -> Int64
+
+    /// Find a memory entity by its exact normalized value
+    func findMemoryEntity(normalizedValue: String) async throws -> MemoryEntity?
+
+    /// Find memory entities, optionally filtered by type and/or normalized-value prefix
+    func findMemoryEntities(type: String?, prefix: String?, limit: Int) async throws -> [MemoryEntity]
+
+    /// Record that an entity was mentioned in a given frame
+    func recordEntityMention(entityId: Int64, frameId: Int64, confidence: Double) async throws
+
+    /// Get all memory entities mentioned in a given frame
+    func getEntitiesForFrame(frameId: Int64) async throws -> [MemoryEntity]
+
+    /// Get frame IDs that mention a given entity
+    func getFramesForEntity(entityId: Int64, limit: Int) async throws -> [Int64]
+
+    /// Record a co-occurrence edge between two entities seen together in the same frame
+    func recordEntityCoOccurrence(sourceEntityId: Int64, targetEntityId: Int64, timestamp: Date) async throws
+
+    /// Get entities most strongly associated (by co-occurrence weight) with a given entity
+    func getAssociatedEntities(sourceEntityId: Int64, limit: Int) async throws -> [(entity: MemoryEntity, weight: Double)]
+
+    /// Record where a frame's dense vector lives in the on-disk vector buffer
+    func recordKeyframeVectorMetadata(
+        frameId: Int64,
+        vectorOffset: Int,
+        dimensions: Int,
+        modelName: String,
+        createdAt: Date
+    ) async throws
+
+    /// Get metadata (frame ID, buffer offset, dimensions) for every stored keyframe vector
+    func getAllKeyframeVectorMetadata() async throws -> [(frameId: Int64, offset: Int, dimensions: Int)]
+}
+
+// MARK: - Default (Unimplemented) Cognitive Memory Operations
+//
+// These defaults exist purely so pre-existing `DatabaseProtocol` conformers written before the
+// Cognitive Memory System (e.g. test doubles that only need frame/segment/FTS behavior) don't
+// have to grow ~20 unrelated stub methods just to keep compiling. `DatabaseManager` overrides
+// every one of these with a real implementation; a conformer that actually needs CMS behavior
+// should do the same rather than rely on these defaults.
+extension DatabaseProtocol {
+    public func getFrameWithVideoInfoByID(id: FrameID) async throws -> FrameWithVideoInfo? { nil }
+
+    public func getOCRTextForFrame(frameID: Int64) async throws -> (mainText: String, chromeText: String?, title: String?)? { nil }
+
+    public func insertCognitiveEpisode(_ episode: CognitiveEpisode) async throws -> Int64 {
+        throw DatabaseError.queryExecutionFailed("insertCognitiveEpisode not implemented by this DatabaseProtocol conformer")
+    }
+
+    public func updateCognitiveEpisode(
+        episodeId: Int64,
+        endTime: Date,
+        title: String?,
+        summary: String?,
+        primaryAppBundleID: String?,
+        keyframeIDs: [Int64]
+    ) async throws {
+        throw DatabaseError.queryExecutionFailed("updateCognitiveEpisode not implemented by this DatabaseProtocol conformer")
+    }
+
+    public func getCognitiveEpisode(id: Int64) async throws -> CognitiveEpisode? { nil }
+
+    public func getLatestCognitiveEpisode() async throws -> CognitiveEpisode? { nil }
+
+    public func getCognitiveEpisodeForFrame(frameId: Int64) async throws -> CognitiveEpisode? { nil }
+
+    public func getCognitiveEpisodes(from startDate: Date, to endDate: Date, limit: Int) async throws -> [CognitiveEpisode] { [] }
+
+    public func linkFrameToEpisode(episodeId: Int64, frameId: Int64, salienceScore: Double, isKeyframe: Bool) async throws {
+        throw DatabaseError.queryExecutionFailed("linkFrameToEpisode not implemented by this DatabaseProtocol conformer")
+    }
+
+    public func getKeyframesForEpisode(episodeId: Int64) async throws -> [Int64] { [] }
+
+    public func upsertMemoryEntity(
+        entityType: String,
+        normalizedValue: String,
+        displayName: String,
+        timestamp: Date
+    ) async throws -> Int64 {
+        throw DatabaseError.queryExecutionFailed("upsertMemoryEntity not implemented by this DatabaseProtocol conformer")
+    }
+
+    public func findMemoryEntity(normalizedValue: String) async throws -> MemoryEntity? { nil }
+
+    public func findMemoryEntities(type: String?, prefix: String?, limit: Int) async throws -> [MemoryEntity] { [] }
+
+    public func recordEntityMention(entityId: Int64, frameId: Int64, confidence: Double) async throws {
+        throw DatabaseError.queryExecutionFailed("recordEntityMention not implemented by this DatabaseProtocol conformer")
+    }
+
+    public func getEntitiesForFrame(frameId: Int64) async throws -> [MemoryEntity] { [] }
+
+    public func getFramesForEntity(entityId: Int64, limit: Int) async throws -> [Int64] { [] }
+
+    public func recordEntityCoOccurrence(sourceEntityId: Int64, targetEntityId: Int64, timestamp: Date) async throws {
+        throw DatabaseError.queryExecutionFailed("recordEntityCoOccurrence not implemented by this DatabaseProtocol conformer")
+    }
+
+    public func getAssociatedEntities(sourceEntityId: Int64, limit: Int) async throws -> [(entity: MemoryEntity, weight: Double)] { [] }
+
+    public func recordKeyframeVectorMetadata(
+        frameId: Int64,
+        vectorOffset: Int,
+        dimensions: Int,
+        modelName: String,
+        createdAt: Date
+    ) async throws {
+        throw DatabaseError.queryExecutionFailed("recordKeyframeVectorMetadata not implemented by this DatabaseProtocol conformer")
+    }
+
+    public func getAllKeyframeVectorMetadata() async throws -> [(frameId: Int64, offset: Int, dimensions: Int)] { [] }
 }
 
 // MARK: - FTS Protocol

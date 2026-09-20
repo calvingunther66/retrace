@@ -3809,6 +3809,56 @@ final class DatabaseManagerTests: XCTestCase {
         XCTAssertEqual(limited, [firstFailed])
     }
 
+    /// Regression coverage for the rotating-cursor fix to the failed-frame backlog
+    /// top-up starvation issue: `afterFrameID` must exclude ids at or below the
+    /// cursor so a caller that advances it after each batch actually rotates through
+    /// the whole `.failed` population instead of always re-selecting the lowest ids.
+    func testGetFailedFrameIDsSkipsFramesAtOrBelowCursor() async throws {
+        let failedStatus = 3
+        let first = try await insertTestFrame(browserURL: nil).value
+        let second = try await insertTestFrame(browserURL: nil).value
+        let third = try await insertTestFrame(browserURL: nil).value
+        try await database.updateFrameProcessingStatus(frameID: first, status: failedStatus)
+        try await database.updateFrameProcessingStatus(frameID: second, status: failedStatus)
+        try await database.updateFrameProcessingStatus(frameID: third, status: failedStatus)
+
+        let afterFirst = try await database.getFailedFrameIDs(limit: 10, afterFrameID: first)
+        XCTAssertEqual(afterFirst, [second, third])
+
+        let afterSecond = try await database.getFailedFrameIDs(limit: 10, afterFrameID: second)
+        XCTAssertEqual(afterSecond, [third])
+
+        // Cursor at the highest failed id returns nothing - this is exactly what
+        // triggers the caller's wraparound back to `afterFrameID: 0`.
+        let afterThird = try await database.getFailedFrameIDs(limit: 10, afterFrameID: third)
+        XCTAssertTrue(afterThird.isEmpty)
+    }
+
+    /// Regression coverage for making `dropOldestQueuedFrames` priority-aware
+    /// (finding: it previously evicted by `enqueuedAt` alone, so a newer but
+    /// lower-priority row like a backlog/orphan-recovery re-enqueue could outlive an
+    /// older, higher-priority live-capture row). Eviction must match
+    /// `dequeueFrameForProcessing`'s own `priority DESC, enqueuedAt ASC` precedent by
+    /// evicting the lowest-priority row first regardless of age.
+    func testDropOldestQueuedFramesEvictsLowerPriorityBeforeOlderHigherPriority() async throws {
+        let highPriorityOldFrame = try await insertTestFrame(browserURL: nil).value
+        try await database.updateFrameProcessingStatus(frameID: highPriorityOldFrame, status: 0)
+        try await database.enqueueFrameForProcessing(frameID: highPriorityOldFrame, priority: 0)
+
+        // Distinct enqueuedAt so the two rows are unambiguously ordered by age.
+        try await Task.sleep(for: .milliseconds(5), clock: .continuous)
+
+        let lowPriorityNewFrame = try await insertTestFrame(browserURL: nil).value
+        try await database.updateFrameProcessingStatus(frameID: lowPriorityNewFrame, status: 0)
+        try await database.enqueueFrameForProcessing(frameID: lowPriorityNewFrame, priority: -5)
+
+        let dropped = try await database.dropOldestQueuedFrames(maxDepth: 1)
+        XCTAssertEqual(dropped, 1)
+
+        let remaining = try await database.dequeueFrameForProcessing()
+        XCTAssertEqual(remaining?.frameID, highPriorityOldFrame)
+    }
+
     // MARK: - Helpers
 
     private func insertTestAppSegment(bundleID: String) async throws -> SegmentID {

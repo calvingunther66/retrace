@@ -576,6 +576,40 @@ public actor FrameProcessingQueue {
     private var retryableRewriteRetryTask: Task<Void, Never>?
     private var startupRewriteRecoveryPending = false
     private var exhaustedAutomaticRewriteRetryVideoIDs: Set<Int64> = []
+    /// Frame IDs a currently-running (or not-yet-cancelled-out) worker Task has
+    /// dequeued and is actively processing. `Task.cancel()` in `restartWorkers()` is
+    /// cooperative and `performOCRStage` has no cancellation checkpoint, so a wedged
+    /// old worker can still be mid-`processFrame()` when `requeueCrashedFrames()` runs.
+    /// Excluding these frame IDs there stops that frame from being reset to `.pending`
+    /// and re-enqueued while the old worker is still finishing it, which would let a
+    /// freshly spawned worker process the same frame concurrently and duplicate its
+    /// OCR node rows. Entries are added right after a successful dequeue and removed
+    /// once that worker iteration finishes handling the frame, regardless of outcome.
+    private var inFlightFrameIDs: Set<Int64> = []
+    /// Rotating cursor for `topUpFailedFrameBacklogIfEligible`: the highest failed-frame
+    /// ID already given an automatic top-up attempt. Each call fetches frames with
+    /// `id > cursor` instead of always the lowest IDs, so a small, fixed set of
+    /// permanently-broken `.failed` frames (e.g. missing video file, which always sort
+    /// first by ID) gets one turn and then the cursor advances past them, letting the
+    /// rest of the backlog take its turn on subsequent calls instead of being starved
+    /// forever. Wraps back to 0 once the high end of the backlog is reached, so the
+    /// same permanently-broken frames only get re-attempted once per full rotation
+    /// rather than every single cycle. Bounded (a single Int64), unlike an
+    /// ever-growing exclusion set.
+    private var failedBacklogTopUpCursorFrameID: Int64 = 0
+    /// Total automatic OCR circuit-breaker recovery attempts made this process
+    /// lifetime. See `attemptOCRAutoRecoveryIfEligible`.
+    private var ocrAutoRecoveryAttemptCount = 0
+    /// Set once `ocrAutoRecoveryAttemptCount` reaches `maxOCRAutoRecoveryAttempts`, so
+    /// the "giving up" log line is emitted once instead of on every poll.
+    private var didLogOCRAutoRecoveryLimitReached = false
+    /// Hard cap on automatic OCR auto-recovery attempts for the process's lifetime. If
+    /// the underlying Vision wedge isn't actually caused by memory pressure (a genuine
+    /// framework/driver bug), the pressure-nominal gate can hold indefinitely and this
+    /// would otherwise retry forever, leaking up to `OCRCircuitBreaker.threshold` more
+    /// watchdog threads per attempt. Once the cap is hit, only a manual "Restart OCR"
+    /// (or relaunch) can recover, matching the breaker's original one-shot design.
+    private static let maxOCRAutoRecoveryAttempts = 5
 
     // MARK: - Power-Aware Processing Control
 
@@ -1255,10 +1289,32 @@ public actor FrameProcessingQueue {
 
                 // Log.info("[Queue-DIAG] Worker \(id) dequeued frame \(queuedFrame.frameID) for processing", category: .processing)
 
+                // Mark this frame in-flight for the duration of this iteration so a
+                // concurrent `requeueCrashedFrames()` (e.g. from `restartOCRPipeline()`)
+                // never resets/re-enqueues it out from under this worker. Removed on
+                // every exit path via `defer`, regardless of outcome.
+                inFlightFrameIDs.insert(queuedFrame.frameID)
+                defer { inFlightFrameIDs.remove(queuedFrame.frameID) }
+
                 // Process the frame
                 let startTime = Date()
                 do {
                     let result = try await processFrame(queuedFrame)
+
+                    // Permanently-failed inside performOCRStage (e.g. missing video file).
+                    // The frame's DB status is already `.failed`; just count it correctly.
+                    // Still applies the same rate-limit/yield tail as the success path below
+                    // so a run of these doesn't bypass the battery/low-power throttle.
+                    if case .failedPermanently = result {
+                        clearDeferredAttempts(frameID: queuedFrame.frameID)
+                        totalFailed += 1
+                        if minDelayBetweenFramesNs > 0 {
+                            try? await Task.sleep(for: .nanoseconds(Int64(minDelayBetweenFramesNs)), clock: .continuous)
+                        } else {
+                            await Task.yield()
+                        }
+                        continue
+                    }
 
                     // Handle deferred processing result
                     if case .deferredSourceNotReady = result {
@@ -1377,7 +1433,7 @@ public actor FrameProcessingQueue {
         case .deferred:
             return .deferredSourceNotReady
         case .failedPermanently:
-            return .success
+            return .failedPermanently
         case .ready(let stage):
             ocrStage = stage
         }
@@ -3329,7 +3385,13 @@ public actor FrameProcessingQueue {
     }
 
     public func requeueCrashedFrames() async throws {
-        let frameIDs = try await databaseManager.getCrashedProcessingFrameIDs()
+        let candidateFrameIDs = try await databaseManager.getCrashedProcessingFrameIDs()
+
+        // Exclude frames a still-running (not-yet-cancelled-out) worker on this actor
+        // is actively processing right now — see `inFlightFrameIDs`. Only frames stuck
+        // at `.processing` with no live worker actually holding them (a genuine crash,
+        // or an old worker that has already exited) are safe to reset and re-enqueue.
+        let frameIDs = candidateFrameIDs.filter { !inFlightFrameIDs.contains($0) }
 
         guard !frameIDs.isEmpty else {
             return
@@ -3617,6 +3679,20 @@ public actor FrameProcessingQueue {
             return
         }
 
+        // Cap total auto-recovery attempts for the process's lifetime. If the wedge
+        // isn't actually caused by memory pressure, this gate would otherwise retry
+        // forever every cooldown window, leaking watchdog threads indefinitely.
+        guard ocrAutoRecoveryAttemptCount < Self.maxOCRAutoRecoveryAttempts else {
+            if !didLogOCRAutoRecoveryLimitReached {
+                didLogOCRAutoRecoveryLimitReached = true
+                Log.error(
+                    "[Queue] OCR auto-recovery attempt limit (\(Self.maxOCRAutoRecoveryAttempts)) reached; Vision appears persistently wedged. Falling back to manual \"Restart OCR\"/relaunch.",
+                    category: .processing
+                )
+            }
+            return
+        }
+
         guard ResourcePressureMonitor.shared.currentLevel == .nominal else {
             ocrDegradedNominalSinceUptimeNanos = nil
             return
@@ -3642,9 +3718,10 @@ public actor FrameProcessingQueue {
 
         lastOCRAutoRecoveryAttemptUptimeNanos = now
         ocrDegradedNominalSinceUptimeNanos = nil
+        ocrAutoRecoveryAttemptCount += 1
 
         Log.warning(
-            "[Queue] OCR circuit breaker auto-recovery: system pressure nominal for \(String(format: "%.0f", nominalDuration))s, retrying Vision",
+            "[Queue] OCR circuit breaker auto-recovery: system pressure nominal for \(String(format: "%.0f", nominalDuration))s, retrying Vision (attempt \(ocrAutoRecoveryAttemptCount)/\(Self.maxOCRAutoRecoveryAttempts))",
             category: .processing
         )
 
@@ -3665,12 +3742,13 @@ public actor FrameProcessingQueue {
     ///
     /// Deliberately a small batch (`failedBacklogTopUpBatchSize`), well under
     /// `config.maxQueueSize` (default 1000), and only when `dequeue()` just returned nil:
-    /// bulk-requeuing the entire backlog at once would blow past that cap, and
-    /// `trimQueueToMaxDepthIfNeeded`'s drop-oldest eviction (by `enqueuedAt`, ignoring
-    /// priority) would silently drop most of the batch back out of the queue -- leaving
-    /// those frames stuck at `.pending` with no queue row at all, which is worse than the
-    /// `.failed` status they started in. Small batches at low priority keep this well
-    /// clear of that cap and never compete with live captures for a worker slot.
+    /// bulk-requeuing the entire backlog at once would blow past that cap, and even with
+    /// `trimQueueToMaxDepthIfNeeded`'s drop-oldest eviction now priority-aware (lowest
+    /// priority evicted first), a batch this large at the lowest priority would still be
+    /// first in line for eviction -- leaving those frames stuck at `.pending` with no
+    /// queue row at all, which is worse than the `.failed` status they started in. Small
+    /// batches at low priority keep this well clear of that cap and never compete with
+    /// live captures for a worker slot.
     private func topUpFailedFrameBacklogIfEligible() async {
         guard !VisionOCR.isPermanentlyDegraded,
               ResourcePressureMonitor.shared.currentLevel != .critical,
@@ -3685,14 +3763,33 @@ public actor FrameProcessingQueue {
         }
         lastFailedBacklogTopUpUptimeNanos = now
 
-        let frameIDs: [Int64]
+        var frameIDs: [Int64]
         do {
-            frameIDs = try await databaseManager.getFailedFrameIDs(limit: Self.failedBacklogTopUpBatchSize)
+            frameIDs = try await databaseManager.getFailedFrameIDs(
+                limit: Self.failedBacklogTopUpBatchSize,
+                afterFrameID: failedBacklogTopUpCursorFrameID
+            )
+            if frameIDs.isEmpty && failedBacklogTopUpCursorFrameID != 0 {
+                // Reached the high end of the backlog - wrap back to the start so the
+                // rotation keeps covering the whole `.failed` population instead of
+                // going permanently idle once the cursor passes the last failed ID.
+                failedBacklogTopUpCursorFrameID = 0
+                frameIDs = try await databaseManager.getFailedFrameIDs(
+                    limit: Self.failedBacklogTopUpBatchSize,
+                    afterFrameID: 0
+                )
+            }
         } catch {
             Log.warning("[Queue-Backlog] Failed to look up failed-frame backlog: \(error)", category: .processing)
             return
         }
         guard !frameIDs.isEmpty else { return }
+
+        // Advance the cursor past this whole batch unconditionally (query is
+        // `ORDER BY id ASC`, so the last element is the max) so a batch that fails to
+        // requeue (e.g. every enqueue throws and reverts to `.failed`) still rotates
+        // forward next cycle instead of re-selecting the identical frames again.
+        failedBacklogTopUpCursorFrameID = frameIDs.last ?? failedBacklogTopUpCursorFrameID
 
         var requeued = 0
         for frameID in frameIDs {
@@ -4057,6 +4154,7 @@ private enum ProcessFrameResult {
     case success
     case skippedByAppFilter      // Frame skipped due to app filter, mark as completed (no OCR)
     case deferredSourceNotReady  // Source payload not readable yet (WAL write in progress), re-queue for later
+    case failedPermanently       // OCR stage failed permanently (e.g. missing video file); frame already marked `.failed`
 }
 
 private enum OCRStageResult {

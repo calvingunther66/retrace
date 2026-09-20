@@ -41,6 +41,22 @@ final class QueryParserTests: XCTestCase {
         XCTAssertTrue(scoped.contains("NOT ((text:(wave)) OR (otherText:(wave)))"))
     }
 
+    func testSanitizeFTSTermStripsParentheses() throws {
+        XCTAssertEqual(QueryTokenizer.sanitizeFTSTerm("foo(bar)"), "foobar")
+    }
+
+    func testScopedQueryWithParenthesesInTermProducesBalancedQuery() throws {
+        // Deliberately unbalanced input ("foo(bar" has no closing paren) — a balanced-paren
+        // wrapper around an already-balanced "foo(bar)" would pass this assertion even without
+        // the fix, so this term is the one that actually discriminates pre-fix (unbalanced,
+        // malformed FTS5 MATCH expression) from post-fix (parens stripped, balanced) behavior.
+        let parsed = try parser.parse(rawQuery: "foo(bar")
+        let scoped = SearchManager.buildScopedFTSQuery(for: parsed)
+
+        XCTAssertTrue(scoped.contains("(text:(foobar*))"))
+        XCTAssertEqual(scoped.filter { $0 == "(" }.count, scoped.filter { $0 == ")" }.count)
+    }
+
     func testParseIgnoresShellFlagsForCommandLikeQuery() throws {
         let parsed = try parser.parse(
             rawQuery: #"osascript -e 'tell application "Codex" to hide' -e 'delay 1'"#

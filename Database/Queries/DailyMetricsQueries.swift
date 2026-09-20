@@ -44,6 +44,7 @@ public enum DailyMetricsQueries {
         case searchDialogOpens = "search_dialog_opens"
         case timelineAutoDismissed = "timeline_auto_dismissed"  // metadata: JSON {trigger: "app_activation", activatedBundleID?}
         case ocrReprocessRequests = "ocr_reprocess_requests"
+        case semanticIndexRestartRequests = "semantic_index_restart_requests"  // metadata: "resetFrameCount=N,cleanedRequestCount=M"
         case arrowKeyNavigation = "arrow_key_navigation"  // metadata: "left" or "right"
         case shiftDragZoomRegion = "shift_drag_zoom_region"  // metadata: JSON {region, screenSize}
         case shiftDragTextCopy = "shift_drag_text_copy"  // metadata: copied text

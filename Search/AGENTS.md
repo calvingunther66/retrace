@@ -2,27 +2,37 @@
 
 You are responsible for the **Search** module of Retrace. Your job is to implement search functionality including query parsing, full-text search via SQLite FTS5, and result ranking.
 
-**Status**: ✅ Full-text search with FTS5 fully implemented. Query parser supports filters (app:, date:, -exclude). **No vector/semantic search yet** (planned for future release with llama.cpp embeddings).
+**Status**: ✅ Full-text search with FTS5 fully implemented. Query parser supports filters (app:, date:, -exclude). ✅ Dense vector/semantic search is also implemented — collectively the **Cognitive Memory System (CMS)**: a SIMD/BLAS vector engine (`AcceleratedVectorEngine`, using Apple Accelerate + NaturalLanguage embeddings — **not** llama.cpp), a knowledge graph over extracted entities (`EntityMeshManager`), episodic clustering of frames into sessions (`CognitiveSessionizer`), a multi-hop reasoner over the mesh/episodes (`CognitiveReasoner`), and an OpenRouter-backed semantic indexing pipeline (`Search/OpenRouter/`).
 
 ## Your Directory
 
 ```
 Search/
-├── SearchManager.swift            # Main SearchProtocol implementation
+├── SearchManager.swift            # Main SearchProtocol implementation (FTS5)
+├── IngestionManager.swift         # Search index ingestion pipeline
 ├── QueryParser/
 │   ├── QueryParser.swift          # QueryParserProtocol implementation
 │   └── QueryTokenizer.swift       # Shared query tokenization + shell-option classification
 ├── Ranking/
-│   ├── ResultRanker.swift         # Rank and sort results
-│   └── SnippetGenerator.swift     # Generate highlighted snippets
-├── VectorSearchTODO/              # NOT YET IMPLEMENTED (future)
-│   ├── Embedding/
-│   └── VectorStore/
+│   └── ResultRanker.swift         # Rank and sort results
+├── VectorSearch/
+│   └── AcceleratedVectorEngine.swift # Dense vector engine: Accelerate BLAS + NaturalLanguage embeddings
+├── EntityMesh/
+│   └── EntityMeshManager.swift    # Knowledge graph built from entities extracted from indexed text
+├── Episodic/
+│   └── CognitiveSessionizer.swift # Clusters frames into episodic sessions
+├── Reasoning/
+│   └── CognitiveReasoner.swift    # Multi-hop reasoning over the entity mesh + episodic sessions
+├── OpenRouter/
+│   ├── OpenRouterClient.swift               # OpenRouter API client
+│   └── OpenRouterGranularSearchCoordinator.swift # OpenRouter-backed semantic indexing pipeline
 └── Tests/
     ├── QueryParserTests.swift
-    ├── SearchManagerTests.swift
-    └── RankingTests.swift
+    ├── CognitiveMemorySystemTests.swift
+    └── TestLogger.swift
 ```
+
+CMS persistence lives outside this directory: `Database/Queries/CognitiveMemoryQueries.swift`, `Database/Migrations/V21_CognitiveMemorySystem.swift`, and the shared protocols in `Shared/Protocols/CognitiveMemoryProtocols.swift` (`CognitiveSessionizerProtocol`, `EntityMeshProtocol`, `AcceleratedVectorEngineProtocol`, `CognitiveReasonerProtocol`).
 
 ## Protocols You Must Implement
 
@@ -35,7 +45,13 @@ Search/
 - Parse query syntax
 - Extract filters (app:, date:, -exclude)
 
-**Note**: EmbeddingProtocol and VectorStoreProtocol exist but are NOT yet implemented. Semantic/vector search is planned for a future release.
+### 3. CMS Protocols (from `Shared/Protocols/CognitiveMemoryProtocols.swift`)
+- `AcceleratedVectorEngineProtocol` — dense vector indexing/search (implemented by `AcceleratedVectorEngine`)
+- `EntityMeshProtocol` — knowledge graph over extracted entities (implemented by `EntityMeshManager`)
+- `CognitiveSessionizerProtocol` — episodic clustering (implemented by `CognitiveSessionizer`)
+- `CognitiveReasonerProtocol` — multi-hop reasoning (implemented by `CognitiveReasoner`)
+
+**Note**: `EmbeddingProtocol`/`VectorStoreProtocol` in `Shared/Protocols/VectorSearchProtocol.swift` are legacy — they backed the pre-CMS `HybridSearchManager`/llama.cpp design and are not used by the shipped CMS path above.
 
 ## Key Implementation Details
 
@@ -309,7 +325,9 @@ extension SearchManager {
 }
 ```
 
-### 6. Semantic Search (Optional)
+### 6. Semantic Search (Historical Design Note — Superseded)
+
+**This section and §7 below describe an earlier CoreML/in-memory design that was never shipped.** The real, shipped implementation is `Search/VectorSearch/AcceleratedVectorEngine.swift` (Accelerate BLAS + NaturalLanguage embeddings) plus the CMS modules in §"Your Directory" above. Kept here for historical context only — do not use as a guide for new work.
 
 Use CoreML for text embeddings:
 

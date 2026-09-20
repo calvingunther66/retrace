@@ -44,6 +44,7 @@ Database/
     ├── EdgeCaseTests.swift
     ├── FTSManagerTests.swift
     ├── IntegrationTests.swift
+    ├── MigrationTests.swift
     ├── OCRPipelineTests.swift
     ├── QueryBuilderTests.swift
     └── TestLogger.swift

@@ -136,6 +136,16 @@ public protocol AcceleratedVectorEngineProtocol: Actor {
     func removeVector(frameID: FrameID) async throws
     func searchNearest(queryVector: [Float], limit: Int) async throws -> [(frameID: FrameID, similarity: Float)]
     func clear() async throws
+    /// On-device text embedding (NaturalLanguage/Accelerate-backed), used by callers like
+    /// Processing's SemanticIndexer that need to turn generated descriptions into vectors
+    /// without depending on the concrete Search-module engine type.
+    func embedTextOnDevice(_ text: String) -> [Float]
+    /// Forces any debounced/batched persistence write through immediately. Callers that run
+    /// bounded indexing cycles (e.g. Processing's SemanticIndexer, per batch) should call this
+    /// after their last addVector/removeVector so vectors aren't left unpersisted behind the
+    /// debounce timer. NOTE: as of this writing, SemanticIndexer does not yet call it — wiring
+    /// that call is tracked as follow-up work, not implied by this protocol's existence.
+    func flushPendingPersist()
 }
 
 // MARK: - Cognitive Reasoner Protocol

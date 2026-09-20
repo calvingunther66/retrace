@@ -1236,6 +1236,14 @@ public enum FrameQueries {
                 try deleteFrameRow(db: db, frameID: frameID)
             }
 
+            // None of the V21 cognitive-memory tables (episode_frame,
+            // entity_mention, keyframe_vector_metadata, memory_entity,
+            // entity_association, cognitive_episode) has an FK to frame, so
+            // this manual-delete path must clean them up explicitly too -
+            // same cleanup RetentionManager's time-based path runs, applied
+            // to exactly the frames this chunk just deleted.
+            try CognitiveMemoryQueries.cleanupOrphanedCMSData(db: db, deletedFrameIDs: frameIDs)
+
             if managesOwnTransaction {
                 try commitTransaction(db: db)
             }

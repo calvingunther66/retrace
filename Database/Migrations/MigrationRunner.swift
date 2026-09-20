@@ -108,7 +108,8 @@ actor MigrationRunner {
             V18_DailyMetricsRecencyIndex(),
             V19_FrameEncodedAt(),
             V20_SemanticIndex(),
-            V21_CognitiveMemorySystem()
+            V21_CognitiveMemorySystem(),
+            V22_MemoryEntityTypeScopedUniqueness()
         ]
     }
 

@@ -2,7 +2,6 @@ import Foundation
 import Accelerate
 import NaturalLanguage
 import Shared
-import Database
 
 /// High-performance SIMD/BLAS vector engine for dense semantic search.
 ///
@@ -13,7 +12,7 @@ public actor AcceleratedVectorEngine: AcceleratedVectorEngineProtocol {
 
     // MARK: - Properties
 
-    private let database: DatabaseManager
+    private let database: any DatabaseProtocol
     private let storageURL: URL
     private let dimensions: Int
     private let modelName: String
@@ -25,13 +24,22 @@ public actor AcceleratedVectorEngine: AcceleratedVectorEngineProtocol {
 
     private var isInitialized = false
 
+    // Persistence batching: `persistToDisk()` rewrites the *entire* vector buffer, so calling it
+    // on every addVector/removeVector makes indexing O(n^2) as the collection grows. Instead we
+    // coalesce writes: force a flush every `persistBatchSize` changes, and debounce the rest
+    // behind a short delay so a burst of adds collapses into a single rewrite.
+    private var dirtyChangeCount = 0
+    private static let persistBatchSize = 20
+    private static let persistDebounceInterval: Duration = .seconds(2)
+    private var pendingPersistTask: Task<Void, Never>?
+
     // NaturalLanguage sentence embedding fallback (zero external dependencies)
     private let nlEmbedding: NLEmbedding?
 
     // MARK: - Initialization
 
     public init(
-        database: DatabaseManager,
+        database: any DatabaseProtocol,
         dimensions: Int = 512,
         modelName: String = "apple-natural-language-v1",
         storageDirectory: URL? = nil
@@ -130,12 +138,13 @@ public actor AcceleratedVectorEngine: AcceleratedVectorEngineProtocol {
                 frameId: frameID.value,
                 vectorOffset: newIndex,
                 dimensions: dimensions,
-                modelName: modelName
+                modelName: modelName,
+                createdAt: Date()
             )
         }
 
-        // Persist periodically or when dirty
-        try? persistToDisk()
+        // Batch/debounce the full-buffer rewrite instead of persisting on every vector.
+        recordDirtyChangeAndSchedulePersist()
     }
 
     public func removeVector(frameID: FrameID) async throws {
@@ -154,14 +163,29 @@ public actor AcceleratedVectorEngine: AcceleratedVectorEngineProtocol {
             frameIndexLookup[id] = i
         }
 
-        try? persistToDisk()
+        recordDirtyChangeAndSchedulePersist()
     }
 
     public func clear() async throws {
+        pendingPersistTask?.cancel()
+        pendingPersistTask = nil
+        dirtyChangeCount = 0
         vectorBuffer.removeAll()
         frameIDMap.removeAll()
         frameIndexLookup.removeAll()
         try? FileManager.default.removeItem(at: storageURL)
+    }
+
+    /// Forces any pending batched writes to disk immediately. Callers that drive a bounded
+    /// indexing cycle (e.g. `SemanticIndexer`'s per-batch loop) can call this after the last
+    /// `addVector`/`removeVector` of a cycle so vectors aren't left unpersisted indefinitely
+    /// while the debounce timer is still pending.
+    public func flushPendingPersist() {
+        pendingPersistTask?.cancel()
+        pendingPersistTask = nil
+        guard dirtyChangeCount > 0 else { return }
+        dirtyChangeCount = 0
+        try? persistToDisk()
     }
 
     // MARK: - Search
@@ -280,5 +304,24 @@ public actor AcceleratedVectorEngine: AcceleratedVectorEngineProtocol {
     private func persistToDisk() throws {
         let data = vectorBuffer.withUnsafeBufferPointer { Data(buffer: $0) }
         try data.write(to: storageURL, options: .atomic)
+    }
+
+    /// Marks the buffer dirty and either flushes immediately (after `persistBatchSize` changes)
+    /// or (re)schedules a debounced flush so a burst of rapid adds/removes results in a single
+    /// full-buffer rewrite instead of one per vector.
+    private func recordDirtyChangeAndSchedulePersist() {
+        dirtyChangeCount += 1
+
+        if dirtyChangeCount >= Self.persistBatchSize {
+            flushPendingPersist()
+            return
+        }
+
+        pendingPersistTask?.cancel()
+        pendingPersistTask = Task {
+            try? await Task.sleep(for: Self.persistDebounceInterval)
+            guard !Task.isCancelled else { return }
+            await self.flushPendingPersist()
+        }
     }
 }

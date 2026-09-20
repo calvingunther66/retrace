@@ -1,6 +1,5 @@
 import Foundation
 import Shared
-import Database
 
 /// Multi-hop associative retrieval orchestrator and reasoning engine for "Ask AI".
 ///
@@ -15,7 +14,7 @@ public actor CognitiveReasoner: CognitiveReasonerProtocol {
 
     // MARK: - Dependencies
 
-    private let database: DatabaseManager
+    private let database: any DatabaseProtocol
     private let ftsEngine: any FTSProtocol
     private let entityMesh: EntityMeshManager
     private let openRouterClient: OpenRouterClient
@@ -23,7 +22,7 @@ public actor CognitiveReasoner: CognitiveReasonerProtocol {
     // MARK: - Initialization
 
     public init(
-        database: DatabaseManager,
+        database: any DatabaseProtocol,
         ftsEngine: any FTSProtocol,
         entityMesh: EntityMeshManager,
         openRouterClient: OpenRouterClient = OpenRouterClient()

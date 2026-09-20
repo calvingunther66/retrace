@@ -1,6 +1,5 @@
 import Foundation
 import Shared
-import Database
 
 /// Cross-referencing Knowledge Mesh manager.
 /// Harvests structured entities (files, URLs, symbols, issue tickets, collaborators) from
@@ -9,7 +8,7 @@ public actor EntityMeshManager: EntityMeshProtocol {
 
     // MARK: - Dependencies
 
-    private let database: DatabaseManager
+    private let database: any DatabaseProtocol
 
     // Regex matchers for entity extraction
     private let urlRegex = try? NSRegularExpression(
@@ -35,7 +34,7 @@ public actor EntityMeshManager: EntityMeshProtocol {
 
     // MARK: - Initialization
 
-    public init(database: DatabaseManager) {
+    public init(database: any DatabaseProtocol) {
         self.database = database
     }
 

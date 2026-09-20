@@ -23,6 +23,11 @@ Capture/
 ├── Metadata/
 │   ├── AppInfoProvider.swift      # Get active app info via NSWorkspace
 │   └── BrowserURLExtractor.swift  # Extract URL from browsers (AX API)
+├── AppleScriptHelper/
+│   └── main.swift                 # Standalone `RetraceAppleScriptHelper` executable target: runs a given
+│                                   # AppleScript source via NSAppleScript. Launched as a subprocess by
+│                                   # BrowserURLExtractor (instead of /usr/bin/osascript) so AppleEvents
+│                                   # don't run on Retrace's own process, which would flash a Dock icon.
 └── Tests/
     ├── AccessibilityInspectorTest.swift
     ├── BrowserURLAppleScriptCoordinatorTests.swift

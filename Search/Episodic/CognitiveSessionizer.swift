@@ -1,6 +1,5 @@
 import Foundation
 import Shared
-import Database
 
 /// Clusters multi-app activity into cognitive task episodes and identifies salient keyframes.
 ///
@@ -10,7 +9,7 @@ public actor CognitiveSessionizer: CognitiveSessionizerProtocol {
 
     // MARK: - Dependencies
 
-    private let database: DatabaseManager
+    private let database: any DatabaseProtocol
     private let maxEpisodeDuration: TimeInterval = 45 * 60 // 45 minutes max per episode
     private let maxIdleGap: TimeInterval = 3 * 60          // 3 minutes idle gap creates new episode
 
@@ -23,7 +22,7 @@ public actor CognitiveSessionizer: CognitiveSessionizerProtocol {
 
     // MARK: - Initialization
 
-    public init(database: DatabaseManager) {
+    public init(database: any DatabaseProtocol) {
         self.database = database
     }
 

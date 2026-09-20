@@ -1805,6 +1805,10 @@ public actor AppCoordinator {
         var writersByResolution: [String: VideoWriterState] = [:]
         var pendingUnexpectedStop: PendingUnexpectedRecordingStop?
         var lastPipelineMemoryLogAt = Date.distantPast
+        // Once a segment's WAL/encoder frame indices desync (backpressure coalesce), the
+        // delta persists for the rest of that segment. Warn once per videoDBID instead of
+        // once per remaining frame (event-scoped logging per AGENTS.md).
+        var walDesyncWarnedVideoIDs: Set<Int64> = []
         stalledUnreadableWriterWarningVideoIDs.removeAll()
         let maxFramesPerSegment = 150
         let videoUpdateInterval = 5
@@ -1973,15 +1977,46 @@ public actor AppCoordinator {
                 if let storageManager = services.storage as? StorageManager {
                     let walVideoID = await writerState.writer.segmentID
                     let walManager = await storageManager.getWALManager()
+
+                    // The WAL's physical frame index can drift from the encoder-side
+                    // frameIndexInSegment: WAL writes happen unconditionally before encoding, so a
+                    // backpressure-coalesced frame (WAL write succeeds, encode throws) advances the
+                    // WAL's index without advancing the encoder's. Key off the writer's own WAL-side
+                    // counter so registerFrameID never resolves frameID to a stale/wrong physical
+                    // frame after a coalesce.
+                    let walFrameIndex: Int
+                    if let incrementalWriter = writerState.writer as? IncrementalSegmentWriter {
+                        walFrameIndex = (await incrementalWriter.walFrameCount) - 1
+                        if walFrameIndex != frameIndexInSegment,
+                           !walDesyncWarnedVideoIDs.contains(writerState.videoDBID) {
+                            walDesyncWarnedVideoIDs.insert(writerState.videoDBID)
+                            Log.warning(
+                                "[WAL] Frame index desync detected for videoDBID=\(writerState.videoDBID): " +
+                                    "WAL-side index=\(walFrameIndex) vs encoder-side index=\(frameIndexInSegment) " +
+                                    "(frameID=\(frameID)); a prior frame was likely coalesced under backpressure. " +
+                                    "Using the WAL-side index to avoid a stale OCR read. (Logged once per segment.)",
+                                category: .app
+                            )
+                        }
+                    } else {
+                        Log.error(
+                            "[WAL] Writer for videoDBID=\(writerState.videoDBID) is not an IncrementalSegmentWriter; " +
+                                "cannot resolve the WAL-side frame index for frame \(frameID). Falling back to the " +
+                                "encoder-side index \(frameIndexInSegment), which can desync after a backpressure coalesce.",
+                            category: .app
+                        )
+                        walFrameIndex = frameIndexInSegment
+                    }
+
                     do {
                         try await walManager.registerFrameID(
                             videoID: walVideoID,
                             frameID: frameID,
-                            frameIndex: frameIndexInSegment
+                            frameIndex: walFrameIndex
                         )
                     } catch {
                         Log.warning(
-                            "[WAL] Failed to register frameID mapping for frame \(frameID) (video \(walVideoID.value), index \(frameIndexInSegment)): \(error)",
+                            "[WAL] Failed to register frameID mapping for frame \(frameID) (video \(walVideoID.value), index \(walFrameIndex)): \(error)",
                             category: .app
                         )
                     }
@@ -3285,7 +3320,12 @@ public actor AppCoordinator {
     @discardableResult
     public func forceRestartSemanticIndexer(resetFailedFrames: Bool = true) async -> (resetFrameCount: Int, cleanedRequestCount: Int) {
         Log.info("[AppCoordinator] Force restarting semantic indexer", category: .app)
-        return await services.semanticIndexer.forceRestart(resetFailedFrames: resetFailedFrames)
+        let result = await services.semanticIndexer.forceRestart(resetFailedFrames: resetFailedFrames)
+        try? await recordMetricEvent(
+            metricType: .semanticIndexRestartRequests,
+            metadata: "resetFrameCount=\(result.resetFrameCount),cleanedRequestCount=\(result.cleanedRequestCount)"
+        )
+        return result
     }
 
     /// Get current AI visual semantic-indexing progress for the System Monitor.
