@@ -1,4 +1,5 @@
 import CoreMedia
+import CoreVideo
 import Foundation
 import Shared
 
@@ -12,6 +13,13 @@ import Shared
 public actor IncrementalSegmentWriter: SegmentWriter {
     public let segmentID: VideoSegmentID
     public private(set) var frameCount: Int = 0
+    /// Physical frame count in the WAL (frames.bin), incremented unconditionally on every
+    /// successful WAL append -- independent of `frameCount`, which only advances after a
+    /// successful encode. A backpressure-coalesced frame (WAL write succeeds, encode throws)
+    /// advances this counter without advancing `frameCount`, so the two can drift apart.
+    /// WAL-relative frame indexing (WALManager.registerFrameID) must key off this counter,
+    /// never off `frameCount`, or OCR can silently resolve to the wrong physical WAL frame.
+    public private(set) var walFrameCount: Int = 0
     public let startTime: Date
     public let relativePath: String
     public private(set) var frameWidth: Int = 0
@@ -76,6 +84,7 @@ public actor IncrementalSegmentWriter: SegmentWriter {
         var session = walSession!
         try await walManager.appendFrame(frame, to: &session)
         walSession = session
+        walFrameCount += 1
 
         // Record write latency for health monitoring
         let walLatencyMs = (CFAbsoluteTimeGetCurrent() - writeStart) * 1000
@@ -107,14 +116,31 @@ public actor IncrementalSegmentWriter: SegmentWriter {
         // This ensures exact timestamps: frame 0 = 0, frame 1 = 20, frame 11 = 220, etc.
         let timestamp = CMTime(value: Int64(frameCount) * 20, timescale: 600)
 
+        let pixelBuffer: CVPixelBuffer
         do {
-            let pixelBuffer = try await encoder.makePixelBuffer(from: frame)
-            try await encoder.encode(pixelBuffer: pixelBuffer, timestamp: timestamp)
-            await StorageVideoEncodingMemoryLedger.endPixelBuffer(pixelBufferToken)
+            pixelBuffer = try await encoder.makePixelBuffer(from: frame)
         } catch {
             await StorageVideoEncodingMemoryLedger.endPixelBuffer(pixelBufferToken)
             throw error
         }
+        do {
+            try await encoder.encode(pixelBuffer: pixelBuffer, timestamp: timestamp)
+        } catch {
+            await StorageVideoEncodingMemoryLedger.endPixelBuffer(pixelBufferToken)
+            if HEVCEncoder.isBackpressureDrop(error) {
+                // Coalesce: the frame is already durable in WAL; keep this
+                // timestamp slot so the next tick's fresher frame reuses it.
+                // Must still rethrow (not swallow) rather than return normally:
+                // AppCoordinator's caller compares the encoder's frameCount
+                // before/after appendFrame and treats a same-count "success" as
+                // a fatal encoder mismatch, canceling the writer. Throwing routes
+                // this through AppCoordinator's existing generic frame-error
+                // handler instead (log + continue, writer stays alive).
+                Log.verbose("[IncrementalWriter] Coalesced frame under encoder backpressure at frameCount=\(frameCount)", category: .storage)
+            }
+            throw error
+        }
+        await StorageVideoEncodingMemoryLedger.endPixelBuffer(pixelBufferToken)
 
         frameCount += 1
         lastFrameTime = frame.timestamp

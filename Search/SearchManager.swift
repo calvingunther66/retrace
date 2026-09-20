@@ -11,6 +11,8 @@ public actor SearchManager: SearchProtocol {
     private let ftsEngine: any FTSProtocol
     private let queryParser: QueryParser
     private let resultRanker: ResultRanker
+    private let vectorEngine: AcceleratedVectorEngine?
+    private let entityMesh: EntityMeshManager?
     // ⚠️ RELEASE 2 ONLY - Search highlighting removed for Release 1
     // private let snippetGenerator: SnippetGenerator
 
@@ -27,10 +29,14 @@ public actor SearchManager: SearchProtocol {
 
     public init(
         database: any DatabaseProtocol,
-        ftsEngine: any FTSProtocol
+        ftsEngine: any FTSProtocol,
+        vectorEngine: AcceleratedVectorEngine? = nil,
+        entityMesh: EntityMeshManager? = nil
     ) {
         self.database = database
         self.ftsEngine = ftsEngine
+        self.vectorEngine = vectorEngine
+        self.entityMesh = entityMesh
         self.queryParser = QueryParser()
         self.resultRanker = ResultRanker()
         // ⚠️ RELEASE 2 ONLY - Search highlighting removed for Release 1
@@ -122,13 +128,23 @@ public actor SearchManager: SearchProtocol {
             )
         }
 
-        // Execute FTS search (local OCR text — the primary, higher-fidelity index)
-        let ftsMatches = try await ftsEngine.search(
-            query: searchableColumnsFTSQuery,
-            filters: filters,
-            limit: query.limit,
-            offset: query.offset
-        )
+        // Execute FTS search (local OCR text — the primary, higher-fidelity index).
+        // Sanitization in QueryTokenizer.sanitizeFTSTerm should strip all FTS5-significant
+        // characters before a query reaches here, but this defensive fallback (mirroring the
+        // semantic-index call below) ensures any edge case that slips through produces empty
+        // results instead of crashing search outright.
+        var ftsMatches: [FTSMatch] = []
+        do {
+            ftsMatches = try await ftsEngine.search(
+                query: searchableColumnsFTSQuery,
+                filters: filters,
+                limit: query.limit,
+                offset: query.offset
+            )
+        } catch {
+            Log.warning("[SearchManager] OCR FTS search failed for query '\(searchableColumnsFTSQuery)', returning no OCR matches: \(error.localizedDescription)", category: .search)
+            ftsMatches = []
+        }
 
         // Also search the AI-generated visual-description index — but only on the first page.
         // OCR and semantic are two independent FTS indexes each paginated by their own
@@ -137,21 +153,15 @@ public actor SearchManager: SearchProtocol {
         // set" as an offset into either individual index). Restricting the merge to offset==0
         // means later pages fall back to OCR-only, which is a real limitation (semantic-only
         // matches beyond page 1 won't surface) but a correct one, rather than a subtly broken
-        // "correct-looking" merge on every page.
-        // Also skip when OCR alone already fills the page — a common case for well-populated
-        // OCR indexes with the default page size, and every semantic row fetched in that case
-        // would just be discarded by the merge's `mergedMatches.count < query.limit` guard
-        // below. Narrowing the limit to the remaining slots (rather than a flat `query.limit`)
-        // means semantic never fetches more than it could possibly contribute either.
-        let remainingSlots = query.limit - ftsMatches.count
+        // Search the AI semantic index on page 0 (offset == 0) to surface visual & topic descriptions.
         var semanticMatches: [FTSMatch] = []
-        if query.offset == 0 && remainingSlots > 0 {
+        if query.offset == 0 {
             let semanticFTSQuery = Self.buildSemanticFTSQuery(for: parsed, matchAny: matchAny)
             do {
                 semanticMatches = try await ftsEngine.searchSemantic(
                     query: semanticFTSQuery,
                     filters: filters,
-                    limit: remainingSlots,
+                    limit: query.limit,
                     offset: 0
                 )
             } catch {
@@ -161,19 +171,41 @@ public actor SearchManager: SearchProtocol {
             }
         }
 
-        // Merge: OCR matches win on conflict (already have a searchable snippet), but a frame
-        // that also has a corroborating semantic (AI visual) description is labeled `.both`
-        // rather than plain `.ocr` — that distinction is the whole point of the match-source
-        // signal, so a frame present in both indexes must not silently collapse to `.ocr`.
-        // Semantic-only matches fill in frames OCR search missed entirely. Truncate back to the
-        // requested page size — the merge can otherwise exceed `query.limit`.
-        let semanticFrameIDs = Set(semanticMatches.map(\.frameID))
-        var seenFrameIDs = Set(ftsMatches.map(\.frameID))
-        var mergedMatches: [(match: FTSMatch, matchSource: SearchResult.MatchSource)] =
-            ftsMatches.map { ($0, semanticFrameIDs.contains($0.frameID) ? .both : .ocr) }
+        // Dense Vector Similarity Search
+        var vectorMatches: [FrameID] = []
+        if let vectorEngine {
+            let qVec = await vectorEngine.embedTextOnDevice(query.text)
+            let nearest = (try? await vectorEngine.searchNearest(queryVector: qVec, limit: query.limit)) ?? []
+            vectorMatches = nearest.filter { $0.similarity >= 0.20 }.map(\.frameID)
+        }
+        let vectorFrameIDs = Set(vectorMatches)
+
+        // Merge results:
+        // 1. Corroborated frames that match BOTH OCR and (Semantic FTS or Dense Vector) rank highest (.both).
+        // 2. High-signal semantic matches that OCR missed (.semantic).
+        // 3. Raw OCR-only matches (.ocr).
+        let semanticFrameIDs = Set(semanticMatches.map(\.frameID)).union(vectorFrameIDs)
+        var seenFrameIDs = Set<FrameID>()
+        var mergedMatches: [(match: FTSMatch, matchSource: SearchResult.MatchSource)] = []
+
+        // Pass 1: Corroborated matches (present in both OCR and semantic/vector)
+        for match in ftsMatches where semanticFrameIDs.contains(match.frameID) {
+            guard mergedMatches.count < query.limit else { break }
+            mergedMatches.append((match, .both))
+            seenFrameIDs.insert(match.frameID)
+        }
+
+        // Pass 2: Semantic matches (visual summaries, on-device topic descriptions)
         for match in semanticMatches where !seenFrameIDs.contains(match.frameID) {
             guard mergedMatches.count < query.limit else { break }
             mergedMatches.append((match, .semantic))
+            seenFrameIDs.insert(match.frameID)
+        }
+
+        // Pass 3: Remaining OCR-only matches
+        for match in ftsMatches where !seenFrameIDs.contains(match.frameID) {
+            guard mergedMatches.count < query.limit else { break }
+            mergedMatches.append((match, .ocr))
             seenFrameIDs.insert(match.frameID)
         }
 
@@ -239,8 +271,13 @@ public actor SearchManager: SearchProtocol {
         }
 
         // Use prefix search to find matching terms
-        // Search for "prefix*" to get documents containing words starting with prefix
-        let prefixQuery = scopeToSearchableColumns("\(prefix)*")
+        // Search for "prefix*" to get documents containing words starting with prefix.
+        // Sanitize first: an unescaped literal paren/quote/etc. in `prefix` (e.g. typed while
+        // autocompleting `foo(bar`) would otherwise flow straight into the text:()/otherText:()
+        // wrap below and produce a malformed FTS5 MATCH expression — the same root cause as
+        // finding #19, just for the suggestions path rather than the main search path.
+        let sanitizedPrefix = QueryTokenizer.sanitizeFTSTerm(prefix)
+        let prefixQuery = scopeToSearchableColumns("\(sanitizedPrefix)*")
 
         do {
             let results = try await ftsEngine.search(

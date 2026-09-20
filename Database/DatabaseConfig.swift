@@ -153,4 +153,25 @@ extension DatabaseConfig {
         }
         return true
     }
+
+    /// Retention-window cutoff for a day-based retention policy.
+    /// - Parameters:
+    ///   - retentionDays: Days of history to keep, or nil for "Forever" (no cutoff).
+    ///   - now: Reference date (defaults to now; injectable for tests).
+    /// - Returns: The oldest date still within the retention window, or nil.
+    public static func cutoffDate(retentionDays: Int?, now: Date = Date()) -> Date? {
+        guard let retentionDays else { return nil }
+        return now.addingTimeInterval(-TimeInterval(retentionDays) * 86400)
+    }
+
+    /// Retention DELETE batching: chunked deletes bound WAL growth and lock
+    /// hold time per transaction. Delete paths must process at most this many
+    /// rows per transaction and loop until no rows remain.
+    public static let retentionDeleteBatchSize = 500
+
+    /// VACUUM policy: rebuilding the database file reclaims space from deleted
+    /// records but is slow on large databases, so only vacuum when a single
+    /// retention cleanup removed at least this many frames or video segments.
+    public static let retentionVacuumFrameThreshold = 1000
+    public static let retentionVacuumVideoThreshold = 10
 }

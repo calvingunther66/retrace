@@ -978,6 +978,7 @@ public actor AppCoordinator {
 
         do {
             let batchSize = 500
+            let maxQueueDepth = ProcessingQueueConfig.default.maxQueueSize
             var totalEnqueued = 0
             var hasLoggedDiscovery = false
 
@@ -987,7 +988,24 @@ public actor AppCoordinator {
                     return
                 }
 
-                let frameIDs = try await services.database.getPendingFrameIDsNotInQueue(limit: batchSize)
+                // Only enqueue as many frames as the queue actually has room for.
+                // Enqueueing a full batch regardless of capacity used to push the
+                // queue past maxQueueSize, which drop-oldest-trims it right back
+                // out (their processingStatus never changes), so the very same
+                // frames get rediscovered as "pending and not in queue" on the
+                // next iteration - an infinite enqueue/drop cycle that pegs the
+                // CPU and the DB actor. Waiting for headroom instead lets workers
+                // actually drain the queue between batches.
+                let currentDepth = try await queue.getQueueDepth()
+                let availableCapacity = maxQueueDepth - currentDepth
+                guard availableCapacity > 0 else {
+                    try? await Task.sleep(for: .seconds(5), clock: .continuous)
+                    continue
+                }
+
+                let frameIDs = try await services.database.getPendingFrameIDsNotInQueue(
+                    limit: min(batchSize, availableCapacity)
+                )
                 if frameIDs.isEmpty {
                     break
                 }
@@ -1787,6 +1805,10 @@ public actor AppCoordinator {
         var writersByResolution: [String: VideoWriterState] = [:]
         var pendingUnexpectedStop: PendingUnexpectedRecordingStop?
         var lastPipelineMemoryLogAt = Date.distantPast
+        // Once a segment's WAL/encoder frame indices desync (backpressure coalesce), the
+        // delta persists for the rest of that segment. Warn once per videoDBID instead of
+        // once per remaining frame (event-scoped logging per AGENTS.md).
+        var walDesyncWarnedVideoIDs: Set<Int64> = []
         stalledUnreadableWriterWarningVideoIDs.removeAll()
         let maxFramesPerSegment = 150
         let videoUpdateInterval = 5
@@ -1955,15 +1977,46 @@ public actor AppCoordinator {
                 if let storageManager = services.storage as? StorageManager {
                     let walVideoID = await writerState.writer.segmentID
                     let walManager = await storageManager.getWALManager()
+
+                    // The WAL's physical frame index can drift from the encoder-side
+                    // frameIndexInSegment: WAL writes happen unconditionally before encoding, so a
+                    // backpressure-coalesced frame (WAL write succeeds, encode throws) advances the
+                    // WAL's index without advancing the encoder's. Key off the writer's own WAL-side
+                    // counter so registerFrameID never resolves frameID to a stale/wrong physical
+                    // frame after a coalesce.
+                    let walFrameIndex: Int
+                    if let incrementalWriter = writerState.writer as? IncrementalSegmentWriter {
+                        walFrameIndex = (await incrementalWriter.walFrameCount) - 1
+                        if walFrameIndex != frameIndexInSegment,
+                           !walDesyncWarnedVideoIDs.contains(writerState.videoDBID) {
+                            walDesyncWarnedVideoIDs.insert(writerState.videoDBID)
+                            Log.warning(
+                                "[WAL] Frame index desync detected for videoDBID=\(writerState.videoDBID): " +
+                                    "WAL-side index=\(walFrameIndex) vs encoder-side index=\(frameIndexInSegment) " +
+                                    "(frameID=\(frameID)); a prior frame was likely coalesced under backpressure. " +
+                                    "Using the WAL-side index to avoid a stale OCR read. (Logged once per segment.)",
+                                category: .app
+                            )
+                        }
+                    } else {
+                        Log.error(
+                            "[WAL] Writer for videoDBID=\(writerState.videoDBID) is not an IncrementalSegmentWriter; " +
+                                "cannot resolve the WAL-side frame index for frame \(frameID). Falling back to the " +
+                                "encoder-side index \(frameIndexInSegment), which can desync after a backpressure coalesce.",
+                            category: .app
+                        )
+                        walFrameIndex = frameIndexInSegment
+                    }
+
                     do {
                         try await walManager.registerFrameID(
                             videoID: walVideoID,
                             frameID: frameID,
-                            frameIndex: frameIndexInSegment
+                            frameIndex: walFrameIndex
                         )
                     } catch {
                         Log.warning(
-                            "[WAL] Failed to register frameID mapping for frame \(frameID) (video \(walVideoID.value), index \(frameIndexInSegment)): \(error)",
+                            "[WAL] Failed to register frameID mapping for frame \(frameID) (video \(walVideoID.value), index \(walFrameIndex)): \(error)",
                             category: .app
                         )
                     }
@@ -3267,7 +3320,12 @@ public actor AppCoordinator {
     @discardableResult
     public func forceRestartSemanticIndexer(resetFailedFrames: Bool = true) async -> (resetFrameCount: Int, cleanedRequestCount: Int) {
         Log.info("[AppCoordinator] Force restarting semantic indexer", category: .app)
-        return await services.semanticIndexer.forceRestart(resetFailedFrames: resetFailedFrames)
+        let result = await services.semanticIndexer.forceRestart(resetFailedFrames: resetFailedFrames)
+        try? await recordMetricEvent(
+            metricType: .semanticIndexRestartRequests,
+            metadata: "resetFrameCount=\(result.resetFrameCount),cleanedRequestCount=\(result.cleanedRequestCount)"
+        )
+        return result
     }
 
     /// Get current AI visual semantic-indexing progress for the System Monitor.
@@ -3281,7 +3339,8 @@ public actor AppCoordinator {
         var utcCalendar = Calendar(identifier: .gregorian)
         utcCalendar.timeZone = TimeZone(identifier: "UTC")!
         let dayStartMs = Int64(utcCalendar.startOfDay(for: Date()).timeIntervalSince1970 * 1000)
-        let requestsToday = (try? await services.database.countTotalSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
+        let visualRequestsToday = (try? await services.database.countVisualIndexingSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
+        let searchRequestsToday = (try? await services.database.countSearchSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
 
         let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
         let isEnabled = defaults.bool(forKey: OpenRouterCredentialsManager.semanticIndexingEnabledDefaultsKey)
@@ -3291,8 +3350,10 @@ public actor AppCoordinator {
         return SemanticIndexStatistics(
             indexed: detailed.indexed,
             eligibleTotal: detailed.eligibleTotal,
-            backfillRequestsToday: requestsToday,
+            backfillRequestsToday: visualRequestsToday,
             dailyBackfillBudget: SemanticIndexer.dailyBackfillBudget,
+            searchRequestsToday: searchRequestsToday,
+            dailySearchBudget: SemanticIndexStatistics.defaultDailySearchBudget,
             isEnabled: isEnabled,
             status: statusInfo.status,
             statusMessage: statusInfo.message,
@@ -3300,6 +3361,30 @@ public actor AppCoordinator {
             pendingCount: detailed.pending,
             baselineIndexedCount: detailed.baselineIndexed,
             deepIndexedCount: detailed.deepIndexed
+        )
+    }
+
+    /// Get the count of direct AI searches performed today against the dedicated 100-request quota.
+    public func getSearchRequestsTodayCount() async -> Int {
+        var utcCalendar = Calendar(identifier: .gregorian)
+        utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+        let dayStartMs = Int64(utcCalendar.startOfDay(for: Date()).timeIntervalSince1970 * 1000)
+        return (try? await services.database.countSearchSemanticRequestsToday(utcDayStartMs: dayStartMs)) ?? 0
+    }
+
+    /// Record a timeline AI search dispatch in the budget tracker.
+    public func recordSearchRequest(frameIDs: [Int64]) async -> Int64? {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        return try? await services.database.recordSearchRequestDispatch(frameIDs: frameIDs, requestedAtMs: nowMs)
+    }
+
+    /// Update the outcome of a timeline AI search request.
+    public func updateSearchRequestOutcome(requestID: Int64, status: String, httpStatus: Int?, errorMessage: String?) async {
+        try? await services.database.updateSearchRequestOutcome(
+            requestRowID: requestID,
+            status: status,
+            httpStatus: httpStatus,
+            errorMessage: errorMessage
         )
     }
 
@@ -3346,6 +3431,16 @@ public actor AppCoordinator {
     /// not the user-facing search path, so going straight to native FTS keeps it simple.
     public nonisolated func searchForAIContext(question: String, filters: SearchFilters = .none, limit: Int = 30) async throws -> SearchResults {
         try await services.search.searchForAIContext(question: question, filters: filters, limit: limit)
+    }
+
+    /// Plans and retrieves structured episodic storyboard context via the Cognitive Memory System
+    public nonisolated func planAndRetrieveCognitiveContext(question: String, limit: Int = 30) async throws -> CognitiveStoryboardContext {
+        let reasoner = CognitiveReasoner(
+            database: services.database,
+            ftsEngine: services.ftsEngine,
+            entityMesh: EntityMeshManager(database: services.database)
+        )
+        return try await reasoner.planAndRetrieveContext(query: question, maxFrames: limit)
     }
 
     // MARK: - Frame Retrieval
@@ -4800,8 +4895,22 @@ public actor AppCoordinator {
             let task: Task<String?, Error>
         }
 
+        private struct BundleFailureBackoffState {
+            var consecutiveFailures: Int = 0
+            var nextAllowedAt: Date?
+        }
+
         private var inFlightByKey: [CaptureKey: Task<String?, Error>] = [:]
         private var inFlightByBundle: [String: BundleTaskState] = [:]
+        private var failureBackoffByBundle: [String: BundleFailureBackoffState] = [:]
+
+        private let baseBackoffSeconds: TimeInterval
+        private let maxBackoffSeconds: TimeInterval
+
+        init(baseBackoffSeconds: TimeInterval = 5.0, maxBackoffSeconds: TimeInterval = 120.0) {
+            self.baseBackoffSeconds = baseBackoffSeconds
+            self.maxBackoffSeconds = maxBackoffSeconds
+        }
 
         func capture(
             bundleID: String,
@@ -4815,6 +4924,15 @@ public actor AppCoordinator {
 
             if let existingTask = inFlightByKey[key] {
                 return try await existingTask.value
+            }
+
+            // A capture that just failed for this app (e.g. Automation permission
+            // denied) will fail again immediately on the very next click/frame -
+            // back off instead of spawning a fresh AppleScript subprocess on every
+            // single capture until this cools down.
+            let now = Date()
+            if let nextAllowedAt = failureBackoffByBundle[bundleID]?.nextAllowedAt, nextAllowedAt > now {
+                return nil
             }
 
             // Arc/Safari automation can time out when multiple in-page scripts hit the same
@@ -4841,7 +4959,22 @@ public actor AppCoordinator {
                     inFlightByBundle[bundleID] = nil
                 }
             }
-            return try await task.value
+
+            do {
+                let result = try await task.value
+                failureBackoffByBundle[bundleID] = nil
+                return result
+            } catch {
+                var backoff = failureBackoffByBundle[bundleID] ?? BundleFailureBackoffState()
+                backoff.consecutiveFailures += 1
+                let delay = min(
+                    maxBackoffSeconds,
+                    baseBackoffSeconds * pow(2.0, Double(max(0, backoff.consecutiveFailures - 1)))
+                )
+                backoff.nextAllowedAt = Date().addingTimeInterval(delay)
+                failureBackoffByBundle[bundleID] = backoff
+                throw error
+            }
         }
     }
 
@@ -5402,8 +5535,14 @@ public actor AppCoordinator {
         try await Task.detached(priority: .utility) {
             let startTime = CFAbsoluteTimeGetCurrent()
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            process.arguments = lines.flatMap { ["-e", $0] }
+            if let helperURL = AppPaths.appleScriptHelperExecutableURL() {
+                process.executableURL = helperURL
+                process.arguments = [lines.joined(separator: "\n")]
+            } else {
+                Log.warning("[InPageURL] Bundled AppleScript helper not found, falling back to /usr/bin/osascript (will show a Dock icon flash)", category: .app)
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process.arguments = lines.flatMap { ["-e", $0] }
+            }
 
             let stdout = Pipe()
             let stderr = Pipe()

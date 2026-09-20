@@ -23,6 +23,9 @@ public actor SemanticIndexer {
     private let database: DatabaseManager
     private let storage: StorageManager
     private let openRouterClient: OpenRouterClient
+    private let entityMesh: any EntityMeshProtocol
+    private let cognitiveSessionizer: any CognitiveSessionizerProtocol
+    private let vectorEngine: any AcceleratedVectorEngineProtocol
     // Deliberately NOT `.allowAll` by default — see `hasReceivedPolicySync` below. The actual
     // policy value here doesn't matter until that flag is true, since `processNextBatch`
     // refuses to dispatch anything before then.
@@ -66,11 +69,17 @@ public actor SemanticIndexer {
     public init(
         database: DatabaseManager,
         storage: StorageManager,
+        entityMesh: any EntityMeshProtocol,
+        cognitiveSessionizer: any CognitiveSessionizerProtocol,
+        vectorEngine: any AcceleratedVectorEngineProtocol,
         openRouterClient: OpenRouterClient = OpenRouterClient()
     ) {
         self.database = database
         self.storage = storage
         self.openRouterClient = openRouterClient
+        self.entityMesh = entityMesh
+        self.cognitiveSessionizer = cognitiveSessionizer
+        self.vectorEngine = vectorEngine
     }
 
     // MARK: - Lifecycle
@@ -95,6 +104,8 @@ public actor SemanticIndexer {
                 case .rateLimited(let retryAfterSeconds):
                     delay = .seconds(max(retryAfterSeconds, 5))
                 case .error:
+                    delay = self.idlePollInterval
+                case .pausedForPressure:
                     delay = self.idlePollInterval
                 }
                 try? await Task.sleep(for: delay, clock: .continuous)
@@ -168,6 +179,7 @@ public actor SemanticIndexer {
         case awaitingPolicySync
         case rateLimited(retryAfterSeconds: Int)
         case error(String)
+        case pausedForPressure
     }
 
     private let appleFoundationModelService = AppleFoundationModelService.shared
@@ -179,6 +191,22 @@ public actor SemanticIndexer {
             Log.debug("[SemanticIndexer] Skipping cycle: disabled in Settings", category: .processing)
             return .disabled
         }
+
+        // Both stages below do local, memory-resident work (on-device NL/Foundation
+        // Model inference, CGImageSource decoding, growing the in-memory vector
+        // buffer in AcceleratedVectorEngine) on top of capture/encoding/OCR, which
+        // are already the machine's biggest consumers. Skipping a cycle entirely
+        // under critical system pressure — rather than only reacting to this
+        // actor's own footprint — keeps this background indexing from adding load
+        // at exactly the moment the system can least afford it (see
+        // FrameProcessingQueue's OCR backpressure for the same reasoning).
+        guard ResourcePressureMonitor.shared.currentLevel != .critical else {
+            currentStatus = .pausedForPressure
+            currentStatusMessage = "Paused: system memory pressure is critical"
+            Log.warning("[SemanticIndexer] Skipping cycle: system pressure critical", category: .processing)
+            return .pausedForPressure
+        }
+
         // Never dispatch before the real app-exclusion policy has arrived from
         // AppCoordinator — see `hasReceivedPolicySync`'s doc comment.
         guard hasReceivedPolicySync else {
@@ -295,6 +323,32 @@ public actor SemanticIndexer {
                 description: finalDesc,
                 indexedAtMs: nowMs
             )
+
+            // Stage 1 Cognitive Memory System Integration
+            // 1. Harvest entities into Knowledge Mesh
+            _ = try? await entityMesh.harvestEntities(
+                from: ocrData?.mainText ?? "",
+                appName: frame.bundleID,
+                windowTitle: frame.windowName ?? ocrData?.title,
+                browserURL: frame.browserUrl ?? ocrData?.chromeText,
+                frameID: frame.frameID,
+                episodeID: nil
+            )
+
+            // 2. Cluster into cognitive episodes and score keyframe salience
+            let pending = PendingCognitiveFrame(
+                frameID: frame.frameID,
+                timestamp: Date(timeIntervalSince1970: Double(frame.createdAtMs) / 1000.0),
+                appName: frame.bundleID ?? "Unknown",
+                windowTitle: frame.windowName ?? ocrData?.title,
+                browserURL: frame.browserUrl ?? ocrData?.chromeText,
+                ocrText: ocrData?.mainText ?? ""
+            )
+            _ = try? await cognitiveSessionizer.clusterFrames([pending])
+
+            // 3. Generate on-device dense vector embedding
+            let embedding = await vectorEngine.embedTextOnDevice(finalDesc)
+            try? await vectorEngine.addVector(frameID: FrameID(value: frame.frameID), vector: embedding)
         }
     }
 
@@ -308,7 +362,8 @@ public actor SemanticIndexer {
         let dayStart = utcCalendar.startOfDay(for: now)
         let dayStartMs = Int64(dayStart.timeIntervalSince1970 * 1000)
 
-        let usedToday = try await database.countTotalSemanticRequestsToday(utcDayStartMs: dayStartMs)
+        // Visual indexing ONLY counts its own requests (lane != 'search') so direct timeline searches never consume this budget
+        let usedToday = try await database.countVisualIndexingSemanticRequestsToday(utcDayStartMs: dayStartMs)
         return max(0, Self.dailyBackfillBudget - usedToday)
     }
 
@@ -379,6 +434,10 @@ public actor SemanticIndexer {
                     indexedAtMs: indexedAtMs
                 )
                 writtenFrameIDs.append(result.frameID)
+
+                // Update vector embedding with deep visual affordances
+                let deepVec = await vectorEngine.embedTextOnDevice(result.description)
+                try? await vectorEngine.addVector(frameID: FrameID(value: result.frameID), vector: deepVec)
             }
             if !unparsedFrameIDs.isEmpty {
                 try await database.markSemanticFramesRetryPending(unparsedFrameIDs)
@@ -509,28 +568,38 @@ public actor SemanticIndexer {
     /// plausible-sounding hallucinated description back, and write it into `semanticRanking` as
     /// if it were real, permanently poisoning search for that frame while still burning budget.
     private static func downscale(_ jpegData: Data, maxLongEdge: CGFloat, quality: CGFloat) throws -> Data {
-        guard let source = CGImageSourceCreateWithData(jpegData as CFData, nil) else {
-            throw ProcessingError.invalidVideoPath(path: "undecodable JPEG")
-        }
-        let thumbnailOptions: [CFString: Any] = [
-            kCGImageSourceCreateThumbnailFromImageAlways: true,
-            kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: Int(maxLongEdge)
-        ]
-        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) else {
-            throw ProcessingError.invalidVideoPath(path: "failed to downscale JPEG")
-        }
+        // Per-image pool: ImageIO creates autoreleased temporaries per
+        // thumbnail/encode that would otherwise accumulate on the indexer.
+        try autoreleasepool {
+            // Never let ImageIO retain decoded surfaces behind our back; the
+            // caller holds only the re-encoded JPEG. MaxPixelSize stays exactly
+            // the needed long edge (no upscaling below it), so output is unchanged.
+            let sourceOptions: [CFString: Any] = [kCGImageSourceShouldCache: false]
+            guard let source = CGImageSourceCreateWithData(jpegData as CFData, sourceOptions as CFDictionary) else {
+                throw ProcessingError.invalidVideoPath(path: "undecodable JPEG")
+            }
+            let thumbnailOptions: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: Int(maxLongEdge),
+                kCGImageSourceShouldCache: false,
+                kCGImageSourceShouldCacheImmediately: false
+            ]
+            guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions as CFDictionary) else {
+                throw ProcessingError.invalidVideoPath(path: "failed to downscale JPEG")
+            }
 
-        let output = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(output, "public.jpeg" as CFString, 1, nil) else {
-            throw ProcessingError.invalidVideoPath(path: "failed to re-encode downscaled JPEG")
+            let output = NSMutableData()
+            guard let destination = CGImageDestinationCreateWithData(output, "public.jpeg" as CFString, 1, nil) else {
+                throw ProcessingError.invalidVideoPath(path: "failed to re-encode downscaled JPEG")
+            }
+            let destinationOptions: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
+            CGImageDestinationAddImage(destination, thumbnail, destinationOptions as CFDictionary)
+            guard CGImageDestinationFinalize(destination) else {
+                throw ProcessingError.invalidVideoPath(path: "failed to re-encode downscaled JPEG")
+            }
+            return output as Data
         }
-        let destinationOptions: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: quality]
-        CGImageDestinationAddImage(destination, thumbnail, destinationOptions as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else {
-            throw ProcessingError.invalidVideoPath(path: "failed to re-encode downscaled JPEG")
-        }
-        return output as Data
     }
 
     // MARK: - Settings

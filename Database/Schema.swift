@@ -107,6 +107,12 @@ enum Schema {
     /// Checkpoint WAL every ~4MB (1000 pages × 4KB)
     static let setWALAutocheckpoint = "PRAGMA wal_autocheckpoint=1000;"
 
+    /// Checkpoint policy: TRUNCATE merges WAL frames back into the main database
+    /// file and truncates the WAL file, bounding `-wal` growth on disk.
+    /// Run before close and periodically during idle time — never inside a
+    /// user transaction (checkpoint takes its own locks).
+    static let checkpointSQL = "PRAGMA wal_checkpoint(TRUNCATE);"
+
     /// All pragmas to run on database initialization
     static var initializationPragmas: [String] {
         [

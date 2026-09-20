@@ -504,6 +504,42 @@ public enum SemanticIndexQueries {
         }
     }
 
+    /// Counts non-cancelled visual indexing requests today (all lanes except 'search').
+    /// Used to enforce the daily 600-request visual indexing quota without being affected by direct searches.
+    public static func countVisualIndexingRequestsToday(db: OpaquePointer, utcDayStartMs: Int64) throws -> Int {
+        let sql = "SELECT COUNT(*) FROM semantic_index_requests WHERE requestedAt >= ? AND lane != 'search' AND status != 'cancelled';"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        sqlite3_bind_int64(statement, 1, utcDayStartMs)
+
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw DatabaseError.queryFailed(query: sql, underlying: "No result row")
+        }
+        return Int(sqlite3_column_int64(statement, 0))
+    }
+
+    /// Counts non-cancelled timeline direct AI search requests today (lane = 'search').
+    /// Used to enforce the daily 100-request search quota without being affected by visual indexing.
+    public static func countSearchRequestsToday(db: OpaquePointer, utcDayStartMs: Int64) throws -> Int {
+        let sql = "SELECT COUNT(*) FROM semantic_index_requests WHERE requestedAt >= ? AND lane = 'search' AND status != 'cancelled';"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        sqlite3_bind_int64(statement, 1, utcDayStartMs)
+
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw DatabaseError.queryFailed(query: sql, underlying: "No result row")
+        }
+        return Int(sqlite3_column_int64(statement, 0))
+    }
+
     /// Counts requests in the backfill lane today (legacy compatibility).
     public static func countBackfillRequestsToday(db: OpaquePointer, utcDayStartMs: Int64) throws -> Int {
         let sql = "SELECT COUNT(*) FROM semantic_index_requests WHERE requestedAt >= ? AND lane = 'backfill' AND status != 'cancelled';"
@@ -522,7 +558,6 @@ public enum SemanticIndexQueries {
     }
 
     /// Counts TOTAL non-cancelled semantic index requests dispatched today across ALL lanes.
-    /// Used to enforce the daily 600-request quota and prevent API exhaustion.
     public static func countTotalRequestsToday(db: OpaquePointer, utcDayStartMs: Int64) throws -> Int {
         let sql = "SELECT COUNT(*) FROM semantic_index_requests WHERE requestedAt >= ? AND status != 'cancelled';"
         var statement: OpaquePointer?

@@ -247,6 +247,31 @@ public actor HEVCEncoder {
     private var flushedFrameCount: Int = 0
     private var lastDurableFileSizeBytes: Int64 = 0
 
+    // Frames dropped (coalesced) under encoder backpressure instead of blocking
+    // the capture thread. The timestamp slot is kept so the next tick's fresher
+    // frame reuses it; no gap is introduced in presentation timestamps.
+    private var droppedFrameCount: Int = 0
+
+    /// Sentinel prefix marking a backpressure-coalesced drop. The drop is
+    /// reported through the existing `encodingFailed` case (no API change);
+    /// writers match on this prefix to treat the frame as coalesced.
+    static let backpressureDropPrefix = "backpressure-drop:"
+
+    /// Returns true when `error` is a backpressure-coalesced drop: this capture
+    /// tick's frame was skipped (not written to video) rather than blocking the
+    /// capture thread, but the segment itself is still healthy. Writers still
+    /// rethrow it after logging — callers must not treat the encoder's
+    /// unchanged frameCount as if `appendFrame` succeeded, since callers such as
+    /// AppCoordinator independently track frame count and, on this same-count
+    /// "success", would flag a fatal encoder mismatch and cancel the writer.
+    public static func isBackpressureDrop(_ error: Error) -> Bool {
+        guard let moduleError = error as? StorageModuleError else { return false }
+        if case .encodingFailed(let underlying) = moduleError {
+            return underlying.hasPrefix(backpressureDropPrefix)
+        }
+        return false
+    }
+
     public init() {}
 
     static func compressionTuning(
@@ -425,13 +450,21 @@ public actor HEVCEncoder {
         let sourcePixelBufferAttributes: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
             kCVPixelBufferWidthKey as String: width,
-            kCVPixelBufferHeightKey as String: height
+            kCVPixelBufferHeightKey as String: height,
+            // Keep a small pool resident so steady-state ticks reuse buffers,
+            // and use IOSurface backing for zero-copy handoff to the encoder.
+            kCVPixelBufferPoolMinimumBufferCountKey as String: 3,
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:]
         ]
 
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: input,
             sourcePixelBufferAttributes: sourcePixelBufferAttributes
         )
+
+        // Pre-warm the adaptor's pool now (on the setup path, not the capture
+        // thread) so first frames do not pay allocation/first-fault cost.
+        FrameConverter.prewarm(adaptor.pixelBufferPool)
 
         guard writer.canAdd(input) else {
             throw StorageModuleError.encodingFailed(underlying: "Cannot add video input to writer")
@@ -474,6 +507,7 @@ public actor HEVCEncoder {
         self.lastLoggedFileSize = 0
         self.flushedFrameCount = 0
         self.lastDurableFileSizeBytes = 0
+        self.droppedFrameCount = 0
 
         await StorageVideoEncodingMemoryLedger.registerSession(
             identifier: outputURL.path,
@@ -487,7 +521,9 @@ public actor HEVCEncoder {
 
     func makePixelBuffer(from frame: CapturedFrame) throws -> CVPixelBuffer {
         let pool = adaptor?.pixelBufferPool
-        return try FrameConverter.createPixelBuffer(from: frame, pool: pool)
+        return try autoreleasepool {
+            try FrameConverter.createPixelBuffer(from: frame, pool: pool)
+        }
     }
 
     public func encode(pixelBuffer: CVPixelBuffer, timestamp: CMTime) async throws {
@@ -510,22 +546,37 @@ public actor HEVCEncoder {
             adaptor = newAdaptor
         }
 
-        // Wait for input to be ready with timeout (5 seconds max)
-        let maxWaitIterations = 5000 // 5000 * 1ms = 5 seconds
-        var waitIterations = 0
-        while !input.isReadyForMoreMediaData {
-            waitIterations += 1
-            if waitIterations >= maxWaitIterations {
-                Log.error("[HEVCEncoder] Encoder timeout: isReadyForMoreMediaData never became true after 5s, auto-finalizing. frameCount=\(frameCount), outputURL=\(outputURL?.lastPathComponent ?? "nil")", category: .storage)
-                try await finalize()
-                throw StorageModuleError.encodingFailed(underlying: "Encoder timeout waiting for input ready - auto-finalized")
+        // Backpressure gate: never block the capture thread for the old 5s
+        // timeout waiting for the encoder. Poll briefly (up to ~60ms, well
+        // under one capture tick) to absorb an ordinary transient stall —
+        // AVAssetWriter inputs routinely go not-ready for a few milliseconds
+        // under normal load — before giving up; if still not ready, drop
+        // (coalesce) this frame so the next capture tick supplies a fresher
+        // one. Callers detect the drop via `isBackpressureDrop(_:)` and keep
+        // the timestamp slot.
+        if !input.isReadyForMoreMediaData {
+            for _ in 0..<6 {
+                try? await Task.sleep(for: .milliseconds(10), clock: .continuous)
+                if input.isReadyForMoreMediaData { break }
             }
-            try await Task.sleep(for: .nanoseconds(Int64(1_000_000)), clock: .continuous) // 1ms
+            if !input.isReadyForMoreMediaData {
+                droppedFrameCount += 1
+                // Throttle the log: every 30th drop plus the first few.
+                if droppedFrameCount <= 3 || droppedFrameCount % 30 == 0 {
+                    Log.warning("[HEVCEncoder] Backpressure: dropping frame (coalesced) rather than blocking capture thread. droppedFrameCount=\(droppedFrameCount), frameCount=\(frameCount), outputURL=\(outputURL?.lastPathComponent ?? "nil")", category: .storage)
+                } else {
+                    Log.verbose("[HEVCEncoder] Backpressure drop #\(droppedFrameCount) at frameCount=\(frameCount)", category: .storage)
+                }
+                throw StorageModuleError.encodingFailed(underlying: "\(Self.backpressureDropPrefix) encoder input not ready; frame coalesced (droppedFrameCount=\(droppedFrameCount))")
+            }
         }
 
-        Self.applyScreenCaptureColorMetadata(to: pixelBuffer)
+        let appended: Bool = autoreleasepool {
+            Self.applyScreenCaptureColorMetadata(to: pixelBuffer)
+            return adaptor.append(pixelBuffer, withPresentationTime: timestamp)
+        }
 
-        guard adaptor.append(pixelBuffer, withPresentationTime: timestamp) else {
+        guard appended else {
             Log.error("[HEVCEncoder] adaptor.append() failed at frameCount=\(frameCount), timestamp=\(timestamp.seconds)s, writerStatus=\(assetWriter?.status.rawValue ?? -1), outputURL=\(outputURL?.lastPathComponent ?? "nil")", category: .storage)
             throw StorageModuleError.encodingFailed(underlying: "Failed to append pixel buffer")
         }
@@ -612,6 +663,7 @@ public actor HEVCEncoder {
 
         // Clear state but preserve frame count for correct timestamps
         let savedFrameCount = frameCount
+        let savedDroppedFrameCount = droppedFrameCount
         assetWriter = nil
         videoInput = nil
         adaptor = nil
@@ -626,6 +678,7 @@ public actor HEVCEncoder {
 
         // Restore frame count so timestamps continue from where we left off
         frameCount = savedFrameCount
+        droppedFrameCount = savedDroppedFrameCount
 
         Log.info("✅ Encoder recreated successfully, continuing from frame \(frameCount)", category: .storage)
     }
@@ -646,6 +699,7 @@ public actor HEVCEncoder {
         lastLoggedFileSize = 0
         flushedFrameCount = 0
         lastDurableFileSizeBytes = 0
+        droppedFrameCount = 0
         if let url = outputURL {
             try? FileManager.default.removeItem(at: url)
         }
@@ -676,6 +730,12 @@ public actor HEVCEncoder {
     /// Returns the on-disk file size at the last known durable fragment boundary.
     public func durableFileSizeBytes() -> Int64 {
         return lastDurableFileSizeBytes
+    }
+
+    /// Returns the number of frames dropped (coalesced) under backpressure
+    /// instead of blocking the capture thread.
+    public func backpressureDroppedFrameCount() -> Int {
+        return droppedFrameCount
     }
 }
 

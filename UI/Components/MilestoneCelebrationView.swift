@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 import Shared
 
 /// A celebration dialog shown when users reach screen time milestones
@@ -501,13 +502,6 @@ struct MilestoneCelebrationView: View {
             return image
         }
 
-#if SWIFT_PACKAGE
-        if let image = Bundle.module.image(forResource: imageName) {
-            Log.info("\(logContext) Loaded CreatorProfile via Bundle.module.image(forResource:)", category: .ui)
-            return image
-        }
-#endif
-
         let fileManager = FileManager.default
         let resourcePath = Bundle.main.resourcePath ?? ""
         let bundleCandidates: [(label: String, path: String)] = [
@@ -522,21 +516,6 @@ struct MilestoneCelebrationView: View {
                 return image
             }
         }
-
-#if SWIFT_PACKAGE
-        let moduleResourcePath = Bundle.module.resourcePath ?? ""
-        let moduleCandidates: [(label: String, path: String)] = [
-            ("module/CreatorProfile.png", "\(moduleResourcePath)/CreatorProfile.png"),
-            ("module/haseab.png", "\(moduleResourcePath)/haseab.png"),
-            ("module/Assets.xcassets/CreatorProfile.imageset/haseab.png", "\(moduleResourcePath)/Assets.xcassets/CreatorProfile.imageset/haseab.png")
-        ]
-        for candidate in moduleCandidates where fileManager.fileExists(atPath: candidate.path) {
-            if let image = NSImage(contentsOfFile: candidate.path) {
-                Log.warning("\(logContext) Loaded creator profile via SwiftPM module file fallback \(candidate.label)", category: .ui)
-                return image
-            }
-        }
-#endif
 
         let debugWorkingTreePath = "\(fileManager.currentDirectoryPath)/UI/Assets.xcassets/CreatorProfile.imageset/haseab.png"
         if fileManager.fileExists(atPath: debugWorkingTreePath),

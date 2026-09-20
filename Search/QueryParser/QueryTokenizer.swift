@@ -41,6 +41,8 @@ public struct QueryTokenizer: Sendable {
             .replacingOccurrences(of: "\"", with: "")
             .replacingOccurrences(of: "*", with: "")
             .replacingOccurrences(of: ":", with: "")
+            .replacingOccurrences(of: "(", with: "")
+            .replacingOccurrences(of: ")", with: "")
     }
 
     private func rawTokens(from query: String) -> [String] {

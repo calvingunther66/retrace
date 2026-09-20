@@ -253,6 +253,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case exitDueToLockFailure
     }
 
+    enum TerminateAction: Equatable {
+        case terminateNow
+        case flushForSystemPowerOff
+        case flushSkippingConfirmation
+        case presentConfirmation
+        case waitForInFlightDecision
+    }
+
     var menuBarManager: MenuBarManager?
     private var coordinatorWrapper: AppCoordinatorWrapper?
     private var sleepWakeObservers: [NSObjectProtocol] = []
@@ -273,6 +281,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var isTerminationFlushInProgress = false
     private var isTerminationDecisionInProgress = false
     private var bypassQuitConfirmationPromptOnce = false
+    private var systemIsPoweringOff = false
     private var singleInstanceLockFileDescriptor: CInt = -1
     private var aboutWindowController: NSWindowController?
     private let settingsStore = UserDefaults(suiteName: "io.retrace.app") ?? .standard
@@ -982,24 +991,60 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        if isTerminationFlushInProgress {
+        switch Self.terminateAction(
+            systemIsPoweringOff: systemIsPoweringOff,
+            isTerminationFlushInProgress: isTerminationFlushInProgress,
+            isTerminationDecisionInProgress: isTerminationDecisionInProgress,
+            bypassQuitConfirmationPromptOnce: bypassQuitConfirmationPromptOnce
+        ) {
+        case .terminateNow:
             return .terminateNow
-        }
-
-        if isTerminationDecisionInProgress {
+        case .waitForInFlightDecision:
             return .terminateLater
-        }
-
-        if bypassQuitConfirmationPromptOnce {
+        case .flushForSystemPowerOff:
+            // No user to confirm during logout/restart/shutdown: flush straight
+            // through so the crash-recovery helper sees an expected exit instead
+            // of a crash. A modal here would block termination until the system
+            // force-kills the app, wedging the next launch.
+            isTerminationDecisionInProgress = false
+            Log.info("[AppDelegate] Bypassing quit confirmation for system power-off", category: .app)
+            beginTerminationFlush()
+            return .terminateLater
+        case .flushSkippingConfirmation:
             bypassQuitConfirmationPromptOnce = false
             beginTerminationFlush()
             return .terminateLater
+        case .presentConfirmation:
+            isTerminationDecisionInProgress = true
+            presentQuitConfirmationAlert()
+            return .terminateLater
         }
+    }
 
-        isTerminationDecisionInProgress = true
-        presentQuitConfirmationAlert()
+    static func terminateAction(
+        systemIsPoweringOff: Bool,
+        isTerminationFlushInProgress: Bool,
+        isTerminationDecisionInProgress: Bool,
+        bypassQuitConfirmationPromptOnce: Bool
+    ) -> TerminateAction {
+        if isTerminationFlushInProgress {
+            return .terminateNow
+        }
+        if systemIsPoweringOff {
+            return .flushForSystemPowerOff
+        }
+        if isTerminationDecisionInProgress {
+            return .waitForInFlightDecision
+        }
+        if bypassQuitConfirmationPromptOnce {
+            return .flushSkippingConfirmation
+        }
+        return .presentConfirmation
+    }
 
-        return .terminateLater
+    private func handleSystemPowerOff() {
+        systemIsPoweringOff = true
+        Log.info("[AppDelegate] System power-off requested - quit confirmation will be bypassed", category: .app)
     }
 
     private func requestImmediateTermination(skipQuitConfirmation: Bool) {
@@ -1619,6 +1664,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         sleepWakeObservers.append(screensWakeObserver)
+
+        // System power-off (logout/restart/shutdown) must bypass the interactive quit
+        // confirmation: there is no user to click it, and the modal blocks termination
+        // until the system force-kills the app — which then looks like a crash to the
+        // crash-recovery helper and triggers a spurious relaunch on next login.
+        let powerOffObserver = workspaceCenter.addObserver(
+            forName: NSWorkspace.willPowerOffNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleSystemPowerOff()
+            }
+        }
+        sleepWakeObservers.append(powerOffObserver)
 
         // Power source change detection - coalesced with sleep/wake observers
         // NSWorkspace doesn't have a direct power change notification, but we can:

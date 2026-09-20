@@ -30,6 +30,7 @@ let package = Package(
         .library(name: "CrashRecoverySupport", targets: ["CrashRecoverySupport"]),
         .executable(name: "Retrace", targets: ["Retrace"]),
         .executable(name: "RetraceCrashRecoveryHelper", targets: ["RetraceCrashRecoveryHelper"]),
+        .executable(name: "RetraceAppleScriptHelper", targets: ["RetraceAppleScriptHelper"]),
         .executable(name: "TestMostRecentFrame", targets: ["TestMostRecentFrame"]),
         .executable(name: "QueryRewindApps", targets: ["QueryRewindApps"]),
     ],
@@ -111,6 +112,7 @@ let package = Package(
             dependencies: ["Shared"],
             path: "Capture",
             exclude: [
+                "AppleScriptHelper",
                 "Tests",
                 "README.md",
                 "AGENTS.md"
@@ -348,6 +350,13 @@ let package = Package(
             name: "RetraceCrashRecoveryHelper",
             dependencies: ["CrashRecoverySupport"],
             path: "UI/CrashRecoveryHelper",
+            sources: [
+                "main.swift"
+            ]
+        ),
+        .executableTarget(
+            name: "RetraceAppleScriptHelper",
+            path: "Capture/AppleScriptHelper",
             sources: [
                 "main.swift"
             ]

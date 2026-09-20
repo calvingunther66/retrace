@@ -112,6 +112,8 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
     /// Uses the same .accurate pipeline as frame processing
     /// Returns TextRegions with **normalized coordinates** (0.0-1.0) for direct use with OCRNodeWithText
     public func recognizeTextFromCGImage(_ cgImage: CGImage) async throws -> [TextRegion] {
+        // Shared single CGImage per tick: Vision reads the caller's image
+        // directly (no BGRA/Data copy); scoped pool releases transients now.
         return try autoreleasepool {
             let memoryLease = VisionOCRMemoryLedger.begin(
                 tag: "processing.ocr.liveScreenshotVisionRequest",
@@ -616,9 +618,16 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
 
         do {
             let envelopeBaselineSnapshot = await Self.synchronizedLedgerSnapshot()
-            guard let cgImage = createCGImage(from: imageData, width: width, height: height, bytesPerRow: bytesPerRow) else {
+            // Single CGImage per tick: bridged once here, released immediately
+            // after performRecognition returns (scoped autoreleasepool).
+            guard let cgImage = autoreleasepool(invoking: {
+                createCGImage(from: imageData, width: width, height: height, bytesPerRow: bytesPerRow)
+            }) else {
                 throw ProcessingError.imageConversionFailed
             }
+            // NOTE: `cgImage` is last used by performRecognition below, so ARC
+            // releases it immediately after that call (before the ledger-tail
+            // snapshots); do not capture it past that point.
 
             let postImageBridgeSnapshot = await Self.synchronizedLedgerSnapshot()
             let imageBridgeBytes = Self.measuredLedgerResidualBytes(
@@ -635,7 +644,7 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
                 delay: requestConfig.phaseResidualDuration
             )
 
-            let recognitionOutput = try performRecognition(
+            let recognitionOutput = try await performRecognition(
                 on: cgImage,
                 outputWidth: width,
                 outputHeight: height,
@@ -730,7 +739,7 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
         request: VNRecognizeTextRequest,
         handler: VNImageRequestHandler,
         timeoutSeconds: TimeInterval
-    ) throws {
+    ) async throws {
         guard !circuitBreaker.isOpen else {
             throw ProcessingError.ocrFailed(
                 underlying: "OCR circuit breaker open: Vision text recognition hung "
@@ -740,55 +749,81 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
             )
         }
 
-        let doneSemaphore = DispatchSemaphore(value: 0)
-        let resultLock = NSLock()
-        var performError: Error?
-
+        // The actual Vision call runs on this dedicated (non-cooperative-pool) serial
+        // queue, exactly as before. The timeout, however, must NOT be scheduled on
+        // this same queue: if `handler.perform` wedges, it occupies the queue's one
+        // worker forever, so a same-queue `asyncAfter` timeout would never even be
+        // dequeued -- turning a bounded 20s wait into an unbounded hang. Scheduling
+        // it on the global queue instead keeps it firing independently of whether
+        // `watchdogQueue` is wedged.
         let watchdogQueue = DispatchQueue(label: "processing.ocr.vision_watchdog", qos: .utility)
-        watchdogQueue.async {
-            do {
-                try autoreleasepool {
-                    try handler.perform([request])
+        let resumeGuard = WatchdogResumeGuard()
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let timeoutWorkItem = DispatchWorkItem {
+                resumeGuard.fireOnce {
+                    request.cancel()
+                    let justTripped = circuitBreaker.recordTimeout()
+                    if justTripped {
+                        Log.error(
+                            "[VisionOCR] Circuit breaker OPEN after \(circuitBreaker.threshold) consecutive "
+                                + "\(Int(timeoutSeconds))s timeouts -- Vision text recognition appears wedged. "
+                                + "OCR is paused for the rest of this process's lifetime to stop leaking "
+                                + "threads/memory. Use Restart OCR, or relaunch the app if that doesn't clear it.",
+                            category: .processing
+                        )
+                    } else {
+                        Log.warning(
+                            "[VisionOCR] Request exceeded \(Int(timeoutSeconds))s and was cancelled "
+                                + "(consecutive timeout \(circuitBreaker.consecutiveTimeoutCount)/\(circuitBreaker.threshold)); "
+                                + "frame will be retried",
+                            category: .processing
+                        )
+                    }
+                    continuation.resume(throwing: ProcessingError.ocrFailed(
+                        underlying: "Vision OCR request timed out after \(Int(timeoutSeconds))s and was cancelled"
+                    ))
                 }
-            } catch {
-                resultLock.lock()
-                performError = error
-                resultLock.unlock()
             }
-            doneSemaphore.signal()
-        }
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeoutSeconds, execute: timeoutWorkItem)
 
-        guard doneSemaphore.wait(timeout: .now() + timeoutSeconds) == .success else {
-            request.cancel()
-            let justTripped = circuitBreaker.recordTimeout()
-            if justTripped {
-                Log.error(
-                    "[VisionOCR] Circuit breaker OPEN after \(circuitBreaker.threshold) consecutive "
-                        + "\(Int(timeoutSeconds))s timeouts -- Vision text recognition appears wedged. "
-                        + "OCR is paused for the rest of this process's lifetime to stop leaking "
-                        + "threads/memory. Use Restart OCR, or relaunch the app if that doesn't clear it.",
-                    category: .processing
-                )
-            } else {
-                Log.warning(
-                    "[VisionOCR] Request exceeded \(Int(timeoutSeconds))s and was cancelled "
-                        + "(consecutive timeout \(circuitBreaker.consecutiveTimeoutCount)/\(circuitBreaker.threshold)); "
-                        + "frame will be retried",
-                    category: .processing
-                )
+            watchdogQueue.async {
+                do {
+                    try autoreleasepool {
+                        try handler.perform([request])
+                    }
+                    // Drop the pending timeout immediately on success so it doesn't
+                    // keep `request` retained (and fire uselessly) for the rest of
+                    // `timeoutSeconds` after every normal, fast OCR call.
+                    timeoutWorkItem.cancel()
+                    resumeGuard.fireOnce {
+                        circuitBreaker.recordSuccess()
+                        continuation.resume()
+                    }
+                } catch {
+                    timeoutWorkItem.cancel()
+                    resumeGuard.fireOnce {
+                        circuitBreaker.recordSuccess()
+                        continuation.resume(throwing: ProcessingError.ocrFailed(underlying: error.localizedDescription))
+                    }
+                }
             }
-            throw ProcessingError.ocrFailed(
-                underlying: "Vision OCR request timed out after \(Int(timeoutSeconds))s and was cancelled"
-            )
         }
+    }
 
-        circuitBreaker.recordSuccess()
+    /// Lock-guarded single-fire gate ensuring only the watchdog's completion or its
+    /// timeout -- whichever happens first -- resumes the continuation, never both.
+    private final class WatchdogResumeGuard {
+        private let lock = NSLock()
+        private var hasFired = false
 
-        resultLock.lock()
-        let error = performError
-        resultLock.unlock()
-        if let error {
-            throw ProcessingError.ocrFailed(underlying: error.localizedDescription)
+        func fireOnce(_ action: () -> Void) {
+            lock.lock()
+            let alreadyFired = hasFired
+            hasFired = true
+            lock.unlock()
+            guard !alreadyFired else { return }
+            action()
         }
     }
 
@@ -798,31 +833,35 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
         outputHeight: Int,
         config: ProcessingConfig,
         requestConfig: RecognitionRequestConfig
-    ) throws -> VisionRecognitionOutput {
-        try autoreleasepool {
-            var retainedAdjustmentBytes: Int64 = 0
-            var retainedMeasurementOverride: (bytes: Int64, note: String)?
-            let memoryLease = VisionOCRMemoryLedger.begin(
-                tag: requestConfig.memoryTag,
-                function: requestConfig.memoryFunction,
+    ) async throws -> VisionRecognitionOutput {
+        var retainedAdjustmentBytes: Int64 = 0
+        var retainedMeasurementOverride: (bytes: Int64, note: String)?
+        let memoryLease = VisionOCRMemoryLedger.begin(
+            tag: requestConfig.memoryTag,
+            function: requestConfig.memoryFunction,
+            reason: requestConfig.memoryReason,
+            width: outputWidth,
+            height: outputHeight,
+            privateHeapTag: requestConfig.privateHeapTag,
+            privateHeapFunction: requestConfig.privateHeapFunction,
+            retainedHeapTag: requestConfig.retainedHeapTag,
+            retainedHeapFunction: requestConfig.retainedHeapFunction,
+            retainedHeapDuration: requestConfig.retainedHeapDuration
+        )
+        defer {
+            VisionOCRMemoryLedger.end(
+                lease: memoryLease,
                 reason: requestConfig.memoryReason,
-                width: outputWidth,
-                height: outputHeight,
-                privateHeapTag: requestConfig.privateHeapTag,
-                privateHeapFunction: requestConfig.privateHeapFunction,
-                retainedHeapTag: requestConfig.retainedHeapTag,
-                retainedHeapFunction: requestConfig.retainedHeapFunction,
-                retainedHeapDuration: requestConfig.retainedHeapDuration
+                retainedAdjustmentBytes: retainedAdjustmentBytes,
+                retainedMeasurementOverride: retainedMeasurementOverride
             )
-            defer {
-                VisionOCRMemoryLedger.end(
-                    lease: memoryLease,
-                    reason: requestConfig.memoryReason,
-                    retainedAdjustmentBytes: retainedAdjustmentBytes,
-                    retainedMeasurementOverride: retainedMeasurementOverride
-                )
-            }
+        }
 
+        // Split into two autoreleasepool scopes (setup, then results-processing)
+        // straddling the `await` below: `autoreleasepool(invoking:)` only accepts a
+        // synchronous closure, so it cannot wrap a suspension point directly.
+        let (request, handler, performBaselineFootprintBytes, setupResidualBytes) = autoreleasepool {
+            () -> (VNRecognizeTextRequest, VNImageRequestHandler, UInt64?, Int64) in
             let setupBaselineFootprintBytes = VisionOCRMemoryLedger.currentFootprintBytes()
             let request = VNRecognizeTextRequest()
             request.recognitionLevel = Self.recognitionLevel(for: config)
@@ -847,14 +886,16 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
                 delay: requestConfig.phaseResidualDuration
             )
 
-            let performBaselineFootprintBytes = postSetupFootprintBytes
+            return (request, handler, postSetupFootprintBytes, setupResidualBytes)
+        }
 
-            try Self.performWithWatchdog(
-                request: request,
-                handler: handler,
-                timeoutSeconds: Self.ocrRequestTimeoutSeconds
-            )
+        try await Self.performWithWatchdog(
+            request: request,
+            handler: handler,
+            timeoutSeconds: Self.ocrRequestTimeoutSeconds
+        )
 
+        return try autoreleasepool {
             let postPerformFootprintBytes = VisionOCRMemoryLedger.currentFootprintBytes()
             let observations = request.results ?? []
             let postObservationBridgeFootprintBytes = VisionOCRMemoryLedger.currentFootprintBytes()

@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import Darwin
 import Foundation
+import ImageIO
 import Shared
 import CoreMedia
 
@@ -359,27 +360,33 @@ fileprivate actor SegmentRewriteExecutor {
         var framesWithPTS: [(pts: CMTime, image: CGImage)] = []
         let ciContext = CIContext(options: [.useSoftwareRenderer: false])
 
+        // One transient CIImage/CGImage per PTS iteration; the sample buffer
+        // and CI intermediates are released immediately each lap so only the
+        // stored CGImage per PTS survives (no per-frame duplicates held).
         while let sampleBuffer = trackOutput.copyNextSampleBuffer() {
-            let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-
-            guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-                Log.warning(
-                    "[StorageManager] Skipping frame - no image buffer at PTS \(String(format: "%.3f", pts.seconds))s, segment \(segmentID)",
-                    category: .storage
-                )
-                continue
+            defer { CMSampleBufferInvalidate(sampleBuffer) }
+            let decoded: (pts: CMTime, image: CGImage)? = autoreleasepool {
+                let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+                guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+                    Log.warning(
+                        "[StorageManager] Skipping frame - no image buffer at PTS \(String(format: "%.3f", pts.seconds))s, segment \(segmentID)",
+                        category: .storage
+                    )
+                    return nil
+                }
+                let ciImage = CIImage(cvPixelBuffer: imageBuffer)
+                guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
+                    Log.warning(
+                        "[StorageManager] Failed to create CGImage at PTS \(String(format: "%.3f", pts.seconds))s, segment \(segmentID)",
+                        category: .storage
+                    )
+                    return nil
+                }
+                return (pts, cgImage)
             }
-
-            let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-            guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
-                Log.warning(
-                    "[StorageManager] Failed to create CGImage at PTS \(String(format: "%.3f", pts.seconds))s, segment \(segmentID)",
-                    category: .storage
-                )
-                continue
+            if let decoded {
+                framesWithPTS.append(decoded)
             }
-
-            framesWithPTS.append((pts: pts, image: cgImage))
         }
 
         if reader.status == .failed {
@@ -1168,22 +1175,27 @@ public actor StorageManager: StorageProtocol {
             )
         }
 
+        // One transient CIImage/CGImage per PTS iteration using the shared
+        // context; sample buffer and CI intermediates released immediately.
         while let sampleBuffer = trackOutput.copyNextSampleBuffer() {
-            let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-
-            guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-                Log.warning("[StorageManager] Skipping frame - no image buffer at PTS \(String(format: "%.3f", pts.seconds))s, segment \(segmentID)", category: .storage)
-                continue
+            defer { CMSampleBufferInvalidate(sampleBuffer) }
+            let decoded: (pts: CMTime, image: CGImage)? = autoreleasepool {
+                let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+                guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+                    Log.warning("[StorageManager] Skipping frame - no image buffer at PTS \(String(format: "%.3f", pts.seconds))s, segment \(segmentID)", category: .storage)
+                    return nil
+                }
+                // Convert CVPixelBuffer to CGImage using shared context
+                let ciImage = CIImage(cvPixelBuffer: imageBuffer)
+                guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
+                    Log.warning("[StorageManager] Failed to create CGImage at PTS \(String(format: "%.3f", pts.seconds))s, segment \(segmentID)", category: .storage)
+                    return nil
+                }
+                return (pts, cgImage)
             }
-
-            // Convert CVPixelBuffer to CGImage using shared context
-            let ciImage = CIImage(cvPixelBuffer: imageBuffer)
-            guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
-                Log.warning("[StorageManager] Failed to create CGImage at PTS \(String(format: "%.3f", pts.seconds))s, segment \(segmentID)", category: .storage)
-                continue
+            if let decoded {
+                framesWithPTS.append(decoded)
             }
-
-            framesWithPTS.append((pts: pts, image: cgImage))
         }
 
         // Check for read errors
@@ -1216,7 +1228,7 @@ public actor StorageManager: StorageProtocol {
         return decodedFrames
     }
 
-    /// Convert CGImage to JPEG data
+    /// Convert CGImage to JPEG data (direct CGImageDestination bridge; no NSImage intermediate)
     private func convertCGImageToJPEG(_ cgImage: CGImage) throws -> Data {
         let bridgeToken = beginVideoDecodingTransientBytes(
             bucket: .appKitBridge,
@@ -1231,10 +1243,25 @@ public actor StorageManager: StorageProtocol {
             )
         }
 
-        let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-        guard let tiffData = nsImage.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiffData),
-              let jpegData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) else {
+        // Direct ImageIO bridge: single CGImage retained for this call, no
+        // NSImage/tiff/bitmap intermediates, released immediately on return.
+        let jpegData: Data? = autoreleasepool {
+            guard let mutableData = CFDataCreateMutable(kCFAllocatorDefault, 0) else { return nil as Data? }
+            guard let destination = CGImageDestinationCreateWithData(
+                mutableData,
+                "public.jpeg" as CFString,
+                1,
+                nil
+            ) else { return nil as Data? }
+            CGImageDestinationAddImage(
+                destination,
+                cgImage,
+                ["kCGImageDestinationLossyCompressionQuality": 0.8] as CFDictionary
+            )
+            guard CGImageDestinationFinalize(destination) else { return nil as Data? }
+            return mutableData as Data
+        }
+        guard let jpegData else {
             throw StorageError.fileReadFailed(path: "", underlying: "Failed to convert CGImage to JPEG")
         }
         return jpegData
@@ -1242,7 +1269,12 @@ public actor StorageManager: StorageProtocol {
 
     static func makeBGRAData(from image: CGImage) throws -> Data {
         do {
-            return try BGRAImageUtilities.makeData(from: image)
+            // Pooled path reuses the shared colorspace/bitmap-info (see
+            // BGRAImageUtilities); wrapped so the transient context is
+            // released immediately instead of lingering per-PTS frame.
+            return try autoreleasepool {
+                try BGRAImageUtilities.makeData(from: image)
+            }
         } catch {
             throw StorageError.fileReadFailed(path: "", underlying: "Failed to create BGRA bitmap context")
         }

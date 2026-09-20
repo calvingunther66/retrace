@@ -33,6 +33,7 @@ Processing/
 ├── TextMerger/
 │   └── TextMerger.swift            # Combine OCR + AX results
 └── Tests/
+    ├── DeferredRequeueBoundTests.swift      # Bounded WAL-source deferral (never-readable source fails instead of spinning)
     ├── ExtractRequestInstrumentationTests.swift # Region tail aggregation and coordinator helper coverage
     ├── InPageURLMetadataResolutionTests.swift # In-page URL metadata retry and rewrite scheduling regression coverage
     ├── OCRMemoryBackpressurePolicyTests.swift # OCR memory backpressure threshold/default coverage

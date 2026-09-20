@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// A single confetti particle
 struct ConfettiParticle: Identifiable {

@@ -20,17 +20,31 @@ public struct BGRAPatch: Sendable, Equatable {
 }
 
 public enum BGRAImageUtilities {
+    /// Shared device-RGB colorspace reused across BGRA conversions (avoids per-call create).
+    public static let sharedBGRColorSpace: CGColorSpace = CGColorSpaceCreateDeviceRGB()
+    public static let sharedBGRBitmapInfo = CGBitmapInfo(
+        rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
+            | CGBitmapInfo.byteOrder32Little.rawValue
+    )
+
+    /// Downscale dimensions before BGRA expansion so oversized frames never
+    /// pay full-surface BGRA cost. Returns identity size when under the cap,
+    /// keeping behavior identical for normal frames.
+    public static func downscaledSize(width: Int, height: Int, maxDimension: Int = 2560) -> (width: Int, height: Int) {
+        let longest = max(width, height)
+        guard longest > maxDimension, longest > 0 else { return (width, height) }
+        let scale = Double(maxDimension) / Double(longest)
+        return (max(1, Int(Double(width) * scale)), max(1, Int(Double(height) * scale)))
+    }
+
     public static func makeData(from image: CGImage) throws -> Data {
         let width = image.width
         let height = image.height
         let bytesPerRow = width * 4
         var data = Data(count: bytesPerRow * height)
 
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGBitmapInfo(
-            rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
-                | CGBitmapInfo.byteOrder32Little.rawValue
-        )
+        let colorSpace = sharedBGRColorSpace
+        let bitmapInfo = sharedBGRBitmapInfo
 
         let drawResult = data.withUnsafeMutableBytes { rawBuffer in
             guard let baseAddress = rawBuffer.baseAddress,

@@ -3559,6 +3559,34 @@ public actor DatabaseManager: DatabaseProtocol {
         return try SemanticIndexQueries.countBackfillRequestsToday(db: db, utcDayStartMs: utcDayStartMs)
     }
 
+    public func countVisualIndexingSemanticRequestsToday(utcDayStartMs: Int64) async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.countVisualIndexingRequestsToday(db: db, utcDayStartMs: utcDayStartMs)
+    }
+
+    public func countSearchSemanticRequestsToday(utcDayStartMs: Int64) async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.countSearchRequestsToday(db: db, utcDayStartMs: utcDayStartMs)
+    }
+
+    public func recordSearchRequestDispatch(frameIDs: [Int64], requestedAtMs: Int64) async throws -> Int64 {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.recordDispatch(db: db, frameIDs: frameIDs, lane: "search", requestedAtMs: requestedAtMs)
+    }
+
+    public func updateSearchRequestOutcome(requestRowID: Int64, status: String, httpStatus: Int?, errorMessage: String?) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.updateRequestOutcome(db: db, requestRowID: requestRowID, status: status, httpStatus: httpStatus, errorMessage: errorMessage)
+    }
+
     public func countTotalSemanticRequestsToday(utcDayStartMs: Int64) async throws -> Int {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")
@@ -3604,6 +3632,194 @@ public actor DatabaseManager: DatabaseProtocol {
         return try SemanticIndexQueries.cleanDanglingDispatchedRequests(db: db)
     }
 
+    // MARK: - Cognitive Memory System Operations
+
+    public func insertCognitiveEpisode(_ episode: CognitiveEpisode) async throws -> Int64 {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.insertEpisode(db: db, episode: episode)
+    }
+
+    public func updateCognitiveEpisode(
+        episodeId: Int64,
+        endTime: Date,
+        title: String?,
+        summary: String?,
+        primaryAppBundleID: String?,
+        keyframeIDs: [Int64]
+    ) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try CognitiveMemoryQueries.updateEpisode(
+            db: db,
+            episodeId: episodeId,
+            endTime: endTime,
+            title: title,
+            summary: summary,
+            primaryAppBundleID: primaryAppBundleID,
+            keyframeIDs: keyframeIDs
+        )
+    }
+
+    public func getCognitiveEpisode(id: Int64) async throws -> CognitiveEpisode? {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getEpisode(db: db, id: id)
+    }
+
+    public func getLatestCognitiveEpisode() async throws -> CognitiveEpisode? {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getLatestEpisode(db: db)
+    }
+
+    public func getCognitiveEpisodeForFrame(frameId: Int64) async throws -> CognitiveEpisode? {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getEpisodeForFrame(db: db, frameId: frameId)
+    }
+
+    public func getCognitiveEpisodes(from startDate: Date, to endDate: Date, limit: Int = 50) async throws -> [CognitiveEpisode] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        let startMs = Schema.dateToTimestamp(startDate)
+        let endMs = Schema.dateToTimestamp(endDate)
+        return try CognitiveMemoryQueries.getEpisodes(db: db, from: startMs, to: endMs, limit: limit)
+    }
+
+    public func linkFrameToEpisode(
+        episodeId: Int64,
+        frameId: Int64,
+        salienceScore: Double,
+        isKeyframe: Bool
+    ) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try CognitiveMemoryQueries.linkFrameToEpisode(
+            db: db,
+            episodeId: episodeId,
+            frameId: frameId,
+            salienceScore: salienceScore,
+            isKeyframe: isKeyframe
+        )
+    }
+
+    public func getKeyframesForEpisode(episodeId: Int64) async throws -> [Int64] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getKeyframesForEpisode(db: db, episodeId: episodeId)
+    }
+
+    public func upsertMemoryEntity(
+        entityType: String,
+        normalizedValue: String,
+        displayName: String,
+        timestamp: Date = Date()
+    ) async throws -> Int64 {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        let tsMs = Schema.dateToTimestamp(timestamp)
+        return try CognitiveMemoryQueries.upsertEntity(
+            db: db,
+            entityType: entityType,
+            normalizedValue: normalizedValue,
+            displayName: displayName,
+            timestampMs: tsMs
+        )
+    }
+
+    public func findMemoryEntity(normalizedValue: String) async throws -> MemoryEntity? {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.findEntity(db: db, normalizedValue: normalizedValue)
+    }
+
+    public func findMemoryEntities(type: String? = nil, prefix: String? = nil, limit: Int = 20) async throws -> [MemoryEntity] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.findEntities(db: db, type: type, prefix: prefix, limit: limit)
+    }
+
+    public func recordEntityMention(entityId: Int64, frameId: Int64, confidence: Double = 1.0) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try CognitiveMemoryQueries.recordMention(db: db, entityId: entityId, frameId: frameId, confidence: confidence)
+    }
+
+    public func getEntitiesForFrame(frameId: Int64) async throws -> [MemoryEntity] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getEntitiesForFrame(db: db, frameId: frameId)
+    }
+
+    public func getFramesForEntity(entityId: Int64, limit: Int = 30) async throws -> [Int64] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getFramesForEntity(db: db, entityId: entityId, limit: limit)
+    }
+
+    public func recordEntityCoOccurrence(sourceEntityId: Int64, targetEntityId: Int64, timestamp: Date = Date()) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        let tsMs = Schema.dateToTimestamp(timestamp)
+        try CognitiveMemoryQueries.recordCoOccurrence(
+            db: db,
+            sourceEntityId: sourceEntityId,
+            targetEntityId: targetEntityId,
+            timestampMs: tsMs
+        )
+    }
+
+    public func getAssociatedEntities(sourceEntityId: Int64, limit: Int = 20) async throws -> [(entity: MemoryEntity, weight: Double)] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getAssociatedEntities(db: db, sourceEntityId: sourceEntityId, limit: limit)
+    }
+
+    public func recordKeyframeVectorMetadata(
+        frameId: Int64,
+        vectorOffset: Int,
+        dimensions: Int,
+        modelName: String,
+        createdAt: Date = Date()
+    ) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        let tsMs = Schema.dateToTimestamp(createdAt)
+        try CognitiveMemoryQueries.recordVectorMetadata(
+            db: db,
+            frameId: frameId,
+            vectorOffset: vectorOffset,
+            dimensions: dimensions,
+            modelName: modelName,
+            createdAtMs: tsMs
+        )
+    }
+
+    public func getAllKeyframeVectorMetadata() async throws -> [(frameId: Int64, offset: Int, dimensions: Int)] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try CognitiveMemoryQueries.getAllVectorMetadata(db: db)
+    }
+
     // MARK: - Maintenance Operations
 
     /// Checkpoint the WAL file (merge WAL into main database and truncate)
@@ -3614,7 +3830,7 @@ public actor DatabaseManager: DatabaseProtocol {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")
         }
 
-        let sql = "PRAGMA wal_checkpoint(TRUNCATE);"
+        let sql = Schema.checkpointSQL
         var lastError: String?
 
         for attempt in 1...maxRetries {
@@ -4330,6 +4546,46 @@ public actor DatabaseManager: DatabaseProtocol {
         return Int(sqlite3_column_int(stmt, 0))
     }
 
+    /// Drop-oldest queue relief: delete `processing_queue` rows so at most `maxDepth`
+    /// rows remain, lowest-priority then oldest-enqueued evicted first.
+    /// Priority-aware to match `dequeueFrameForProcessing`'s own
+    /// `ORDER BY priority DESC, enqueuedAt ASC` precedent: without this, eviction by
+    /// `enqueuedAt` alone can drop newly-enqueued, ordinary-priority live-capture frames
+    /// while sparing an older, lower-priority backlog-recovery batch that was inserted
+    /// more recently, silently losing frames that would otherwise dequeue first.
+    /// Removes bookkeeping rows only — frame and OCR data are untouched, and
+    /// still-pending frames can be re-enqueued later.
+    /// - Returns: Number of queue rows dropped.
+    @discardableResult
+    public func dropOldestQueuedFrames(maxDepth: Int) async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        guard maxDepth >= 0 else { return 0 }
+
+        let sql = """
+            DELETE FROM processing_queue
+            WHERE id IN (
+                SELECT id FROM processing_queue
+                ORDER BY priority ASC, enqueuedAt ASC
+                LIMIT MAX(0, (SELECT COUNT(*) FROM processing_queue) - ?)
+            );
+        """
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        sqlite3_bind_int(stmt, 1, Int32(maxDepth))
+
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+
+        return Int(sqlite3_changes(db))
+    }
+
     /// Get count of frames that are pending or currently processing (status 0, 1, or rewrite-processing 6)
     public func getPendingFrameCount() async throws -> Int {
         guard let db = db else {
@@ -4431,6 +4687,50 @@ public actor DatabaseManager: DatabaseProtocol {
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
             throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
         }
+
+        var frameIDs: [Int64] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            frameIDs.append(sqlite3_column_int64(stmt, 0))
+        }
+
+        return frameIDs
+    }
+
+    /// Get up to `limit` frame IDs currently marked permanently failed (processingStatus = 3),
+    /// lowest-ID-above-`afterFrameID` first, excluding frames pending deletion. Used by
+    /// FrameProcessingQueue's gradual backlog recovery (`topUpFailedFrameBacklogIfEligible`)
+    /// to give frames that exhausted their retries -- most commonly while the OCR circuit
+    /// breaker was open -- another shot at OCR once it's healthy again.
+    ///
+    /// - Parameter afterFrameID: Only return frames with `id` strictly greater than this.
+    ///   The caller advances this as a rotating cursor across successive calls so a small,
+    ///   fixed set of permanently-broken frames (lowest ID, never fixed by a retry) can't
+    ///   sort first on every call and starve the rest of the backlog from ever getting a
+    ///   turn. Pass 0 (the default) to start from the lowest failed ID.
+    public func getFailedFrameIDs(limit: Int, afterFrameID: Int64 = 0) async throws -> [Int64] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        guard limit > 0 else { return [] }
+
+        let sql = """
+            SELECT id FROM frame
+            WHERE processingStatus = 3
+              AND (rewritePurpose IS NULL OR rewritePurpose != 'deletion')
+              AND id > ?
+            ORDER BY id ASC
+            LIMIT ?;
+        """
+
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+
+        sqlite3_bind_int64(stmt, 1, afterFrameID)
+        sqlite3_bind_int(stmt, 2, Int32(limit))
 
         var frameIDs: [Int64] = []
         while sqlite3_step(stmt) == SQLITE_ROW {

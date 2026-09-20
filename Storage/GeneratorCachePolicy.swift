@@ -3,7 +3,12 @@ import Foundation
 /// Shared eviction policy for AVAsset-backed generator caches in Storage.
 enum GeneratorCachePolicy {
     static let defaultCountLimit = 2
-    static let idleRetentionSeconds: TimeInterval = 15
+    /// Idle generators pin decoder sessions and file handles, so release them
+    /// promptly once scrubbing moves on. Regeneration on next access is cheap
+    /// relative to a pinned idle session. Tradeoff: resuming scrubbing within
+    /// the old 15s window no longer reuses a warm generator, paying
+    /// regeneration cost slightly more often in exchange for lower idle memory.
+    static let idleRetentionSeconds: TimeInterval = 5
 
     static func keysToEvict(
         lastAccessByKey: [String: Date],

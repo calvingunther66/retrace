@@ -250,6 +250,13 @@ public actor CGWindowListCapture {
     private let redactionBorderWidth: CGFloat = 2
     private let redactionCIContext = CIContext()
     private var lastDisplaySurfaceBytes: Int64 = 0
+    /// Shared colorspace, reused across BGRA conversions (one live CGImage per tick).
+    private static let sharedBGRColorSpace: CGColorSpace = CGColorSpaceCreateDeviceRGB()
+    private static let sharedBGRBitmapInfo = CGBitmapInfo(
+        rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
+            | CGBitmapInfo.byteOrder32Little.rawValue
+    )
+    private static let bgraMaxDimension = 2560
 
     // MARK: - Lifecycle
 
@@ -334,12 +341,17 @@ public actor CGWindowListCapture {
         }
         logCaptureResumeIfNeeded()
 
-        // Capture the frame using CGWindowList with filtering
-        guard let captureResult = captureWithFiltering(
-            displayID: displayID,
-            excludedWindowIDs: excludedIDs,
-            forceMasking: !exclusionResult.redactedWindowIDs.isEmpty
-        ) else {
+        // Capture the frame using CGWindowList with filtering. Per-tick pool
+        // drains the autoreleased CoreGraphics temporaries from the capture
+        // call itself; the returned CGImage is retained out of the pool.
+        let captureResult: FilteredCaptureResult? = autoreleasepool {
+            captureWithFiltering(
+                displayID: displayID,
+                excludedWindowIDs: excludedIDs,
+                forceMasking: !exclusionResult.redactedWindowIDs.isEmpty
+            )
+        }
+        guard let captureResult else {
             Log.warning("[CGWindowListCapture] Failed to capture CGImage for displayID=\(displayID), excludedCount=\(excludedIDs.count)", category: .capture)
             return nil
         }
@@ -372,15 +384,20 @@ public actor CGWindowListCapture {
             )
         }
 
-        // Convert CGImage to BGRA data format (matching ScreenCaptureKit output)
-        guard let frameData = convertCGImageToBGRAData(cgImage) else {
+        // Single live CGImage per tick: convert (downscaling before BGRA
+        // inside), then release the source immediately on scope exit.
+        let conversion: (data: Data, width: Int, height: Int)? = autoreleasepool {
+            convertCGImageToBGRADataWithSize(cgImage)
+        }
+        guard let conversion else {
             Log.warning("[CGWindowListCapture] Failed to convert CGImage to BGRA data for displayID=\(displayID)", category: .capture)
             return nil
         }
+        let frameData = conversion.data
 
-        // Get display info and captured image dimensions
-        let width = cgImage.width
-        let height = cgImage.height
+        // Get display info and captured image dimensions (post-downscale size)
+        let width = conversion.width
+        let height = conversion.height
         let bytesPerRow = width * 4
 
         Log.verbose("[CGWindowListCapture] Frame captured: \(width)x\(height), excluded \(excludedIDs.count) windows", category: .capture)
@@ -1267,6 +1284,13 @@ public actor CGWindowListCapture {
     }
 
     private func makeBlurredRedactionImage(from image: CGImage) -> CGImage? {
+        // Single transient CIImage/CGImage pair released immediately on return.
+        autoreleasepool {
+            makeBlurredRedactionImageUnpooled(from: image)
+        }
+    }
+
+    private func makeBlurredRedactionImageUnpooled(from image: CGImage) -> CGImage? {
         let inputImage = CIImage(cgImage: image)
         guard let gaussianBlur = CIFilter(name: "CIGaussianBlur") else {
             return nil
@@ -1346,38 +1370,74 @@ public actor CGWindowListCapture {
         return result
     }
 
+    /// Downscale oversized captures before BGRA expansion (identity below cap).
+    private func downscaledForBGRA(_ image: CGImage) -> CGImage {
+        let longest = max(image.width, image.height)
+        guard longest > Self.bgraMaxDimension, longest > 0 else { return image }
+        let scale = CGFloat(Self.bgraMaxDimension) / CGFloat(longest)
+        let dstWidth = max(1, Int(CGFloat(image.width) * scale))
+        let dstHeight = max(1, Int(CGFloat(image.height) * scale))
+        guard let context = CGContext(
+            data: nil,
+            width: dstWidth,
+            height: dstHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: dstWidth * 4,
+            space: Self.sharedBGRColorSpace,
+            bitmapInfo: Self.sharedBGRBitmapInfo.rawValue
+        ) else { return image }
+        context.interpolationQuality = .medium
+        context.draw(image, in: CGRect(x: 0, y: 0, width: dstWidth, height: dstHeight))
+        return context.makeImage() ?? image
+    }
+
     /// Convert CGImage to BGRA Data format (matching ScreenCaptureKit's kCVPixelFormatType_32BGRA)
+    /// Uses the shared colorspace/bitmap-info; caller holds the single live
+    /// CGImage for this tick and it is released on return.
     private func convertCGImageToBGRAData(_ cgImage: CGImage) -> Data? {
-        let width = cgImage.width
-        let height = cgImage.height
+        convertCGImageToBGRADataWithSize(cgImage)?.data
+    }
+
+    private func convertCGImageToBGRADataWithSize(_ cgImage: CGImage) -> (data: Data, width: Int, height: Int)? {
+        // Downscale before BGRA so huge displays never pay full-surface cost.
+        let source = downscaledForBGRA(cgImage)
+        let width = source.width
+        let height = source.height
         let bytesPerRow = width * 4 // BGRA = 4 bytes per pixel
         let dataSize = bytesPerRow * height
+        guard dataSize > 0 else { return nil }
 
-        // Allocate buffer
+        // A fresh allocation per tick: holding a reused scratch buffer as a
+        // stored property would force a copy-on-write on every mutation below
+        // (the property still holds a reference), so it costs an allocation
+        // anyway while also pinning a permanent buffer on the actor. A single
+        // local allocation is both simpler and cheaper.
         var pixelData = Data(count: dataSize)
 
         // Create bitmap context and draw within the same closure to ensure pointer validity
-        let success = pixelData.withUnsafeMutableBytes { rawBufferPointer -> Bool in
-            guard let baseAddress = rawBufferPointer.baseAddress else { return false }
+        let success: Bool = autoreleasepool {
+            pixelData.withUnsafeMutableBytes { rawBufferPointer -> Bool in
+                guard let baseAddress = rawBufferPointer.baseAddress else { return false }
 
-            guard let context = CGContext(
-                data: baseAddress,
-                width: width,
-                height: height,
-                bitsPerComponent: 8,
-                bytesPerRow: bytesPerRow,
-                space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-            ) else {
-                return false
+                guard let context = CGContext(
+                    data: baseAddress,
+                    width: width,
+                    height: height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: bytesPerRow,
+                    space: Self.sharedBGRColorSpace,
+                    bitmapInfo: Self.sharedBGRBitmapInfo.rawValue
+                ) else {
+                    return false
+                }
+
+                // Draw the image into the context (converts to BGRA)
+                context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+                return true
             }
-
-            // Draw the image into the context (converts to BGRA)
-            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-            return true
         }
-
-        return success ? pixelData : nil
+        guard success else { return nil }
+        return (pixelData, width, height)
     }
 
     private static func estimatedImageSurfaceBytes(width: Int, height: Int, copies: Int64 = 1) -> Int64 {

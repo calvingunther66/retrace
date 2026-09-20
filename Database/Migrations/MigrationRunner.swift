@@ -107,7 +107,9 @@ actor MigrationRunner {
             V17_FrameCaptureTrigger(),
             V18_DailyMetricsRecencyIndex(),
             V19_FrameEncodedAt(),
-            V20_SemanticIndex()
+            V20_SemanticIndex(),
+            V21_CognitiveMemorySystem(),
+            V22_MemoryEntityTypeScopedUniqueness()
         ]
     }
 

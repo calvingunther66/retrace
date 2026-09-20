@@ -1209,6 +1209,21 @@ public enum FrameQueries {
             return 0
         }
 
+        // Chunked batches: one transaction per chunk bounds WAL growth and
+        // lock hold time under retention pressure. Net effect is identical to
+        // a single transaction — every requested frame ID is still deleted.
+        var deleted = 0
+        var offset = frameIDs.startIndex
+        while offset < frameIDs.endIndex {
+            let end = frameIDs.index(offset, offsetBy: DatabaseConfig.retentionDeleteBatchSize, limitedBy: frameIDs.endIndex) ?? frameIDs.endIndex
+            try deleteFrameIDChunk(db: db, frameIDs: Array(frameIDs[offset..<end]))
+            deleted += frameIDs.distance(from: offset, to: end)
+            offset = end
+        }
+        return deleted
+    }
+
+    private static func deleteFrameIDChunk(db: OpaquePointer, frameIDs: [Int64]) throws {
         let managesOwnTransaction = sqlite3_get_autocommit(db) != 0
         if managesOwnTransaction {
             try beginTransaction(db: db)
@@ -1221,6 +1236,14 @@ public enum FrameQueries {
                 try deleteFrameRow(db: db, frameID: frameID)
             }
 
+            // None of the V21 cognitive-memory tables (episode_frame,
+            // entity_mention, keyframe_vector_metadata, memory_entity,
+            // entity_association, cognitive_episode) has an FK to frame, so
+            // this manual-delete path must clean them up explicitly too -
+            // same cleanup RetentionManager's time-based path runs, applied
+            // to exactly the frames this chunk just deleted.
+            try CognitiveMemoryQueries.cleanupOrphanedCMSData(db: db, deletedFrameIDs: frameIDs)
+
             if managesOwnTransaction {
                 try commitTransaction(db: db)
             }
@@ -1230,8 +1253,6 @@ public enum FrameQueries {
             }
             throw error
         }
-
-        return frameIDs.count
     }
 
     private static func deleteFrameRow(db: OpaquePointer, frameID: Int64) throws {

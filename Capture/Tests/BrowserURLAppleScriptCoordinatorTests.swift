@@ -107,6 +107,54 @@ final class BrowserURLAppleScriptCoordinatorTests: XCTestCase {
         XCTAssertEqual(snapshot.callCount, 1)
     }
 
+    func testPermissionDeniedAppliesBundleWideCooldownAcrossDifferentWindowKeys() async {
+        let probe = RunnerProbe()
+        let coordinator = BrowserURLAppleScriptCoordinator(
+            deniedBundleBaseBackoffSeconds: 5.0,
+            runner: { _, _, _, timeoutSeconds, isBootstrapTimeout, _ in
+                await probe.recordCall(timeoutSeconds: timeoutSeconds, isBootstrapTimeout: isBootstrapTimeout)
+                return BrowserURLAppleScriptResult(
+                    permissionDenied: true,
+                    completedWithoutTimeout: true
+                )
+            }
+        )
+
+        let first = await coordinator.execute(
+            source: "tell application \"Finder\" to return \"\"",
+            browserBundleID: "com.apple.finder",
+            pid: 42,
+            windowCacheKey: "Documents"
+        )
+        XCTAssertTrue(first.permissionDenied)
+
+        // Simulate a Finder window title change (e.g. navigating to a different
+        // folder), which changes the per-window backoff key but must still be
+        // gated by the bundle-wide denial cooldown.
+        let second = await coordinator.execute(
+            source: "tell application \"Finder\" to return \"\"",
+            browserBundleID: "com.apple.finder",
+            pid: 42,
+            windowCacheKey: "Downloads"
+        )
+        XCTAssertTrue(second.skippedByCooldown)
+
+        let snapshot = await probe.snapshot()
+        XCTAssertEqual(snapshot.callCount, 1)
+
+        // A different bundle ID must not be affected by Finder's bundle-wide gate.
+        let thirdBundleResult = await coordinator.execute(
+            source: "tell application \"Arc\" to return \"\"",
+            browserBundleID: "company.thebrowser.Browser",
+            pid: 43,
+            windowCacheKey: "Some Tab"
+        )
+        XCTAssertTrue(thirdBundleResult.permissionDenied)
+
+        let finalSnapshot = await probe.snapshot()
+        XCTAssertEqual(finalSnapshot.callCount, 2)
+    }
+
     func testBootstrapTimeoutTransitionsToNormalAfterNonTimeoutCompletion() async {
         let probe = RunnerProbe()
         let coordinator = BrowserURLAppleScriptCoordinator(

@@ -144,7 +144,7 @@ public class PauseReminderWindowController: NSObject, ObservableObject {
             context.duration = 0.2
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             window.animator().alphaValue = 0
-        }, completionHandler: {
+        }, completionHandler: { [weak self] in
             Task { @MainActor [weak self] in
                 window.orderOut(nil)
                 self?.window = nil

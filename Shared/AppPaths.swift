@@ -99,4 +99,34 @@ public enum AppPaths {
 
     /// Log subsystem identifier
     public static let logSubsystem = "io.retrace.app"
+
+    // MARK: - Bundled Helpers
+
+    /// Resolves the bundled `RetraceAppleScriptHelper`, used in place of the bare
+    /// `/usr/bin/osascript` binary to run AppleScript. `/usr/bin/osascript` has no
+    /// Info.plist, so when it sends an Apple Event, LaunchServices/RunningBoard has
+    /// no way to know it should be treated as non-interactive, and a transient Dock
+    /// icon appears for it. The bundled helper declares itself non-interactive via
+    /// `NSApplication.setActivationPolicy(.prohibited)` before doing anything else
+    /// (see `Capture/AppleScriptHelper/main.swift`), which avoids that Dock tile.
+    /// Returns `nil` so callers can fall back to plain osascript when the app
+    /// bundle is missing the helper (older/incomplete bundles, some dev builds).
+    public static func appleScriptHelperExecutableURL() -> URL? {
+        let bundledURL = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Library/Helpers/RetraceAppleScriptHelper")
+        if FileManager.default.isExecutableFile(atPath: bundledURL.path) {
+            return bundledURL
+        }
+
+        #if DEBUG
+        let devCandidate = URL(fileURLWithPath: CommandLine.arguments[0])
+            .deletingLastPathComponent()
+            .appendingPathComponent("RetraceAppleScriptHelper")
+        if FileManager.default.isExecutableFile(atPath: devCandidate.path) {
+            return devCandidate
+        }
+        #endif
+
+        return nil
+    }
 }

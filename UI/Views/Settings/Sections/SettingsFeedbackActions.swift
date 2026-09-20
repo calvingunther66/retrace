@@ -200,13 +200,6 @@ private actor InPageURLInstructionImageLoader {
             return image
         }
 
-#if SWIFT_PACKAGE
-        if let image = Bundle.module.image(forResource: imageName) {
-            Log.info("[SettingsView] Loaded \(logName) via Bundle.module.image(forResource:)", category: .ui)
-            return image
-        }
-#endif
-
         let fileManager = FileManager.default
         let resourcePath = Bundle.main.resourcePath ?? ""
         let bundleCandidates: [(label: String, path: String)] = [
@@ -220,21 +213,6 @@ private actor InPageURLInstructionImageLoader {
                 return image
             }
         }
-
-#if SWIFT_PACKAGE
-        let moduleResourcePath = Bundle.module.resourcePath ?? ""
-        let moduleCandidates: [(label: String, path: String)] = [
-            ("module/\(fileName)", "\(moduleResourcePath)/\(fileName)"),
-            ("module/Assets.xcassets/\(assetName).imageset/\(fileName)", "\(moduleResourcePath)/Assets.xcassets/\(assetName).imageset/\(fileName)")
-        ]
-
-        for candidate in moduleCandidates where fileManager.fileExists(atPath: candidate.path) {
-            if let image = NSImage(contentsOfFile: candidate.path) {
-                Log.warning("[SettingsView] Loaded \(logName) via SwiftPM module file fallback \(candidate.label)", category: .ui)
-                return image
-            }
-        }
-#endif
 
         let debugWorkingTreePath = "\(fileManager.currentDirectoryPath)/UI/Assets.xcassets/\(assetName).imageset/\(fileName)"
         if fileManager.fileExists(atPath: debugWorkingTreePath),

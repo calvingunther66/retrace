@@ -14,11 +14,12 @@ public final class TileOCRProcessor: Sendable {
 
     /// Create a fresh VNRecognizeTextRequest for each tile
     /// This ensures thread safety when processing tiles concurrently
-    private func createTextRequest() -> VNRecognizeTextRequest {
+    private func createTextRequest(config: ProcessingConfig) -> VNRecognizeTextRequest {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.recognitionLanguages = recognitionLanguages
         request.usesLanguageCorrection = true
+        request.preferBackgroundProcessing = config.preferBackgroundProcessing
         return request
     }
 
@@ -38,7 +39,7 @@ public final class TileOCRProcessor: Sendable {
         frameHeight: Int
     ) async throws -> [TextRegion] {
         // Create a fresh request for each tile to ensure thread safety
-        let textRequest = createTextRequest()
+        let textRequest = createTextRequest(config: config)
 
         // Set region of interest to this tile's normalized bounds
         // Vision uses bottom-left origin, normalizedBounds already accounts for this
@@ -48,7 +49,11 @@ public final class TileOCRProcessor: Sendable {
 
         return try await withCheckedThrowingContinuation { continuation in
             do {
-                try handler.perform([textRequest])
+                // Per-tile pool: Vision creates autoreleased temporaries per
+                // request that would otherwise accumulate across tiles.
+                try autoreleasepool {
+                    try handler.perform([textRequest])
+                }
 
                 guard let observations = textRequest.results else {
                     continuation.resume(returning: [])
@@ -122,9 +127,11 @@ public final class TileOCRProcessor: Sendable {
         // Vision handles internal parallelism efficiently
         var results: [String: [TextRegion]] = [:]
 
-        // Use a reasonable concurrency limit to avoid overwhelming the system
-        // Vision's ANE can handle parallel requests but too many cause contention
-        let batchSize = min(tiles.count, 8)
+        // Throttled concurrency limit: each in-flight tile request pins a Vision
+        // request plus its image buffers, so keep this small to bound peak memory.
+        // Results are identical regardless of batching; only scheduling changes.
+        let maxConcurrentTiles = 4
+        let batchSize = min(tiles.count, maxConcurrentTiles)
 
         for batchStart in stride(from: 0, to: tiles.count, by: batchSize) {
             let batchEnd = min(batchStart + batchSize, tiles.count)

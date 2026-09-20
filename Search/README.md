@@ -1,37 +1,48 @@
 # Search Module
 
 **Owner**: SEARCH Agent
-**Status**: ✅ Implementation Complete (FTS + Hybrid Search)
-**Instructions**: See [CLAUDE-SEARCH.md](../CLAUDE-SEARCH.md)
+**Status**: ✅ Implementation Complete (FTS5 + Cognitive Memory System)
+**Instructions**: See [Search/AGENTS.md](AGENTS.md)
 
 ## Overview
 
-Advanced search implementation for Retrace with:
+Search implementation for Retrace with:
 - **Full-Text Search (FTS)**: Fast keyword search using SQLite FTS5
-- **Semantic Search**: Vector embeddings with Nomic Embed v1.5
-- **Hybrid Search**: Combines both using Reciprocal Rank Fusion (RRF)
+- **Cognitive Memory System (CMS)**: dense vector search (`AcceleratedVectorEngine`,
+  Accelerate BLAS + NaturalLanguage embeddings — not llama.cpp), a knowledge graph
+  over extracted entities (`EntityMeshManager`), episodic clustering of frames into
+  sessions (`CognitiveSessionizer`), a multi-hop reasoner (`CognitiveReasoner`), and
+  an OpenRouter-backed semantic indexing pipeline (`Search/OpenRouter/`)
 
 ## Implemented Files
 
 ```
 Search/
 ├── SearchManager.swift              # ✅ FTS search implementation
-├── HybridSearchManager.swift        # ✅ Hybrid search with RRF
+├── IngestionManager.swift           # ✅ Search index ingestion pipeline
 ├── QueryParser/
-│   └── QueryParser.swift           # ✅ Query parsing & validation
+│   ├── QueryParser.swift           # ✅ Query parsing & validation
+│   └── QueryTokenizer.swift        # ✅ Shared tokenization + shell-option classification
 ├── Ranking/
-│   ├── ResultRanker.swift          # ✅ Multi-signal ranking
-│   └── SnippetGenerator.swift      # ✅ Snippet extraction & highlighting
-├── Embedding/
-│   ├── LocalEmbeddingService.swift # ✅ Nomic Embed v1.5 + Metal
-│   └── README.md                   # ✅ Embedding documentation
-├── VectorStore/
-│   └── SQLiteVectorStore.swift     # ✅ Vector storage & similarity
+│   └── ResultRanker.swift          # ✅ Multi-signal ranking
+├── VectorSearch/
+│   └── AcceleratedVectorEngine.swift # ✅ Dense vector engine: Accelerate BLAS + NaturalLanguage
+├── EntityMesh/
+│   └── EntityMeshManager.swift     # ✅ Knowledge graph over extracted entities
+├── Episodic/
+│   └── CognitiveSessionizer.swift  # ✅ Episodic clustering of frames
+├── Reasoning/
+│   └── CognitiveReasoner.swift     # ✅ Multi-hop reasoning over mesh + episodes
+├── OpenRouter/
+│   ├── OpenRouterClient.swift               # ✅ OpenRouter API client
+│   └── OpenRouterGranularSearchCoordinator.swift # ✅ Semantic indexing pipeline
 └── Tests/
     ├── QueryParserTests.swift      # ✅ Query parser tests
-    ├── SearchManagerTests.swift    # ✅ Search manager tests
-    └── LocalEmbeddingServiceTests.swift # ✅ Embedding tests
+    ├── CognitiveMemorySystemTests.swift # ✅ CMS tests
+    └── TestLogger.swift
 ```
+
+See [Search/AGENTS.md](AGENTS.md) for the full directory description and protocol list.
 
 ## Query Syntax
 
@@ -104,111 +115,28 @@ Signals:
 - **Recency**: Linear decay over 30 days
 - **Metadata**: Matches in title, app, URL
 
-## Hybrid Search (NEW!)
+## Cognitive Memory System (CMS)
 
-### Overview
+The CMS is the dense-vector/semantic layer that supplements FTS. It replaced an
+earlier, never-shipped design based on `HybridSearchManager` + a local Nomic
+Embed v1.5 / llama.cpp embedding pipeline (deleted as dead code; do not resurrect
+those names). The real, shipped pieces:
 
-Hybrid search combines FTS and semantic search for superior results:
+- **`VectorSearch/AcceleratedVectorEngine.swift`** — dense vector indexing/search
+  using Apple Accelerate (BLAS) over NaturalLanguage-framework embeddings.
+- **`EntityMesh/EntityMeshManager.swift`** — knowledge graph built from entities
+  extracted from indexed text.
+- **`Episodic/CognitiveSessionizer.swift`** — clusters frames into episodic
+  sessions.
+- **`Reasoning/CognitiveReasoner.swift`** — multi-hop reasoning over the entity
+  mesh and episodic sessions.
+- **`OpenRouter/`** — an OpenRouter-backed semantic indexing pipeline
+  (`Processing/SemanticIndexer.swift` is the actor that drives it).
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  Query: "machine learning algorithms"                   │
-└──────────────────────────────────────────────────────────┘
-           │
-           ├──────────────────┬──────────────────────────┐
-           ▼                  ▼                          ▼
-    ┌──────────┐      ┌──────────────┐        ┌──────────────┐
-    │   FTS    │      │  Embedding   │        │ Vector Store │
-    │ (BM25)   │      │  (Nomic v1.5)│        │  (Cosine)    │
-    └────┬─────┘      └──────┬───────┘        └──────┬───────┘
-         │                   │                        │
-         │                   └────────────────────────┘
-         │                              │
-         └──────────────┬───────────────┘
-                        ▼
-                ┌──────────────────┐
-                │ RRF Fusion       │
-                │ (0.6 FTS +       │
-                │  0.4 Semantic)   │
-                └────────┬─────────┘
-                         ▼
-                  Merged Results
-```
-
-### Setup
-
-1. **Install llama.cpp dependency** (already in Package.swift)
-2. **Download the model**:
-   ```bash
-   ./scripts/setup_embedding.sh
-   ```
-3. **Initialize services**:
-   ```swift
-   let embeddingService = LocalEmbeddingService(config: .nomicEmbed)
-   try await embeddingService.loadModel()
-
-   let vectorStore = SQLiteVectorStore(
-       databasePath: "~/retrace.db",
-       modelVersion: "nomic-embed-v1.5"
-   )
-   try await vectorStore.initialize()
-
-   let hybridSearch = HybridSearchManager(
-       ftsManager: searchManager,
-       embeddingService: embeddingService,
-       vectorStore: vectorStore,
-       database: databaseManager,
-       config: .default
-   )
-   ```
-
-### Usage
-
-```swift
-// Hybrid search automatically uses both FTS and semantic
-let results = try await hybridSearch.search(
-    query: "compiler error messages",
-    limit: 50
-)
-
-// Indexing automatically creates both FTS and vector embeddings
-try await hybridSearch.index(text: extractedText)
-```
-
-### Configuration
-
-```swift
-// Balanced (default): 60% FTS, 40% semantic
-HybridSearchConfig.default
-
-// Keyword-heavy: 80% FTS, 20% semantic
-HybridSearchConfig.ftsHeavy
-
-// Meaning-heavy: 30% FTS, 70% semantic
-HybridSearchConfig.semanticHeavy
-
-// Custom weights
-HybridSearchConfig(
-    ftsWeight: 0.7,
-    semanticWeight: 0.3,
-    rrf_k: 60
-)
-```
-
-### Performance
-
-- **FTS search**: <100ms
-- **Semantic search**: ~50-100ms (embedding + similarity)
-- **Hybrid search**: ~150-200ms (parallel execution)
-- **Model load**: ~1-2 seconds (one-time)
-
-### When to Use Each Mode
-
-| Search Type | Best For | Example |
-|------------|----------|---------|
-| **FTS Only** | Exact terms, code, IDs | `func calculateTotal`, `ERROR-404` |
-| **Semantic Only** | Conceptual queries | "how to fix memory leaks" |
-| **Hybrid** | General search | "compiler errors in Swift" |
+Persistence lives in `Database/Queries/CognitiveMemoryQueries.swift` and
+`Database/Migrations/V21_CognitiveMemorySystem.swift`; the shared protocols are
+in `Shared/Protocols/CognitiveMemoryProtocols.swift`. See
+[Search/AGENTS.md](AGENTS.md) for the protocol list and directory tree.
 
 ## Implementation Status
 
@@ -216,18 +144,16 @@ HybridSearchConfig(
 - Full query parsing with all syntax
 - FTS integration via protocols
 - Multi-signal ranking
-- Snippet generation
 - Indexing pipeline
-- **Semantic search with Nomic Embed v1.5**
-- **Hybrid search with RRF**
-- **Vector storage in SQLite**
-- **Metal-accelerated embeddings**
+- Dense vector search (Accelerate BLAS + NaturalLanguage embeddings)
+- Knowledge graph / entity mesh
+- Episodic clustering + multi-hop reasoning
+- OpenRouter-backed semantic indexing
 - Comprehensive tests
 
 ### 🚧 Deferred
 - Autocomplete (needs FTS vocab table)
 - ANN indexing (HNSW, FAISS) for production scale
-- Multi-model embedding support
 
 ## Performance
 

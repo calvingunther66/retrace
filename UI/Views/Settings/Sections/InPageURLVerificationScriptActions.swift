@@ -254,8 +254,14 @@ extension SettingsView {
         let task = Task.detached(priority: .userInitiated) {
             let startUptime = inPageURLVerificationNow()
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            process.arguments = lines.flatMap { ["-e", $0] }
+            if let helperURL = AppPaths.appleScriptHelperExecutableURL() {
+                process.executableURL = helperURL
+                process.arguments = [lines.joined(separator: "\n")]
+            } else {
+                Log.warning("\(logPrefix) Bundled AppleScript helper not found, falling back to /usr/bin/osascript (will show a Dock icon flash)", category: .ui)
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                process.arguments = lines.flatMap { ["-e", $0] }
+            }
 
             let outputPipe = Pipe()
             let errorPipe = Pipe()

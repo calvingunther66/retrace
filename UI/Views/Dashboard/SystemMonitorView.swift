@@ -833,6 +833,7 @@ public struct SystemMonitorView: View {
                         case .idle: return ("Idle", .retraceSecondary)
                         case .disabled: return ("Off", .retraceSecondary)
                         case .restarting: return ("Restarting", .orange)
+                        case .pausedForPressure: return ("Paused (Memory)", .orange)
                         }
                     }()
                     statusBadge(
@@ -905,6 +906,15 @@ public struct SystemMonitorView: View {
                                         .foregroundColor(.retraceSecondary)
                                     Spacer()
                                     Text("\(stats.deepIndexedCount) deep · \(stats.backfillRequestsToday) / \(stats.dailyBackfillBudget) reqs today")
+                                        .font(.retraceCaption2)
+                                        .foregroundColor(.retracePrimary)
+                                }
+                                HStack {
+                                    Text("Timeline AI Search:")
+                                        .font(.retraceCaption2)
+                                        .foregroundColor(.retraceSecondary)
+                                    Spacer()
+                                    Text("\(stats.searchRequestsToday) / \(stats.dailySearchBudget) reqs today")
                                         .font(.retraceCaption2)
                                         .foregroundColor(.retracePrimary)
                                 }

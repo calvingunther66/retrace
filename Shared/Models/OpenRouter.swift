@@ -12,14 +12,20 @@ public enum SemanticIndexStatus: String, Sendable, Equatable {
     case awaitingKey = "No API Key"
     case disabled = "Off"
     case restarting = "Restarting"
+    case pausedForPressure = "Paused (Memory Pressure)"
 }
 
 /// Snapshot of AI visual semantic-indexing progress, for the System Monitor.
 public struct SemanticIndexStatistics: Sendable, Equatable {
+    public static let defaultDailyVisualBudget = 600
+    public static let defaultDailySearchBudget = 100
+
     public let indexed: Int
     public let eligibleTotal: Int
     public let backfillRequestsToday: Int
     public let dailyBackfillBudget: Int
+    public let searchRequestsToday: Int
+    public let dailySearchBudget: Int
     public let isEnabled: Bool
     public let status: SemanticIndexStatus
     public let statusMessage: String?
@@ -33,6 +39,8 @@ public struct SemanticIndexStatistics: Sendable, Equatable {
         eligibleTotal: Int,
         backfillRequestsToday: Int,
         dailyBackfillBudget: Int,
+        searchRequestsToday: Int = 0,
+        dailySearchBudget: Int = 100,
         isEnabled: Bool,
         status: SemanticIndexStatus = .idle,
         statusMessage: String? = nil,
@@ -45,6 +53,8 @@ public struct SemanticIndexStatistics: Sendable, Equatable {
         self.eligibleTotal = eligibleTotal
         self.backfillRequestsToday = backfillRequestsToday
         self.dailyBackfillBudget = dailyBackfillBudget
+        self.searchRequestsToday = searchRequestsToday
+        self.dailySearchBudget = dailySearchBudget
         self.isEnabled = isEnabled
         self.status = status
         self.statusMessage = statusMessage

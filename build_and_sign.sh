@@ -91,6 +91,18 @@ cp "$CRASH_RECOVERY_HELPER" "$APP_BUNDLE/Contents/Library/Helpers/RetraceCrashRe
 cp "$CRASH_RECOVERY_PLIST" \
     "$APP_BUNDLE/Contents/Library/LaunchAgents/io.retrace.app.crash-recovery.plist"
 
+# Copy the AppleScript execution helper used to query browser/Finder URLs
+# without spawning /usr/bin/osascript directly (avoids a transient Dock
+# icon flash - see Capture/AppleScriptHelper/main.swift).
+APPLESCRIPT_HELPER="$BUILD_DIR/RetraceAppleScriptHelper"
+
+if [ ! -f "$APPLESCRIPT_HELPER" ]; then
+    echo "❌ AppleScript helper not found at $APPLESCRIPT_HELPER"
+    exit 1
+fi
+
+cp "$APPLESCRIPT_HELPER" "$APP_BUNDLE/Contents/Library/Helpers/RetraceAppleScriptHelper"
+
 # Add rpath so the app finds embedded frameworks when run from .app bundle
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP_BUNDLE/Contents/MacOS/$APP_NAME" 2>/dev/null || true
 
@@ -180,6 +192,10 @@ done
 # Sign nested helper executables before the containing app.
 if [ -f "$APP_BUNDLE/Contents/Library/Helpers/RetraceCrashRecoveryHelper" ]; then
     codesign --force --sign "$SIGN_IDENTITY" "$APP_BUNDLE/Contents/Library/Helpers/RetraceCrashRecoveryHelper"
+fi
+
+if [ -f "$APP_BUNDLE/Contents/Library/Helpers/RetraceAppleScriptHelper" ]; then
+    codesign --force --sign "$SIGN_IDENTITY" "$APP_BUNDLE/Contents/Library/Helpers/RetraceAppleScriptHelper"
 fi
 
 # Sign the app bundle with the resolved signing identity and entitlements
