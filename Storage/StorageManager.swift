@@ -1320,6 +1320,17 @@ public actor StorageManager: StorageProtocol {
             segmentPathCache.removeValue(forKey: id.value)
         }
 
+        // Fast path: native segment IDs are millisecond-epoch timestamps (+ a small
+        // counter), so the day-bucketed chunks/{yyyymm}/{dd}/{id} path can be derived
+        // directly and probed before paying for a full recursive tree scan+stat of
+        // every segment file ever recorded. Also probe the adjacent day to cover IDs
+        // minted right at a UTC/local day boundary. Falls through to the full scan
+        // below for legacy/imported IDs that don't resolve to a plausible date.
+        if let fastPathMatch = await fastPathSegmentURL(for: id) {
+            segmentPathCache[id.value] = fastPathMatch
+            return fastPathMatch
+        }
+
         // Cache miss - enumerate directory
         let files = try await directoryManager.listAllSegmentFiles()
         // CRITICAL: Use exact match, not substring! Files are named with Int64 ID (e.g., "1768624554519")
@@ -1334,6 +1345,33 @@ public actor StorageManager: StorageProtocol {
             return match
         }
         throw StorageError.fileNotFound(path: id.stringValue)
+    }
+
+    /// Attempts to resolve a segment's path directly from its ID-derived date bucket
+    /// (native segment IDs are millisecond-epoch timestamps + a small counter),
+    /// checking both extensionless and `.mp4`-suffixed filenames on the ID's own day
+    /// and the adjacent days (to cover IDs minted right at a UTC/local day boundary).
+    /// Returns nil on a miss (never throws) so callers fall back to the full scan.
+    private func fastPathSegmentURL(for id: VideoSegmentID) async -> URL? {
+        // Guard against implausible values (e.g. small autoincrement IDs from Rewind
+        // imports) so we don't waste probes on a date that can't be right.
+        let plausibleMinMillis: Int64 = 946_684_800_000 // 2000-01-01
+        guard id.value >= plausibleMinMillis else { return nil }
+
+        let date = Date(timeIntervalSince1970: Double(id.value) / 1000.0)
+        let candidateDates = [date, date.addingTimeInterval(-86_400), date.addingTimeInterval(86_400)]
+
+        for candidateDate in candidateDates {
+            let base = await directoryManager.candidateSegmentURL(for: id, date: candidateDate)
+            if FileManager.default.fileExists(atPath: base.path) {
+                return base
+            }
+            let mp4 = base.appendingPathExtension("mp4")
+            if FileManager.default.fileExists(atPath: mp4.path) {
+                return mp4
+            }
+        }
+        return nil
     }
 
     public func deleteSegment(id: VideoSegmentID) async throws {

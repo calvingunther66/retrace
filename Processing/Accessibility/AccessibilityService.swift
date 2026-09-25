@@ -9,6 +9,13 @@ import Shared
 /// Uses ApplicationServices framework to walk the AX tree and extract text
 public actor AccessibilityService: AccessibilityProtocol {
 
+    /// Hard cap on the total number of AX nodes visited in a single tree walk,
+    /// independent of the existing depth cap. Bounds worst-case IPC volume (and
+    /// wall-clock time) for pathologically large AX trees (browsers rendering a
+    /// large DOM-backed tree, Xcode, Electron apps) without truncating typical
+    /// apps, whose trees are far smaller than this.
+    private static let maxVisitedElements = 5000
+
     public init() {}
 
     // MARK: - AccessibilityProtocol
@@ -54,7 +61,8 @@ public actor AccessibilityService: AccessibilityProtocol {
         let appRef = AXUIElementCreateApplication(app.processIdentifier)
 
         // Extract text from AX tree
-        let textElements = try extractTextElements(from: appRef)
+        var remainingBudget = Self.maxVisitedElements
+        let textElements = try extractTextElements(from: appRef, remaining: &remainingBudget)
 
         // Get app info
         let appInfo = AppInfo(
@@ -90,9 +98,15 @@ public actor AccessibilityService: AccessibilityProtocol {
     // MARK: - Private Helpers
 
     /// Recursively extract text from AX tree
-    private func extractTextElements(from element: AXUIElement, depth: Int = 0) throws -> [AccessibilityTextElement] {
-        // Prevent infinite recursion
-        guard depth < 15 else { return [] }
+    private func extractTextElements(
+        from element: AXUIElement,
+        depth: Int = 0,
+        remaining: inout Int
+    ) throws -> [AccessibilityTextElement] {
+        // Prevent infinite recursion, and bound total IPC volume for pathologically
+        // large trees (not just depth) by capping total nodes visited.
+        guard depth < 15, remaining > 0 else { return [] }
+        remaining -= 1
 
         var results: [AccessibilityTextElement] = []
 
@@ -149,7 +163,8 @@ public actor AccessibilityService: AccessibilityProtocol {
            let children = childrenValue as? [AXUIElement] {
 
             for child in children {
-                let childResults = try extractTextElements(from: child, depth: depth + 1)
+                guard remaining > 0 else { break }
+                let childResults = try extractTextElements(from: child, depth: depth + 1, remaining: &remaining)
                 results.append(contentsOf: childResults)
             }
         }

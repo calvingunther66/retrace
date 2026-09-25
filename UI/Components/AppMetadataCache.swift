@@ -589,9 +589,21 @@ public final class AppMetadataCache: ObservableObject {
         }
     }
 
+    /// Coalesces `publishCacheMutation()` calls so that many icon/name resolutions completing in
+    /// quick succession (e.g. resolving a whole list of uncached apps) trigger at most one
+    /// `objectWillChange`/memory-ledger update per run-loop tick, instead of one full re-render of
+    /// every observing `AppIconView` per individual resolution.
+    private var isCacheMutationFlushScheduled = false
+
     private func publishCacheMutation() {
-        objectWillChange.send()
-        updateMemoryLedger()
+        guard !isCacheMutationFlushScheduled else { return }
+        isCacheMutationFlushScheduled = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.isCacheMutationFlushScheduled = false
+            self.objectWillChange.send()
+            self.updateMemoryLedger()
+        }
     }
 
     private func updateMemoryLedger() {

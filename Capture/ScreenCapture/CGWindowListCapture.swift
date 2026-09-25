@@ -1370,27 +1370,6 @@ public actor CGWindowListCapture {
         return result
     }
 
-    /// Downscale oversized captures before BGRA expansion (identity below cap).
-    private func downscaledForBGRA(_ image: CGImage) -> CGImage {
-        let longest = max(image.width, image.height)
-        guard longest > Self.bgraMaxDimension, longest > 0 else { return image }
-        let scale = CGFloat(Self.bgraMaxDimension) / CGFloat(longest)
-        let dstWidth = max(1, Int(CGFloat(image.width) * scale))
-        let dstHeight = max(1, Int(CGFloat(image.height) * scale))
-        guard let context = CGContext(
-            data: nil,
-            width: dstWidth,
-            height: dstHeight,
-            bitsPerComponent: 8,
-            bytesPerRow: dstWidth * 4,
-            space: Self.sharedBGRColorSpace,
-            bitmapInfo: Self.sharedBGRBitmapInfo.rawValue
-        ) else { return image }
-        context.interpolationQuality = .medium
-        context.draw(image, in: CGRect(x: 0, y: 0, width: dstWidth, height: dstHeight))
-        return context.makeImage() ?? image
-    }
-
     /// Convert CGImage to BGRA Data format (matching ScreenCaptureKit's kCVPixelFormatType_32BGRA)
     /// Uses the shared colorspace/bitmap-info; caller holds the single live
     /// CGImage for this tick and it is released on return.
@@ -1399,10 +1378,24 @@ public actor CGWindowListCapture {
     }
 
     private func convertCGImageToBGRADataWithSize(_ cgImage: CGImage) -> (data: Data, width: Int, height: Int)? {
-        // Downscale before BGRA so huge displays never pay full-surface cost.
-        let source = downscaledForBGRA(cgImage)
-        let width = source.width
-        let height = source.height
+        // Compute the (possibly downscaled) target dimensions up front, then draw the
+        // original image directly into a single final Data-backed BGRA context sized
+        // to those dimensions. This avoids the previous two-context round trip
+        // (downscale into a throwaway context + makeImage(), then redraw into a
+        // second context just to copy bytes into Data) that oversized displays paid
+        // on every capture tick.
+        let longest = max(cgImage.width, cgImage.height)
+        let needsDownscale = longest > Self.bgraMaxDimension && longest > 0
+        let width: Int
+        let height: Int
+        if needsDownscale {
+            let scale = CGFloat(Self.bgraMaxDimension) / CGFloat(longest)
+            width = max(1, Int(CGFloat(cgImage.width) * scale))
+            height = max(1, Int(CGFloat(cgImage.height) * scale))
+        } else {
+            width = cgImage.width
+            height = cgImage.height
+        }
         let bytesPerRow = width * 4 // BGRA = 4 bytes per pixel
         let dataSize = bytesPerRow * height
         guard dataSize > 0 else { return nil }
@@ -1431,8 +1424,12 @@ public actor CGWindowListCapture {
                     return false
                 }
 
-                // Draw the image into the context (converts to BGRA)
-                context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+                if needsDownscale {
+                    context.interpolationQuality = .medium
+                }
+
+                // Draw the image into the context (converts to BGRA, downscaling if needed)
+                context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
                 return true
             }
         }

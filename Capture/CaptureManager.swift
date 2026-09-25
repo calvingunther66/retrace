@@ -866,12 +866,13 @@ public actor CaptureManager: CaptureProtocol {
             : nil
 
         if currentConfig.adaptiveCaptureEnabled {
+            // Derive the keep/drop decision directly from `similarity` instead of also
+            // calling `shouldKeepFrame` (which would recompute the same expensive
+            // full-frame pixel comparison a second time on every capture tick).
+            // `computeSimilarity` already returns 0.0 for size-mismatched frames, so
+            // this is equivalent to `shouldKeepFrame`'s own early-return branches.
             let similarity = lastKeptFrame.map { deduplicator.computeSimilarity(frame, $0) }
-            let keepBySimilarity = deduplicator.shouldKeepFrame(
-                frame,
-                comparedTo: lastKeptFrame,
-                threshold: currentConfig.deduplicationThreshold
-            )
+            let keepBySimilarity = similarity.map { $0 <= currentConfig.deduplicationThreshold } ?? true
             let keepByMouseMovement = Self.shouldKeepFrameForMouseMovement(
                 enabled: currentConfig.keepFramesOnMouseMovement,
                 previousMousePosition: lastKeptMousePosition,

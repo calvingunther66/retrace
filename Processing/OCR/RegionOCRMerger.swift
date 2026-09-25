@@ -50,15 +50,21 @@ public struct RegionOCRMerger: Sendable {
         guard !regions.isEmpty else { return [] }
 
         var result: [TextRegion] = []
+        // A region can only ever be considered a duplicate of another region with
+        // identical text, so bucket already-accepted bounds by text and only compare
+        // a new region against its own bucket instead of scanning every accepted
+        // region. This keeps the same duplicate semantics while avoiding an O(n^2)
+        // all-pairs scan for frames with many distinct text regions.
+        var acceptedBoundsByText: [String: [CGRect]] = [:]
 
         for region in regions {
-            let isDuplicate = result.contains { existing in
-                // Check if text is identical and bounds overlap significantly
-                existing.text == region.text && boundsOverlapSignificantly(existing.bounds, region.bounds)
-            }
+            let isDuplicate = acceptedBoundsByText[region.text]?.contains { existingBounds in
+                boundsOverlapSignificantly(existingBounds, region.bounds)
+            } ?? false
 
             if !isDuplicate {
                 result.append(region)
+                acceptedBoundsByText[region.text, default: []].append(region.bounds)
             }
         }
 

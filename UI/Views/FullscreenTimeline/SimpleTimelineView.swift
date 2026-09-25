@@ -919,27 +919,33 @@ public struct SimpleTimelineView: View {
 	        let path = videoInfo.videoPath
 	        let pathWithExt = path + ".mp4"
             let hasActiveFilters = viewModel.filterCriteria.hasActiveFilters
-            let selectedApps = (viewModel.filterCriteria.selectedApps ?? []).sorted()
-            let filteredFrameIndicesForVideo: Set<Int> = hasActiveFilters
-                ? Set(viewModel.frames.compactMap { entry in
-                    guard let info = entry.videoInfo, info.videoPath == videoInfo.videoPath else { return nil }
-                    return info.frameIndex
-                })
-                : []
-            let debugContext = viewModel.currentTimelineFrame.map {
-                VideoSeekDebugContext(
-                    frameID: $0.frame.id.value,
-                    timestamp: $0.frame.timestamp,
-                    currentIndex: viewModel.currentIndex,
-                    frameBundleID: $0.frame.metadata.appBundleID,
-                    hasActiveFilters: hasActiveFilters,
-                    selectedApps: selectedApps,
-                    filteredFrameIndicesForVideo: filteredFrameIndicesForVideo
-                )
-            }
+            // Diagnostics-only context: only construct it (and the O(n) frame scan it requires)
+            // when filtered-seek diagnostics logging is actually enabled, since its only consumer
+            // is gated behind that same flag and is a no-op otherwise (disabled by default in release).
+            let debugContext: VideoSeekDebugContext? = (hasActiveFilters && DoubleBufferedVideoView.isFilteredSeekDiagnosticsEnabled)
+                ? viewModel.currentTimelineFrame.map {
+                    let selectedApps = (viewModel.filterCriteria.selectedApps ?? []).sorted()
+                    let filteredFrameIndicesForVideo = Set(viewModel.frames.compactMap { entry -> Int? in
+                        guard let info = entry.videoInfo, info.videoPath == videoInfo.videoPath else { return nil }
+                        return info.frameIndex
+                    })
+                    return VideoSeekDebugContext(
+                        frameID: $0.frame.id.value,
+                        timestamp: $0.frame.timestamp,
+                        currentIndex: viewModel.currentIndex,
+                        frameBundleID: $0.frame.metadata.appBundleID,
+                        hasActiveFilters: hasActiveFilters,
+                        selectedApps: selectedApps,
+                        filteredFrameIndicesForVideo: filteredFrameIndicesForVideo
+                    )
+                }
+                : nil
 
-	        // Check if file exists FIRST - before trying to load it
-	        let fileExists = FileManager.default.fileExists(atPath: path) || FileManager.default.fileExists(atPath: pathWithExt)
+	        // Check if file exists FIRST - before trying to load it.
+	        // Cached (keyed by path) once a video is finalized, since a finalized file's
+	        // existence/size can no longer change; still-encoding videos are always checked live.
+	        let fileStatus = viewModel.videoFileStatus(path: path, pathWithExt: pathWithExt, isVideoFinalized: videoInfo.isVideoFinalized)
+	        let fileExists = fileStatus.exists
 
 	        if !fileExists {
 	            // Video file is missing - show error message
@@ -955,8 +961,7 @@ public struct SimpleTimelineView: View {
 	                    .foregroundColor(.white.opacity(0.3))
 	            }
 	        } else {
-	            let fileSize = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ??
-	                           (try? FileManager.default.attributesOfItem(atPath: pathWithExt)[.size] as? Int64) ?? 0
+	            let fileSize = fileStatus.size
 
 	            // If video is finalized (processingState = 0), trust it's readable regardless of size.
 	            // Otherwise, require minimum file size to ensure fragments are written.
@@ -1640,7 +1645,7 @@ class DoubleBufferedVideoView: NSView {
 
     /// Enable detailed seek diagnostics in release builds with:
     /// `defaults write io.retrace.app retrace.debug.filteredSeekDiagnostics -bool YES`
-    private static let isFilteredSeekDiagnosticsEnabled: Bool = {
+    static let isFilteredSeekDiagnosticsEnabled: Bool = {
         #if DEBUG
         return true
         #else
