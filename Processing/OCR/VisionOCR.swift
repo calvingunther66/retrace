@@ -112,6 +112,19 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
     /// Uses the same .accurate pipeline as frame processing
     /// Returns TextRegions with **normalized coordinates** (0.0-1.0) for direct use with OCRNodeWithText
     public func recognizeTextFromCGImage(_ cgImage: CGImage) async throws -> [TextRegion] {
+        // This path calls Vision synchronously with no watchdog, so during a cold model
+        // compile it would pin a cooperative-pool thread for the whole wait. Suspend on the
+        // shared warm-up gate first instead.
+        let warmUp = await Self.ensureAccurateModelWarm(
+            languages: recognitionLanguages,
+            usesLanguageCorrection: true
+        )
+        guard warmUp == .warm else {
+            throw ProcessingError.ocrFailed(
+                underlying: "OCR paused: the Vision accurate text model failed to warm up"
+            )
+        }
+
         // Shared single CGImage per tick: Vision reads the caller's image
         // directly (no BGRA/Data copy); scoped pool releases transients now.
         return try autoreleasepool {
@@ -696,7 +709,7 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
     /// OCRCircuitBreaker's doc comment for the full incident this addresses
     /// (confirmed in production via `sample`: dozens of `processing.ocr.vision_watchdog`
     /// threads permanently blocked inside `VNControlledCapacityTasksQueue`).
-    private static let circuitBreaker = OCRCircuitBreaker(threshold: 2)
+    static let circuitBreaker = OCRCircuitBreaker(threshold: 2)
 
     /// Whether Vision OCR is currently refusing new calls after repeated hangs.
     /// Exposed so callers (FrameProcessingQueue, UI) can check cheaply without
@@ -719,6 +732,9 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
     /// a signal that a full app relaunch is required.
     public static func resetCircuitBreaker() {
         circuitBreaker.reset()
+        // A wedged or restarted Vision may need to recompile its model, so let the next
+        // request run a fresh (bounded, single-flight) warm-up instead of the 20s watchdog.
+        accurateWarmUp.reset()
         Log.info("[VisionOCR] Circuit breaker reset by user-initiated OCR restart", category: .processing)
     }
 
@@ -747,6 +763,23 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
                     + "process. OCR is paused to stop leaking threads/memory; use Restart OCR, "
                     + "or relaunch the app if that doesn't clear it."
             )
+        }
+
+        // A cold `.accurate` model compile (new binary / purged model cache) takes longer
+        // than the watchdog below and would be misread as a wedge, so the first request in
+        // the process absorbs it through the single-flight warm-up gate instead. Other
+        // workers suspend here rather than each starting (and abandoning) their own compile.
+        if request.recognitionLevel == .accurate {
+            let warmUp = await ensureAccurateModelWarm(
+                languages: request.recognitionLanguages,
+                usesLanguageCorrection: request.usesLanguageCorrection
+            )
+            if warmUp == .failed || circuitBreaker.isOpen {
+                throw ProcessingError.ocrFailed(
+                    underlying: "OCR paused: the Vision accurate text model failed to warm up "
+                        + "and appears wedged. Use Restart OCR to retry."
+                )
+            }
         }
 
         // The actual Vision call runs on this dedicated (non-cooperative-pool) serial
@@ -813,7 +846,7 @@ public final class VisionOCR: OCRProtocol, @unchecked Sendable {
 
     /// Lock-guarded single-fire gate ensuring only the watchdog's completion or its
     /// timeout -- whichever happens first -- resumes the continuation, never both.
-    private final class WatchdogResumeGuard {
+    final class WatchdogResumeGuard {
         private let lock = NSLock()
         private var hasFired = false
 

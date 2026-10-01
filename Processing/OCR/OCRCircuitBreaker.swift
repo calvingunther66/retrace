@@ -70,6 +70,15 @@ final class OCRCircuitBreaker: @unchecked Sendable {
         return tripped
     }
 
+    /// Opens the breaker immediately, without waiting for `threshold` consecutive
+    /// timeouts. Used when a warm-up probe has already proven Vision is unresponsive, so
+    /// issuing real frames (each of which would leak a thread) can't help.
+    func trip() {
+        lock.lock()
+        defer { lock.unlock() }
+        tripped = true
+    }
+
     /// Restores a fresh, untripped state. Used by tests, by the user-initiated
     /// "Restart OCR" recovery action, and by
     /// `FrameProcessingQueue.attemptOCRAutoRecoveryIfEligible()` (via

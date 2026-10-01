@@ -23,6 +23,35 @@ public final class OpenRouterClient: Sendable {
         return message
     }
 
+    /// Builds a diagnostic error for an HTTP 200 response whose body doesn't match the expected
+    /// chat-completion shape (no `choices`/`message`/`content`). This is not a hypothetical edge
+    /// case: on OpenRouter's free-tier shared pool it accounts for a large share of real-world
+    /// indexing failures, and prior to this the caller only ever saw a generic "failed to parse"
+    /// with no way to tell why short of re-querying `semantic_index_requests` by hand. Some
+    /// providers return HTTP 200 with an embedded `{"error": {...}}` payload instead of a proper
+    /// error status — when present, surface that error's own code (so an embedded 429 still hits
+    /// the rate-limit backoff path in `SemanticIndexer.dispatch` instead of the generic 500 one)
+    /// and message. Otherwise, log a truncated body so the next occurrence is self-diagnosing.
+    /// Internal (not `private`) so `OpenRouterClientTests` can exercise the embedded-error
+    /// extraction directly, without standing up a fake `URLSession` just to reach it.
+    static func unparseableCompletionError(data: Data, model: String?) -> NSError {
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let errorObj = json["error"] as? [String: Any] {
+            let code = (errorObj["code"] as? Int) ?? 500
+            let message = errorObj["message"] as? String
+            let friendly = friendlyError(statusCode: code, parsedMessage: message, model: model)
+            return NSError(domain: "OpenRouterClient", code: code, userInfo: [
+                NSLocalizedDescriptionKey: friendly
+            ])
+        }
+
+        let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "<non-utf8 body, \(data.count) bytes>"
+        Log.warning("[OpenRouterClient] Unparseable completion response (HTTP 200): \(bodyPreview)", category: .search)
+        return NSError(domain: "OpenRouterClient", code: 500, userInfo: [
+            NSLocalizedDescriptionKey: "Failed to parse OpenRouter completion response"
+        ])
+    }
+
     /// Builds a user-friendly error description for a given HTTP status code and optional parsed message.
     private static func friendlyError(statusCode: Int, parsedMessage: String?, model: String? = nil) -> String {
         let modelHint = model.map { " (\($0))" } ?? ""
@@ -171,14 +200,12 @@ public final class OpenRouterClient: Sendable {
             ])
         }
 
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
               let firstChoice = choices.first,
               let message = firstChoice["message"] as? [String: Any],
               let content = message["content"] as? String else {
-            throw NSError(domain: "OpenRouterClient", code: 500, userInfo: [
-                NSLocalizedDescriptionKey: "Failed to parse OpenRouter completion response"
-            ])
+            throw Self.unparseableCompletionError(data: data, model: model)
         }
 
         let usage = json["usage"] as? [String: Any]
@@ -518,12 +545,10 @@ public final class OpenRouterClient: Sendable {
             ])
         }
 
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any] else {
-            throw NSError(domain: "OpenRouterClient", code: 500, userInfo: [
-                NSLocalizedDescriptionKey: "Failed to parse OpenRouter completion response"
-            ])
+            throw Self.unparseableCompletionError(data: data, model: model)
         }
 
         let rawContent = (message["content"] as? String) ?? (message["reasoning"] as? String) ?? ""

@@ -19,6 +19,7 @@ Processing/
 │   ├── VisionOCRInstrumentation.swift # OCR-local memory ledger runtime and tracker plumbing
 │   ├── VisionOCRRequestConfig.swift # OCR request config type plus full-frame/region config builders
 │   ├── VisionOCRResidualSupport.swift # OCR residual reset tables and reconciliation helpers
+│   ├── VisionOCRWarmUp.swift      # Single-flight cold-start gate for the .accurate model (ANE compile can exceed the 20s watchdog)
 │   ├── FullFrameOCRCache.swift    # Cached full-frame OCR results for region re-OCR
 │   ├── OCRTileCache.swift         # Tile cache support for region OCR
 │   ├── RegionOCRMerger.swift      # Region OCR merge helpers
@@ -38,6 +39,7 @@ Processing/
     ├── InPageURLMetadataResolutionTests.swift # In-page URL metadata retry and rewrite scheduling regression coverage
     ├── OCRMemoryBackpressurePolicyTests.swift # OCR memory backpressure threshold/default coverage
     ├── PhraseLevelRedactionTests.swift        # Manual + automatic OCR phrase-level redaction coverage
+    ├── VisionOCRWarmUpTests.swift             # Warm-up gate single-flight/reset semantics + breaker trip
     ├── RewriteRetryPolicyTests.swift          # Bounded automatic rewrite retry coverage
     ├── TestLogger.swift                       # Shared processing test logging helpers
     └── _future/
