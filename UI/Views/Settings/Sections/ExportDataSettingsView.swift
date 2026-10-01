@@ -29,8 +29,8 @@ extension SettingsView {
                     .foregroundColor(.retracePrimary)
 
                 Text("Major exporting and importing flexibility")
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary.opacity(0.7))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
         }
     }

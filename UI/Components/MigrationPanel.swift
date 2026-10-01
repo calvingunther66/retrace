@@ -43,12 +43,12 @@ public struct MigrationPanel: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Import from Third-Party Apps")
-                        .font(.retraceTitle3)
-                        .foregroundColor(.retracePrimary)
+                        .font(.retraceTitle2)
+                        .foregroundColor(.retraceInk)
 
                     Text("Import your screen history from other apps")
-                        .font(.retraceBody)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 }
 
                 Spacer()
@@ -59,13 +59,13 @@ public struct MigrationPanel: View {
                 .buttonStyle(RetraceSecondaryButtonStyle())
             }
 
-            Divider()
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
             // Available sources
             VStack(alignment: .leading, spacing: .spacingM) {
                 Text("Available Sources")
                     .font(.retraceHeadline)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 ForEach(sources) { source in
                     sourceRow(source: source)
@@ -74,14 +74,20 @@ public struct MigrationPanel: View {
 
             // Import progress (if importing)
             if isImporting, let progress = importProgress {
-                Divider()
+                Rectangle().fill(Color.retraceBorder).frame(height: 1)
                 importProgressView(progress: progress)
             }
         }
         .padding(.spacingL)
-        .background(Color.retraceCard)
-        .cornerRadius(.cornerRadiusL)
-        .retraceShadowMedium()
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
+        )
+        .retraceElevation(.sm)
     }
 
     // MARK: - Source Row
@@ -89,24 +95,24 @@ public struct MigrationPanel: View {
     private func sourceRow(source: MigrationSource) -> some View {
         HStack(spacing: .spacingM) {
             // Checkbox
-            Image(systemName: source.isInstalled ? "checkmark.square.fill" : "square")
-                .foregroundColor(source.isInstalled ? .retraceSuccess : .retraceSecondary)
-                .font(.retraceTitle3)
+            RetraceSymbol(source.isInstalled ? "checkmark.square.fill" : "square", size: 17, weight: .semibold)
+                .foregroundColor(source.isInstalled ? .retraceGood : .retraceInk2)
 
             // Source info
             VStack(alignment: .leading, spacing: 4) {
                 Text(source.name)
                     .font(.retraceBody)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 if source.isInstalled, let size = source.estimatedSize {
                     Text("\(formatBytes(size)) found")
-                        .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMonoSmall)
+                        .monospacedDigit()
+                        .foregroundColor(.retraceInk2)
                 } else {
                     Text("Not installed")
-                        .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceInk2)
                 }
             }
 
@@ -118,13 +124,15 @@ public struct MigrationPanel: View {
                     selectedSource = source
                     onStartImport(source)
                 }
-                .buttonStyle(RetracePrimaryButtonStyle())
+                .buttonStyle(RetraceSecondaryButtonStyle())
                 .disabled(isImporting)
             }
         }
         .padding(.spacingM)
-        .background(source.isInstalled ? Color.retraceSecondaryBackground : Color.clear)
-        .cornerRadius(.cornerRadiusM)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(source.isInstalled ? Color.retraceSurfaceSunken : Color.clear)
+        )
     }
 
     // MARK: - Import Progress
@@ -133,25 +141,24 @@ public struct MigrationPanel: View {
         VStack(alignment: .leading, spacing: .spacingM) {
             Text("Importing from \(selectedSource?.name ?? "source")...")
                 .font(.retraceHeadline)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
 
             // Progress bar
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     // Background
-                    Rectangle()
-                        .fill(Color.retraceSecondaryBackground)
+                    Capsule(style: .continuous)
+                        .fill(Color.retraceSurface)
                         .frame(height: 8)
-                        .cornerRadius(4)
+                        .overlay(Capsule(style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
 
                     // Progress
-                    Rectangle()
+                    Capsule(style: .continuous)
                         .fill(Color.retraceAccent)
                         .frame(
                             width: geometry.size.width * CGFloat(progress.percentComplete),
                             height: 8
                         )
-                        .cornerRadius(4)
                 }
             }
             .frame(height: 8)
@@ -160,24 +167,27 @@ public struct MigrationPanel: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(Int(progress.percentComplete * 100))% complete")
-                        .font(.retraceBody)
-                        .foregroundColor(.retracePrimary)
+                        .font(.retraceMono)
+                        .monospacedDigit()
+                        .foregroundColor(.retraceInk)
 
                     HStack(spacing: 4) {
                         Text("\(formatNumber(progress.videosProcessed)) videos processed")
-                        Text("•")
+                        Text("·")
                         Text("\(formatNumber(progress.framesImported)) frames imported")
                     }
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .monospacedDigit()
+                    .foregroundColor(.retraceInk2)
                 }
 
                 Spacer()
 
                 if let estimatedTime = progress.estimatedSecondsRemaining {
                     Text("Est. \(formatDuration(estimatedTime)) remaining")
-                        .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .monospacedDigit()
+                        .foregroundColor(.retraceInk2)
                 }
             }
 
@@ -195,8 +205,10 @@ public struct MigrationPanel: View {
             }
         }
         .padding(.spacingM)
-        .background(Color.retraceAccent.opacity(0.1))
-        .cornerRadius(.cornerRadiusM)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceAccentWash)
+        )
     }
 
     // MARK: - Helpers
@@ -299,7 +311,6 @@ struct MigrationPanel_Previews: PreviewProvider {
         }
         .padding()
         .background(Color.retraceBackground)
-        .preferredColorScheme(.dark)
     }
 }
 #endif

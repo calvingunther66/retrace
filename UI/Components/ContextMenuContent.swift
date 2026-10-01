@@ -46,7 +46,7 @@ struct ContextMenuContent: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(Color.retraceBorder)
                 .padding(.vertical, 4)
 
             ContextMenuRow(
@@ -254,8 +254,7 @@ struct ContextMenuRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: RetraceMenuStyle.iconTextSpacing) {
-                Image(systemName: icon)
-                    .font(.system(size: RetraceMenuStyle.iconSize, weight: RetraceMenuStyle.fontWeight))
+                RetraceSymbol(icon, size: RetraceMenuStyle.iconSize, weight: RetraceMenuStyle.fontWeight)
                     .foregroundColor(foregroundColor)
                     .frame(width: RetraceMenuStyle.iconFrameWidth)
 
@@ -281,17 +280,13 @@ struct ContextMenuRow: View {
             .padding(.vertical, RetraceMenuStyle.itemPaddingV)
             .background(
                 ZStack {
-                    RoundedRectangle(cornerRadius: RetraceMenuStyle.itemCornerRadius)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                         .fill(isHovering && !isDisabled ? RetraceMenuStyle.itemHoverColor : Color.clear)
 
                     if showGuideRing {
-                        RoundedRectangle(cornerRadius: RetraceMenuStyle.itemCornerRadius)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                             .stroke(Color.retraceAccent, lineWidth: guidePulse ? 2.6 : 2.0)
                             .opacity(guidePulse ? 0.95 : 0.7)
-                            .shadow(
-                                color: Color.retraceAccent.opacity(guidePulse ? 0.45 : 0.25),
-                                radius: guidePulse ? 8 : 5
-                            )
                             .animation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true), value: guidePulse)
                     }
                 }
@@ -336,6 +331,6 @@ struct ContextMenuRow: View {
         if isDisabled {
             return RetraceMenuStyle.textColorMuted.opacity(0.4)
         }
-        return .white.opacity(0.4)
+        return .retraceInk2
     }
 }

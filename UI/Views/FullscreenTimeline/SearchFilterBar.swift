@@ -80,7 +80,7 @@ public struct SearchFilterBar: View {
 
             Divider()
                 .frame(height: 21)
-                .background(Color.white.opacity(0.2))
+                .background(Color.retraceBorder)
 
             // Apps filter (multi-select) - shows app icons when selected
             AppsFilterChip(
@@ -351,22 +351,21 @@ public struct SearchFilterBar: View {
                     }
                 }) {
                     HStack(spacing: 3) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .semibold))
+                        RetraceSymbol("xmark", size: 9, weight: .semibold)
                         Text("Clear")
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(RetraceFont.font(size: 9, weight: .semibold))
                     }
-                    .foregroundColor(.white.opacity(0.6))
+                    .foregroundColor(.retraceInk2)
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.white.opacity(0.1))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 5)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                         .stroke(
                             isClearFiltersHovered ? RetraceMenuStyle.filterStrokeStrong : Color.clear,
                             lineWidth: 1.2
@@ -618,33 +617,31 @@ private struct FilterChip: View {
             action()
         }) {
             HStack(spacing: 4.5) {
-                Image(systemName: icon)
-                    .font(.system(size: 11))
+                RetraceSymbol(icon, size: 11)
 
                 Text(label)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.retraceTiny)
                     .lineLimit(1)
 
                 if showChevron {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
+                    RetraceSymbol("chevron.down", size: 9, weight: .semibold, label: "")
                 }
             }
-            .foregroundColor(isActive ? .white : .white.opacity(0.7))
+            .foregroundColor(isActive ? .retraceInk : .retraceInk2)
             .padding(.horizontal, 10.5)
             .padding(.vertical, 7.5)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive ? Color.white.opacity(0.2) : Color.white.opacity((isHovered || isOpen) ? 0.15 : 0.1))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isActive ? Color.retraceAccentWash : ((isHovered || isOpen) ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                     .stroke(
                         isOpen
                             ? RetraceMenuStyle.filterStrokeStrong
                             : (isActive
                                 ? RetraceMenuStyle.filterStrokeMedium
-                                : (isHovered ? Color.white.opacity(0.65) : Color.clear)),
+                                : (isHovered ? Color.retraceAccent : RetraceMenuStyle.filterStrokeSubtle)),
                         lineWidth: (isOpen || isHovered) ? 1.2 : 1
                     )
             )
@@ -689,10 +686,9 @@ private struct AppsFilterChip: View {
             HStack(spacing: 4.5) {
                 // Show exclude indicator
                 if isExcludeMode {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 9))
+                    RetraceSymbol("minus.circle.fill", size: 9)
                         .frame(width: iconSize, height: iconSize)
-                        .foregroundColor(.orange)
+                        .foregroundColor(.retraceWarningText)
                         .transition(.scale.combined(with: .opacity))
                 }
 
@@ -701,13 +697,13 @@ private struct AppsFilterChip: View {
                     let bundleID = sortedApps[0]
                     appIcon(for: bundleID)
                         .frame(width: iconSize, height: iconSize)
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                         .transition(.scale.combined(with: .opacity))
 
                     Text(appName(for: bundleID))
-                        .font(.system(size: 10.5, weight: .medium))
+                        .font(.retraceTiny)
                         .lineLimit(1)
-                        .strikethrough(isExcludeMode, color: .orange)
+                        .strikethrough(isExcludeMode, color: .retraceWarningText)
                         .transition(.opacity)
                 } else if sortedApps.count > 1 {
                     // Multiple apps: show icons
@@ -715,7 +711,7 @@ private struct AppsFilterChip: View {
                         ForEach(Array(sortedApps.prefix(maxVisibleIcons)), id: \.self) { bundleID in
                             appIcon(for: bundleID)
                                 .frame(width: iconSize, height: iconSize)
-                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
                                 .opacity(isExcludeMode ? 0.6 : 1.0)
                                 .transition(.scale.combined(with: .opacity))
                         }
@@ -725,45 +721,45 @@ private struct AppsFilterChip: View {
                     if sortedApps.count > maxVisibleIcons {
                         Text("+\(sortedApps.count - maxVisibleIcons)")
                             .font(.retraceTinyBold)
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(.retraceInk2)
                             .transition(.scale.combined(with: .opacity))
                     }
                 } else {
                     // Default state - no apps selected
-                    Image(systemName: "square.grid.2x2.fill")
-                        .font(.system(size: 11))
+                    RetraceSymbol("square.grid.2x2.fill", size: 11)
                         .frame(width: iconSize, height: iconSize)
                         .transition(.scale.combined(with: .opacity))
                     Text("Apps")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.retraceTiny)
                         .transition(.opacity)
                 }
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                RetraceSymbol("chevron.down", size: 9, weight: .semibold, label: "")
             }
             .frame(height: iconSize)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: sortedApps)
-            .foregroundColor(isActive ? .white : .white.opacity(0.7))
+            .foregroundColor(isActive ? .retraceInk : .retraceInk2)
             .padding(.horizontal, 10.5)
             .padding(.vertical, 7.5)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive ? Color.white.opacity(0.2) : Color.white.opacity((isHovered || isOpen) ? 0.15 : 0.1))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isActive ? Color.retraceAccentWash : ((isHovered || isOpen) ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                     .stroke(
                         isOpen
                             ? RetraceMenuStyle.filterStrokeStrong
                             : (isActive
                                 ? RetraceMenuStyle.filterStrokeMedium
-                                : (isHovered ? Color.white.opacity(0.65) : Color.clear)),
+                                : (isHovered ? Color.retraceAccent : RetraceMenuStyle.filterStrokeSubtle)),
                         lineWidth: (isOpen || isHovered) ? 1.2 : 1
                     )
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Apps")
+        .accessibilityValue(sortedApps.isEmpty ? "All apps" : "\(sortedApps.count) \(isExcludeMode ? "excluded" : "included")")
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) {
                 isHovered = hovering
@@ -867,38 +863,35 @@ private struct TagsFilterChip: View {
             HStack(spacing: 4.5) {
                 // Show exclude indicator
                 if isExcludeMode {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(.orange)
+                    RetraceSymbol("minus.circle.fill", size: 9)
+                        .foregroundColor(.retraceWarningText)
                         .transition(.scale.combined(with: .opacity))
                 }
 
-                Image(systemName: isActive ? "tag.fill" : "tag")
-                    .font(.system(size: 11))
+                RetraceSymbol(isActive ? "tag.fill" : "tag", size: 11)
 
                 Text(label)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.retraceTiny)
                     .lineLimit(1)
-                    .strikethrough(isExcludeMode, color: .orange)
+                    .strikethrough(isExcludeMode, color: .retraceWarningText)
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                RetraceSymbol("chevron.down", size: 9, weight: .semibold, label: "")
             }
-            .foregroundColor(isActive ? .white : .white.opacity(0.7))
+            .foregroundColor(isActive ? .retraceInk : .retraceInk2)
             .padding(.horizontal, 10.5)
             .padding(.vertical, 7.5)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive ? Color.white.opacity(0.2) : Color.white.opacity((isHovered || isOpen) ? 0.15 : 0.1))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isActive ? Color.retraceAccentWash : ((isHovered || isOpen) ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                     .stroke(
                         isOpen
                             ? RetraceMenuStyle.filterStrokeStrong
                             : (isActive
                                 ? RetraceMenuStyle.filterStrokeMedium
-                                : (isHovered ? Color.white.opacity(0.65) : Color.clear)),
+                                : (isHovered ? Color.retraceAccent : RetraceMenuStyle.filterStrokeSubtle)),
                         lineWidth: (isOpen || isHovered) ? 1.2 : 1
                     )
             )
@@ -943,31 +936,29 @@ private struct VisibilityFilterChip: View {
             action()
         }) {
             HStack(spacing: 4.5) {
-                Image(systemName: icon)
-                    .font(.system(size: 11))
+                RetraceSymbol(icon, size: 11)
 
                 Text(label)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.retraceTiny)
                     .lineLimit(1)
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                RetraceSymbol("chevron.down", size: 9, weight: .semibold, label: "")
             }
-            .foregroundColor(isActive ? .white : .white.opacity(0.7))
+            .foregroundColor(isActive ? .retraceInk : .retraceInk2)
             .padding(.horizontal, 10.5)
             .padding(.vertical, 7.5)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive ? Color.white.opacity(0.2) : Color.white.opacity((isHovered || isOpen) ? 0.15 : 0.1))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isActive ? Color.retraceAccentWash : ((isHovered || isOpen) ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                     .stroke(
                         isOpen
                             ? RetraceMenuStyle.filterStrokeStrong
                             : (isActive
                                 ? RetraceMenuStyle.filterStrokeMedium
-                                : (isHovered ? Color.white.opacity(0.65) : Color.clear)),
+                                : (isHovered ? Color.retraceAccent : RetraceMenuStyle.filterStrokeSubtle)),
                         lineWidth: (isOpen || isHovered) ? 1.2 : 1
                     )
             )
@@ -1012,31 +1003,29 @@ private struct CommentFilterChip: View {
             action()
         }) {
             HStack(spacing: 4.5) {
-                Image(systemName: icon)
-                    .font(.system(size: 11))
+                RetraceSymbol(icon, size: 11)
 
                 Text(label)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.retraceTiny)
                     .lineLimit(1)
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                RetraceSymbol("chevron.down", size: 9, weight: .semibold, label: "")
             }
-            .foregroundColor(isActive ? .white : .white.opacity(0.7))
+            .foregroundColor(isActive ? .retraceInk : .retraceInk2)
             .padding(.horizontal, 10.5)
             .padding(.vertical, 7.5)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive ? Color.white.opacity(0.2) : Color.white.opacity((isHovered || isOpen) ? 0.15 : 0.1))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isActive ? Color.retraceAccentWash : ((isHovered || isOpen) ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                     .stroke(
                         isOpen
                             ? RetraceMenuStyle.filterStrokeStrong
                             : (isActive
                                 ? RetraceMenuStyle.filterStrokeMedium
-                                : (isHovered ? Color.white.opacity(0.65) : Color.clear)),
+                                : (isHovered ? Color.retraceAccent : RetraceMenuStyle.filterStrokeSubtle)),
                         lineWidth: (isOpen || isHovered) ? 1.2 : 1
                     )
             )
@@ -1062,30 +1051,26 @@ private struct SearchOrderChip: View {
 
         Button(action: action) {
             HStack(spacing: 4.5) {
-                Image(systemName: selection.icon)
-                    .font(.system(size: 11))
+                RetraceSymbol(selection.icon, size: 11)
 
                 Text(selection.title)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.retraceTiny)
                     .lineLimit(1)
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
+                RetraceSymbol("chevron.down", size: 9, weight: .semibold, label: "")
             }
-            .foregroundColor(.white)
+            .foregroundColor(.retraceInk)
             .padding(.horizontal, 10.5)
             .padding(.vertical, 7.5)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.white.opacity(isHighlighted ? 0.22 : 0.2))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isHighlighted ? Color.retraceAccentWash : Color.retraceSurfaceSunken)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                     .stroke(
-                        isOpen
-                            ? RetraceMenuStyle.filterStrokeStrong
-                            : (isHovered ? Color.white.opacity(0.65) : RetraceMenuStyle.filterStrokeMedium),
-                        lineWidth: 1.2
+                        isHighlighted ? Color.retraceAccent : RetraceMenuStyle.filterStrokeSubtle,
+                        lineWidth: isHighlighted ? 1.2 : 1
                     )
             )
         }

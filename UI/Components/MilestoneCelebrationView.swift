@@ -58,23 +58,15 @@ struct MilestoneCelebrationView: View {
     private var dialogContent: some View {
         ZStack {
             // Background
-            Color.retraceBackground
-                .cornerRadius(16)
+            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                .fill(Color.retraceSurface)
 
             VStack(spacing: 0) {
-                // Header area with gradient
+                // Header area (flat wash)
                 ZStack {
-                    // Gradient background for header
-                    LinearGradient(
-                        colors: [
-                            Color.retraceAccent.opacity(0.3),
-                            Color.retraceAccent.opacity(0.1)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
+                    Color.retraceAccentWash
 
-                    // Celebration title/icon with glow behind it
+                    // Celebration title/icon
                     celebrationHeader
                 }
                 .frame(height: headerExpanded ? (milestone == .tenThousandHours ? 250 : (milestone == .thousandHours ? 220 : 180)) : 300)
@@ -88,8 +80,12 @@ struct MilestoneCelebrationView: View {
         }
         .frame(width: 480)
         .fixedSize(horizontal: false, vertical: true)
-        .cornerRadius(16)
-        .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
+        )
+        .retraceElevation(.lg)
         .animation(.easeInOut(duration: 0.5), value: headerExpanded)
         .animation(.easeInOut(duration: 0.4), value: showContent)
     }
@@ -98,30 +94,12 @@ struct MilestoneCelebrationView: View {
 
     private var celebrationHeader: some View {
         ZStack {
-            // Glow effect behind everything for 100h and 1000h
-            if milestone != .tenHours && iconGlow {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [glowColor.opacity(0.6), glowColor.opacity(0)],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: 120
-                        )
-                    )
-                    .frame(width: 240, height: 240)
-                    .blur(radius: 30)
-                    .scaleEffect(glowPulse ? 1.15 : 0.9)
-                    .opacity(glowPulse ? 1 : 0.7)
-                    .offset(y: -20) // Slight offset to center on icon
-            }
-
             VStack(spacing: 8) {
                 if milestone == .tenHours {
                     // Simple title for 10h
                     Text(milestone.title)
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
-                        .foregroundColor(.retracePrimary)
+                        .font(RetraceFont.font(size: 40, weight: .semibold))
+                        .foregroundColor(.retraceInk)
                         .opacity(showTitle ? 1 : 0)
                         .scaleEffect(showTitle ? 1 : 0.5)
                 } else {
@@ -139,18 +117,16 @@ struct MilestoneCelebrationView: View {
                             }
                         }
 
-                        Image(systemName: celebrationIcon)
-                            .font(.system(size: 56))
-                            .foregroundStyle(iconGradient)
-                            .shadow(color: glowColor.opacity(glowPulse ? 1.0 : 0.6), radius: glowPulse ? 30 : 20)
+                        RetraceSymbol(celebrationIcon, size: 56, label: "")
+                            .foregroundColor(iconColor)
                             .scaleEffect(showIcon ? 1 : 0)
                             .opacity(showIcon ? 1 : 0)
                     }
 
                     // Title appears after icon
                     Text(milestone.title)
-                        .font(.system(size: 40, weight: .bold, design: .rounded))
-                        .foregroundColor(.retracePrimary)
+                        .font(RetraceFont.font(size: 40, weight: .semibold))
+                        .foregroundColor(.retraceInk)
                         .opacity(showTitle ? 1 : 0)
                         .scaleEffect(showTitle ? 1 : 0.8)
                 }
@@ -172,7 +148,7 @@ struct MilestoneCelebrationView: View {
                 // Personal message
                 Text(milestone.message)
                     .font(.retraceBody)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
                     .lineSpacing(6)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -185,7 +161,7 @@ struct MilestoneCelebrationView: View {
             // Action buttons
             actionButtons
         }
-        .background(Color.retraceBackground)
+        .background(Color.retraceSurface)
     }
 
     // MARK: - Profile Section
@@ -201,24 +177,24 @@ struct MilestoneCelebrationView: View {
                     .clipShape(Circle())
                     .overlay(
                         Circle()
-                            .stroke(Color.retraceAccent, lineWidth: 1.5)
+                            .stroke(Color.retraceInk2, lineWidth: 1.5)
                     )
             } else {
                 fallbackProfileImage
                     .overlay(
                         Circle()
-                            .stroke(Color.retraceAccent, lineWidth: 1.5)
+                            .stroke(Color.retraceInk2, lineWidth: 1.5)
                     )
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Haseab")
                     .font(.retraceHeadline)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 Text("Creator of Retrace")
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
 
             Spacer()
@@ -235,26 +211,12 @@ struct MilestoneCelebrationView: View {
                     HStack(spacing: 8) {
                         Text("🐐")
                         Text("I Accept My Crown")
-                            .font(.retraceCalloutMedium)
-                            .foregroundColor(.white)
                         Text("🐐")
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 255/255, green: 0/255, blue: 128/255),
-                                Color(red: 255/255, green: 165/255, blue: 0/255),
-                                Color(red: 255/255, green: 215/255, blue: 0/255)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .cornerRadius(8)
+                    .padding(.vertical, 4)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RetraceButtonStyle(.primary))
                 .padding(24)
             case .continueOnly:
                 Button(action: {
@@ -266,38 +228,20 @@ struct MilestoneCelebrationView: View {
                     }
                 }) {
                     Text("Continue")
-                        .font(.retraceCalloutMedium)
-                        .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            LinearGradient(
-                                colors: [Color.retraceAccent, Color.retraceAccent.opacity(0.8)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .cornerRadius(8)
+                        .padding(.vertical, 4)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RetraceButtonStyle(.primary))
                 .padding(24)
             case .maybeLaterAndSupport:
                 HStack(spacing: 16) {
                     // Dismiss button
                     Button(action: onMaybeLater) {
                         Text("Maybe Later")
-                            .font(.retraceCalloutMedium)
-                            .foregroundColor(.retraceSecondary)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.retraceSecondaryBackground)
-                            .cornerRadius(8)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.retraceBorder, lineWidth: 1)
-                            )
+                            .padding(.vertical, 4)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.secondary))
 
                     // Support button
                     Button(action: {
@@ -305,24 +249,13 @@ struct MilestoneCelebrationView: View {
                         onDismiss()
                     }) {
                         HStack(spacing: 8) {
-                            Image(systemName: "heart.fill")
-                                .foregroundColor(.white)
+                            RetraceSymbol("heart.fill", size: 13, label: "")
                             Text("Support Retrace")
-                                .font(.retraceCalloutMedium)
-                                .foregroundColor(.white)
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            LinearGradient(
-                                colors: [Color.retraceAccent, Color.retraceAccent.opacity(0.8)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .cornerRadius(8)
+                        .padding(.vertical, 4)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.primary))
                 }
                 .padding(24)
             }
@@ -428,59 +361,19 @@ struct MilestoneCelebrationView: View {
         }
     }
 
-    private var iconGradient: LinearGradient {
-        switch milestone {
-        case .tenHours, .hundredHours:
-            return LinearGradient(
-                colors: [.yellow, .orange],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        case .thousandHours:
-            return LinearGradient(
-                colors: [
-                    Color(red: 255/255, green: 215/255, blue: 0/255), // Gold
-                    Color(red: 255/255, green: 165/255, blue: 0/255), // Orange gold
-                    Color(red: 218/255, green: 165/255, blue: 32/255)  // Goldenrod
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        case .tenThousandHours:
-            // Rainbow gradient for the GOAT
-            return LinearGradient(
-                colors: [
-                    Color(red: 255/255, green: 0/255, blue: 128/255),   // Hot pink
-                    Color(red: 255/255, green: 215/255, blue: 0/255),   // Gold
-                    Color(red: 0/255, green: 255/255, blue: 128/255),   // Spring green
-                    Color(red: 0/255, green: 191/255, blue: 255/255),   // Deep sky blue
-                    Color(red: 148/255, green: 0/255, blue: 211/255)    // Violet
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-    }
+    /// Decorative milestone glyphs stay neutral; clay is reserved for the primary action.
+    private var iconColor: Color { .retraceInk2 }
 
-    private var glowColor: Color {
-        switch milestone {
-        case .tenHours, .hundredHours:
-            return .yellow
-        case .thousandHours:
-            return Color(red: 255/255, green: 215/255, blue: 0/255) // Gold
-        case .tenThousandHours:
-            return Color(red: 255/255, green: 0/255, blue: 128/255) // Hot pink
-        }
-    }
+    private var glowColor: Color { .retraceInk2 }
 
     private var fallbackProfileImage: some View {
         Circle()
-            .fill(Color.retraceAccent.opacity(0.3))
+            .fill(Color.retraceAccentWash)
             .frame(width: 40, height: 40)
             .overlay(
                 Text("H")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.retraceAccent)
+                    .font(RetraceFont.font(size: 18, weight: .semibold))
+                    .foregroundColor(.retraceInk)
             )
     }
 
@@ -546,30 +439,26 @@ struct DiscordFollowupView: View {
     @StateObject private var statsModel = DiscordInviteStatsModel()
     private let refreshTimer = Timer.publish(every: 45, on: .main, in: .common).autoconnect()
 
-    private let discordPurple = Color(red: 88/255, green: 101/255, blue: 242/255)
-    private let discordDeepPurple = Color(red: 64/255, green: 78/255, blue: 237/255)
-    private let cardBackground = Color(red: 16/255, green: 20/255, blue: 36/255)
-
     var body: some View {
         VStack(spacing: 0) {
             heroSection
 
             Divider()
-                .background(Color.white.opacity(0.12))
+                .background(Color.retraceBorder)
 
             actionButtons
                 .padding(24)
         }
         .frame(width: 520)
         .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(cardBackground)
+            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                .fill(Color.retraceSurface)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
         )
-        .shadow(color: .black.opacity(0.45), radius: 24, x: 0, y: 12)
+        .retraceElevation(.lg)
         .task {
             await statsModel.refresh()
         }
@@ -582,88 +471,55 @@ struct DiscordFollowupView: View {
 
     private var heroSection: some View {
         ZStack {
-            LinearGradient(
-                colors: [discordPurple, discordDeepPurple],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Circle()
-                .fill(Color.white.opacity(0.15))
-                .frame(width: 190, height: 190)
-                .offset(x: 160, y: -70)
-
-            Circle()
-                .fill(Color.white.opacity(0.08))
-                .frame(width: 140, height: 140)
-                .offset(x: -170, y: 90)
+            Color.retraceAccentWash
 
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
                     DiscordBrandMark(size: 56)
+                        .foregroundColor(.retraceInk)
                     RetraceBrandMark(size: 56)
                 }
 
                 Text("Join the Retrace Discord")
                     .font(.retraceTitle3)
-                    .foregroundColor(.white)
+                    .foregroundColor(.retraceInk)
 
                 Text("All the power users are hanging out here!")
-                    .font(.retraceCaption)
-                    .foregroundColor(.white.opacity(0.9))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 22)
         }
         .frame(height: 190)
-        .clipShape(TopRoundedRectangle(radius: 18))
+        .clipShape(TopRoundedRectangle(radius: .radiusLg))
     }
 
     private var actionButtons: some View {
         HStack(spacing: 14) {
             Button(action: onMaybeLater) {
                 Text("Maybe Later")
-                    .font(.retraceCalloutMedium)
-                    .foregroundColor(.white.opacity(0.82))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(9)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 9)
-                            .stroke(Color.white.opacity(0.16), lineWidth: 1)
-                    )
+                    .padding(.vertical, 4)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.secondary))
 
             Button(action: onJoin) {
                 HStack(spacing: 8) {
                     DiscordBrandMark(size: 18, showsBackground: false)
                     Text("Join Discord")
-                        .font(.retraceCalloutMedium)
-                        .foregroundColor(.white)
 
                     if let onlineLabel = onlineShortLabel {
                         Text("• \(onlineLabel)")
-                            .font(.retraceCaptionMedium)
-                            .foregroundColor(.white.opacity(0.9))
+                            .font(.retraceCaption)
                             .monospacedDigit()
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    LinearGradient(
-                        colors: [discordPurple, discordDeepPurple],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(9)
-                .shadow(color: discordPurple.opacity(0.45), radius: 14, x: 0, y: 8)
+                .padding(.vertical, 4)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary))
         }
     }
 
@@ -691,25 +547,23 @@ private struct DiscordBrandMark: View {
     var body: some View {
         ZStack {
             if showsBackground {
-                RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                    .fill(Color.white.opacity(0.16))
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .fill(Color.retraceSurface)
                     .overlay(
-                        RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .stroke(Color.retraceBorder, lineWidth: 1)
                     )
             }
 
             if let logoImage = Self.logoImage {
                 Image(nsImage: logoImage)
+                    .renderingMode(.template)
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
                     .frame(width: size * 0.58, height: size * 0.58)
             } else {
-                Image(systemName: "person.2.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundColor(.white)
+                RetraceSymbol("person.2.fill", size: size * 0.56 / 1.25)
                     .frame(width: size * 0.56, height: size * 0.56)
             }
         }
@@ -724,47 +578,17 @@ private struct RetraceBrandMark: View {
     var body: some View {
         ZStack {
             if showsBackground {
-                RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                    .fill(Color.white.opacity(0.16))
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .fill(Color.retraceSurface)
                     .overlay(
-                        RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .stroke(Color.retraceBorder, lineWidth: 1)
                     )
             }
 
-            RetraceGlyph()
-                .frame(width: size * 0.58, height: size * 0.58)
+            RetraceMarkView(size: size * 0.58)
         }
         .frame(width: size, height: size)
-    }
-}
-
-private struct RetraceGlyph: View {
-    var body: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-            let height = geometry.size.height
-            let scaleX = width / 120
-            let scaleY = height / 120
-
-            ZStack {
-                Path { path in
-                    path.move(to: CGPoint(x: 15 * scaleX, y: 60 * scaleY))
-                    path.addLine(to: CGPoint(x: 54 * scaleX, y: 33 * scaleY))
-                    path.addLine(to: CGPoint(x: 54 * scaleX, y: 87 * scaleY))
-                    path.closeSubpath()
-                }
-                .fill(Color.white)
-
-                Path { path in
-                    path.move(to: CGPoint(x: 105 * scaleX, y: 60 * scaleY))
-                    path.addLine(to: CGPoint(x: 66 * scaleX, y: 33 * scaleY))
-                    path.addLine(to: CGPoint(x: 66 * scaleX, y: 87 * scaleY))
-                    path.closeSubpath()
-                }
-                .fill(Color.white)
-            }
-        }
     }
 }
 
@@ -943,7 +767,7 @@ struct MilestoneCelebrationView_Previews: PreviewProvider {
     static var previews: some View {
         Group {
             ZStack {
-                Color.black.opacity(0.5)
+                Color.retraceScrim
                     .ignoresSafeArea()
 
                 MilestoneCelebrationView(
@@ -956,7 +780,7 @@ struct MilestoneCelebrationView_Previews: PreviewProvider {
             .previewDisplayName("10 Hours")
 
             ZStack {
-                Color.black.opacity(0.5)
+                Color.retraceScrim
                     .ignoresSafeArea()
 
                 MilestoneCelebrationView(
@@ -969,7 +793,7 @@ struct MilestoneCelebrationView_Previews: PreviewProvider {
             .previewDisplayName("100 Hours")
 
             ZStack {
-                Color.black.opacity(0.5)
+                Color.retraceScrim
                     .ignoresSafeArea()
 
                 MilestoneCelebrationView(
@@ -982,7 +806,7 @@ struct MilestoneCelebrationView_Previews: PreviewProvider {
             .previewDisplayName("1000 Hours")
 
             ZStack {
-                Color.black.opacity(0.5)
+                Color.retraceScrim
                     .ignoresSafeArea()
 
                 MilestoneCelebrationView(
@@ -995,7 +819,7 @@ struct MilestoneCelebrationView_Previews: PreviewProvider {
             .previewDisplayName("10000 Hours - THE GOAT")
 
             ZStack {
-                Color.black.opacity(0.5)
+                Color.retraceScrim
                     .ignoresSafeArea()
 
                 DiscordFollowupView(
@@ -1005,7 +829,6 @@ struct MilestoneCelebrationView_Previews: PreviewProvider {
             }
             .previewDisplayName("Discord Follow-up")
         }
-        .preferredColorScheme(.dark)
     }
 }
 #endif

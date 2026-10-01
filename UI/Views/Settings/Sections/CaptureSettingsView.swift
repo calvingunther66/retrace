@@ -18,28 +18,28 @@ extension SettingsView {
         deltaDirection: StorageEstimateDeltaDirection?
     ) -> some View {
         HStack(alignment: .center, spacing: 14) {
-            Image(systemName: "externaldrive.fill")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
+            RetraceSymbol("externaldrive.fill", size: 15, weight: .semibold)
+                .foregroundColor(.retraceOnAccent)
                 .frame(width: 34, height: 34)
                 .background(Color.retraceAccent)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Estimated Storage")
-                    .font(.retraceCaptionMedium)
-                    .foregroundColor(.retraceSecondary.opacity(0.85))
+                    .font(.retraceLabel)
+                    .retraceLabelTracking()
+                    .foregroundColor(.retraceInk2)
 
                 HStack(spacing: 6) {
                     Text(valueText)
-                        .font(.retraceCalloutBold)
-                        .foregroundColor(.white)
+                        .font(.retraceMono)
+                        .monospacedDigit()
+                        .foregroundColor(.retraceInk)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
 
                     if let deltaDirection {
-                        Image(systemName: deltaDirection == .increase ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                            .font(.system(size: 10, weight: .bold))
+                        RetraceSymbol(deltaDirection == .increase ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill", size: 10, weight: .bold)
                             .foregroundColor(deltaDirection == .increase ? .retraceSuccess : .retraceDanger)
                     }
                 }
@@ -48,15 +48,15 @@ extension SettingsView {
         .padding(.horizontal, 16)
         .padding(.vertical, 13)
         .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color.retraceCard)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
         .fixedSize(horizontal: true, vertical: false)
-        .shadow(color: Color.black.opacity(0.18), radius: 18, y: 8)
+        .retraceElevation(.md)
     }
 
     var captureSettings: some View {
@@ -83,13 +83,7 @@ extension SettingsView {
                         .font(.retraceCalloutMedium)
                         .foregroundColor(.retracePrimary)
                     Spacer()
-                    Text(captureIntervalDisplayText)
-                        .font(.retraceCalloutBold)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.retraceAccent.opacity(0.3))
-                        .cornerRadius(8)
+                    RetraceBadge(captureIntervalDisplayText, tone: .accent)
                 }
 
                 CaptureIntervalPicker(selectedInterval: $captureIntervalSeconds)
@@ -108,19 +102,17 @@ extension SettingsView {
                             captureIntervalSeconds = SettingsDefaults.captureIntervalSeconds
                         }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 10))
+                                RetraceSymbol("arrow.counterclockwise", size: 10)
                                 Text("Reset to Default")
                                     .font(.retraceCaption2)
                             }
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(.retraceInk2)
                         }
                         .buttonStyle(.plain)
                     }
                 }
 
-                Divider()
-                    .background(Color.white.opacity(0.1))
+                Divider().overlay(Color.retraceBorder)
 
                 HStack {
                     ModernToggleRow(
@@ -133,8 +125,7 @@ extension SettingsView {
                     }
                 }
 
-                Divider()
-                    .background(Color.white.opacity(0.1))
+                Divider().overlay(Color.retraceBorder)
 
                 ModernToggleRow(
                     title: "Capture on mouse click",
@@ -147,8 +138,7 @@ extension SettingsView {
                     updateCaptureOnMouseClickSetting()
                 }
 
-                Divider()
-                    .background(Color.white.opacity(0.1))
+                Divider().overlay(Color.retraceBorder)
 
                 ModernToggleRow(
                     title: "Capture mouse position",
@@ -183,13 +173,7 @@ extension SettingsView {
                         .font(.retraceCalloutMedium)
                         .foregroundColor(.retracePrimary)
                     Spacer()
-                    Text(videoQualityDisplayText)
-                        .font(.retraceCalloutBold)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.retraceAccent.opacity(0.3))
-                        .cornerRadius(8)
+                    RetraceBadge(videoQualityDisplayText, tone: .accent)
                 }
 
                 ModernSlider(value: $videoQuality, range: 0...1, step: 0.05)
@@ -206,32 +190,24 @@ extension SettingsView {
                             videoQuality = SettingsDefaults.videoQuality
                         }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 10))
+                                RetraceSymbol("arrow.counterclockwise", size: 10)
                                 Text("Reset to Default")
                                     .font(.retraceCaption2)
                             }
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(.retraceInk2)
                         }
                         .buttonStyle(.plain)
                     }
                 }
 
-                Divider()
-                    .background(Color.white.opacity(0.1))
+                Divider().overlay(Color.retraceBorder)
 
                 HStack {
                     Text("Similar Frames Deduplication Threshold")
                         .font(.retraceCalloutMedium)
                         .foregroundColor(.retracePrimary)
                     Spacer()
-                    Text(deduplicationThresholdDisplayText)
-                        .font(.retraceCalloutBold)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.retraceAccent.opacity(0.3))
-                        .cornerRadius(8)
+                    RetraceBadge(deduplicationThresholdDisplayText, tone: .accent)
                 }
 
                 ModernSlider(
@@ -246,8 +222,8 @@ extension SettingsView {
 
                 HStack(alignment: .top) {
                     Text(deduplicationSensitivityText)
-                        .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary.opacity(0.7))
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
 
                     Spacer()
 
@@ -258,19 +234,17 @@ extension SettingsView {
                             updateDeduplicationThreshold()
                         }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 10))
+                                RetraceSymbol("arrow.counterclockwise", size: 10)
                                 Text("Reset to Default")
                                     .font(.retraceCaption2)
                             }
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(.retraceInk2)
                         }
                         .buttonStyle(.plain)
                     }
                 }
 
-                Divider()
-                    .background(Color.white.opacity(0.1))
+                Divider().overlay(Color.retraceBorder)
 
                 ModernToggleRow(
                     title: "Keep frames on mouse movement",
@@ -313,13 +287,7 @@ extension SettingsView {
                         .font(.retraceCalloutMedium)
                         .foregroundColor(.retracePrimary)
                     Spacer()
-                    Text(pauseReminderDisplayText)
-                        .font(.retraceCalloutBold)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.retraceAccent.opacity(0.3))
-                        .cornerRadius(8)
+                    RetraceBadge(pauseReminderDisplayText, tone: .accent)
                 }
 
                 PauseReminderDelayPicker(selectedMinutes: $pauseReminderDelayMinutes)
@@ -332,8 +300,8 @@ extension SettingsView {
 
                 HStack {
                     Text("How long to wait before reminding you again when recording is stopped")
-                        .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary.opacity(0.7))
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
 
                     Spacer()
 
@@ -342,12 +310,11 @@ extension SettingsView {
                             pauseReminderDelayMinutes = SettingsDefaults.pauseReminderDelayMinutes
                         }) {
                             HStack(spacing: 4) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 10))
+                                RetraceSymbol("arrow.counterclockwise", size: 10)
                                 Text("Reset to Default")
                                     .font(.retraceCaption2)
                             }
-                            .foregroundColor(.white.opacity(0.7))
+                            .foregroundColor(.retraceInk2)
                         }
                         .buttonStyle(.plain)
                     }
@@ -355,14 +322,10 @@ extension SettingsView {
             }
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                 .stroke(
-                    Color.retraceAccent.opacity(shellViewModel.isPauseReminderCardHighlighted ? 0.92 : 0),
-                    lineWidth: shellViewModel.isPauseReminderCardHighlighted ? 2.5 : 0
-                )
-                .shadow(
-                    color: Color.retraceAccent.opacity(shellViewModel.isPauseReminderCardHighlighted ? 0.45 : 0),
-                    radius: 12
+                    Color.retraceAccent.opacity(shellViewModel.isPauseReminderCardHighlighted ? 1 : 0),
+                    lineWidth: shellViewModel.isPauseReminderCardHighlighted ? 2 : 0
                 )
                 .animation(.easeInOut(duration: 0.2), value: shellViewModel.isPauseReminderCardHighlighted)
         }

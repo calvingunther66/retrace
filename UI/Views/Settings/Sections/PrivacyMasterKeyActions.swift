@@ -16,16 +16,6 @@ extension SettingsView {
     func masterKeySetupSheet(_ session: MasterKeySetupSession) -> some View {
         ZStack {
             themeBaseBackground
-                .overlay(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.025),
-                            Color.clear
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
                 .ignoresSafeArea()
 
             Group {
@@ -47,19 +37,18 @@ extension SettingsView {
 
             ZStack {
                 Circle()
-                    .fill(Color.retraceSuccess.opacity(0.08))
+                    .fill(Color.retraceGoodBg)
                     .frame(width: 126, height: 126)
                     .scaleEffect(animateMasterKeyCreatedState ? 1 : 0.9)
                     .opacity(animateMasterKeyCreatedState ? 1 : 0.7)
 
                 Circle()
-                    .stroke(Color.retraceSuccess.opacity(0.24), lineWidth: 1)
+                    .stroke(Color.retraceGood.opacity(0.4), lineWidth: 1)
                     .frame(width: 148, height: 148)
                     .scaleEffect(animateMasterKeyCreatedState ? 1.02 : 0.84)
                     .opacity(animateMasterKeyCreatedState ? 1 : 0.25)
 
-                Image(systemName: "checkmark")
-                    .font(.system(size: 44, weight: .bold))
+                RetraceSymbol("checkmark", size: 44, weight: .bold)
                     .foregroundColor(.retraceSuccess)
                     .scaleEffect(animateMasterKeyCreatedState ? 1 : 0.72)
                     .opacity(animateMasterKeyCreatedState ? 1 : 0)
@@ -67,20 +56,19 @@ extension SettingsView {
 
             VStack(spacing: 8) {
                 Text("Master Key Created")
-                    .font(.retraceMediumNumber)
+                    .font(.retraceTitle2)
                     .foregroundColor(.retracePrimary)
 
                 Text("Stored in Keychain on this Mac")
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
                     .multilineTextAlignment(.center)
             }
 
             Button("Continue") {
                 advanceMasterKeySetupToRecovery()
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .buttonStyle(RetraceButtonStyle(.primary, size: .md))
 
             Spacer(minLength: 0)
         }
@@ -104,12 +92,12 @@ extension SettingsView {
         VStack(alignment: .leading, spacing: 20) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Save Your Recovery Phrase")
-                    .font(.retraceMediumNumber)
+                    .font(.retraceTitle2)
                     .foregroundColor(.retracePrimary)
 
                 Text("This is the only recovery path if the Keychain copy on this Mac is lost.")
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
 
             alertBanner(
@@ -124,24 +112,24 @@ extension SettingsView {
                     .foregroundColor(.retraceSecondary)
 
                 ZStack(alignment: .topTrailing) {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.white.opacity(0.04))
+                    RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                                .stroke(Color.retraceBorder, lineWidth: 1)
                         )
 
                     Button {
                         copyMasterKeyRecoveryPhrase(session.recoveryPhrase)
                     } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 13, weight: .semibold))
+                        RetraceSymbol("doc.on.doc", size: 13, weight: .semibold)
                             .foregroundColor(.retracePrimary)
                             .padding(10)
                             .background(
                                 Circle()
-                                    .fill(Color.white.opacity(0.08))
+                                    .fill(Color.retraceSurface)
                             )
+                            .overlay(Circle().stroke(Color.retraceBorderStrong, lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                     .padding(12)
@@ -154,11 +142,11 @@ extension SettingsView {
                         ForEach(Array(recoveryWords.enumerated()), id: \.offset) { index, word in
                             HStack(spacing: 6) {
                                 Text("\(index + 1).")
-                                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                    .foregroundColor(.retraceSecondary.opacity(0.75))
+                                    .font(RetraceFont.mono(size: 11, weight: .semibold))
+                                    .foregroundColor(.retraceInk2)
 
                                 Text(word)
-                                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                    .font(RetraceFont.mono(size: 12, weight: .semibold))
                                     .foregroundColor(.retracePrimary)
                                     .lineLimit(1)
                             }
@@ -166,12 +154,12 @@ extension SettingsView {
                             .padding(.vertical, 7)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.white.opacity(0.05))
+                                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                                    .fill(Color.retraceSurfaceSunken)
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                                    .stroke(Color.retraceBorder, lineWidth: 1)
                             )
                         }
                     }
@@ -192,8 +180,7 @@ extension SettingsView {
                 Button("I Saved It") {
                     dismissMasterKeySetup()
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .buttonStyle(RetraceButtonStyle(.primary, size: .md))
             }
         }
     }
@@ -205,8 +192,7 @@ extension SettingsView {
         message: String
     ) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+            RetraceSymbol(icon, size: 15, weight: .semibold)
                 .foregroundColor(.retraceDanger)
                 .frame(width: 20)
 
@@ -216,19 +202,19 @@ extension SettingsView {
                     .foregroundColor(.retracePrimary)
 
                 Text(message)
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color.retraceDanger.opacity(0.1))
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceCriticalBg)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.retraceDanger.opacity(0.28), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceCritical.opacity(0.4), lineWidth: 1)
         )
     }
 
@@ -503,13 +489,6 @@ extension SettingsView {
     }
 
     var themeBaseBackground: Color {
-        let theme = MilestoneCelebrationManager.getCurrentTheme()
-
-        switch theme {
-        case .gold:
-            return Color(red: 15/255, green: 12/255, blue: 8/255)
-        default:
-            return Color.retraceBackground
-        }
+        Color.retracePage
     }
 }

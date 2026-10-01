@@ -135,14 +135,7 @@ extension SettingsView {
 
     /// Apply theme preference
     func applyTheme(_ theme: ThemePreference) {
-        switch theme {
-        case .auto:
-            NSApp.appearance = nil
-        case .light:
-            NSApp.appearance = NSAppearance(named: .aqua)
-        case .dark:
-            NSApp.appearance = NSAppearance(named: .darkAqua)
-        }
+        RetraceAppearance.apply(theme.rawValue)
     }
 
     func applyCaptureConfigMutation(
@@ -395,6 +388,7 @@ extension SettingsView {
 
         // Appearance
         theme = SettingsDefaults.theme
+        applyTheme(SettingsDefaults.theme)
         fontStyle = SettingsDefaults.fontStyle
         RetraceFont.currentStyle = SettingsDefaults.fontStyle
         colorThemePreference = SettingsDefaults.colorTheme

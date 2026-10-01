@@ -704,10 +704,10 @@ public struct AppIconView: View {
         let color = Color.segmentColor(for: bundleID)
 
         return ZStack {
-            RoundedRectangle(cornerRadius: size * 0.22)
+            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
                 .fill(color.opacity(0.2))
 
-            RoundedRectangle(cornerRadius: size * 0.22)
+            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
                 .stroke(color.opacity(0.3), lineWidth: 1)
 
             Text(firstLetter)

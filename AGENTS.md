@@ -312,10 +312,15 @@ retrace/
     ├── AGENTS.md
     ├── RetraceApp.swift         # App entry point
     ├── ContentView.swift        # Root content view
+    ├── Fonts/                   # Bundled OFL fonts (Source Serif 4, IBM Plex Mono); Package.swift `.copy("Fonts")`, build_and_sign.sh copies to Resources/Fonts
     ├── CrashRecoveryHelper/     # Bundled crash-recovery XPC helper executable
     ├── CrashRecoverySupport/    # Shared crash-recovery support code for app + helper targets
     ├── LaunchAgents/            # Embedded SMAppService launch-agent plists
     ├── Components/              # Reusable UI components (MenuBarManager, HotkeyManager, etc.)
+    │   ├── AppTheme.swift       # Linen/Dusk tokens (adaptive colors), type scale, spacing/radius, elevation, button + card styles
+    │   ├── RetraceIcon.swift    # Code-drawn icon set, SF Symbol → Retrace icon table, RetraceSymbol, mark/wordmark, NSImage helpers
+    │   ├── RetraceComponents.swift # Badge, Meter, Switch, Field, Tile, SectionHeader
+    │   ├── RetraceFontRegistry.swift # One-time registration of bundled fonts
     │   ├── MasterKeyRedactionFlowCoordinator.swift # Shared missing-master-key prompt/recovery coordinator
     │   ├── HoverLatchedScrollMonitor.swift # Shared nested-scroll latch helper for hover-routed inner scroll regions
     │   └── ProcessMonitorModels.swift # System Monitor snapshot/models + ranking helpers
@@ -334,7 +339,7 @@ retrace/
         ├── MenuBar/             # Menu bar XCTestCase files
         ├── Search/              # Search/deeplink XCTestCase files
         ├── Settings/            # Settings XCTestCase files
-        ├── Support/             # Shared XCTest helpers and support-only tests
+        ├── Support/             # Shared XCTest helpers and support-only tests (incl. RetraceIconTests: icon table/geometry + font registration)
         ├── SystemMonitor/       # System monitor XCTestCase files
         └── Timeline/            # Timeline XCTestCase files
 ```

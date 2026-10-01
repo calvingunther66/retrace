@@ -154,7 +154,7 @@ public struct SpotlightSearchOverlay: View {
                     // Only show filter bar and results when expanded
                     if isExpanded {
                         Divider()
-                            .background(Color.white.opacity(0.1))
+                            .background(Color.retraceBorder)
 
                         // Filter bar placeholder + results
                         VStack(spacing: 0) {
@@ -178,7 +178,7 @@ public struct SpotlightSearchOverlay: View {
                                 Color.clear.frame(height: SpotlightSearchLayoutMetrics.filterBarResultsGap)
 
                                 Divider()
-                                    .background(Color.white.opacity(0.1))
+                                    .background(Color.retraceBorder)
 
                                 resultsArea
                                     .contentShape(Rectangle())
@@ -190,11 +190,11 @@ public struct SpotlightSearchOverlay: View {
                     }
                 }
                 .frame(width: isExpanded ? panelWidth : collapsedWidth)
-                .timelineGlassSurface(.panel, cornerRadius: 12)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .timelineGlassSurface(.panel, cornerRadius: .radiusLg)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(isExpanded ? 0 : 0.15), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                        .stroke(Color.retraceBorder.opacity(isExpanded ? 0 : 1), lineWidth: 1)
                 )
                 .overlay(alignment: .top) {
                     recentEntriesPopover
@@ -394,9 +394,8 @@ public struct SpotlightSearchOverlay: View {
     private var searchBar: some View {
         HStack(spacing: 12) {
             HStack(spacing: 12) {
-                Image(systemName: "magnifyingglass")
-                    .font(.retraceTitle3)
-                    .foregroundColor(.white.opacity(0.5))
+                RetraceSymbol("magnifyingglass", size: 17)
+                    .foregroundColor(.retraceMuted)
 
                 SpotlightSearchField(
                     text: $viewModel.searchQuery,
@@ -458,7 +457,7 @@ public struct SpotlightSearchOverlay: View {
 
             // Loading spinner (shown while searching)
             if viewModel.isSearching {
-                SpinnerView(size: 20, lineWidth: 2, color: .white)
+                SpinnerView(size: 20, lineWidth: 2, color: .retraceInk)
                     // Keep search row height stable while loading so filter bar offset does not shift.
                     .frame(
                         width: SpotlightSearchLayoutMetrics.searchControlButtonSize,
@@ -476,24 +475,28 @@ public struct SpotlightSearchOverlay: View {
                 ZStack {
                     if viewModel.showAIAnswerPanel {
                         Circle()
-                            .fill(LinearGradient.retraceAccentGradient.opacity(0.3))
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(LinearGradient.retraceAccentGradient)
+                            .fill(Color.retraceAccentWash)
+                        RetraceSymbol("sparkles", size: 10, weight: .semibold)
+                            .foregroundColor(.retraceAccent)
                     } else {
                         Circle()
-                            .fill(Color.white.opacity(0.1))
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white.opacity(0.6))
+                            .fill(Color.retraceSurfaceSunken)
+                        RetraceSymbol("sparkles", size: 10, weight: .semibold)
+                            .foregroundColor(.retraceInk2)
                     }
                 }
                 .frame(
                     width: SpotlightSearchLayoutMetrics.searchControlButtonSize,
                     height: SpotlightSearchLayoutMetrics.searchControlButtonSize
                 )
+                .overlay(
+                    Circle()
+                        .stroke(viewModel.showAIAnswerPanel ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
+                )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Ask Retrace AI")
+            .accessibilityAddTraits(viewModel.showAIAnswerPanel ? .isSelected : [])
             .help("Ask Retrace AI (dedicated 100 searches/day)")
 
             // Filter button (expands to show filters)
@@ -504,28 +507,36 @@ public struct SpotlightSearchOverlay: View {
             }) {
                 ZStack {
                     Circle()
-                        .fill(isExpanded || viewModel.hasActiveFilters ? Color.white.opacity(0.2) : Color.white.opacity(0.1))
-                    Image(systemName: "line.3.horizontal.decrease")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(isExpanded || viewModel.hasActiveFilters ? .white : .white.opacity(0.6))
+                        .fill(isExpanded || viewModel.hasActiveFilters ? Color.retraceAccentWash : Color.retraceSurfaceSunken)
+                    RetraceSymbol("line.3.horizontal.decrease", size: 10, weight: .semibold)
+                        .foregroundColor(isExpanded || viewModel.hasActiveFilters ? .retraceInk : .retraceInk2)
                 }
                 .frame(
                     width: SpotlightSearchLayoutMetrics.searchControlButtonSize,
                     height: SpotlightSearchLayoutMetrics.searchControlButtonSize
                 )
+                .overlay(
+                    Circle()
+                        .stroke(
+                            isExpanded || viewModel.hasActiveFilters ? Color.retraceAccent : Color.retraceBorderStrong,
+                            lineWidth: 1
+                        )
+                )
                 .overlay(alignment: .topTrailing) {
                     if viewModel.activeFilterCount > 0 {
                         Text("\(viewModel.activeFilterCount)")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundColor(.white)
+                            .font(RetraceFont.mono(size: 8, weight: .semibold))
+                            .foregroundColor(.retraceOnAccent)
                             .frame(width: 14, height: 14)
-                            .background(Color.red)
+                            .background(Color.retraceAccent)
                             .clipShape(Circle())
                             .offset(x: 4, y: -4)
                     }
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Filters")
+            .accessibilityValue(viewModel.activeFilterCount > 0 ? "\(viewModel.activeFilterCount) active" : "")
 
             // Close button
             Button(action: {
@@ -533,43 +544,37 @@ public struct SpotlightSearchOverlay: View {
             }) {
                 ZStack {
                     Circle()
-                        .fill(Color.white.opacity(0.1))
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white.opacity(0.6))
+                        .fill(Color.retraceSurfaceSunken)
+                    RetraceSymbol("xmark", size: 10, weight: .semibold)
+                        .foregroundColor(.retraceInk2)
                 }
                 .frame(
                     width: SpotlightSearchLayoutMetrics.searchControlButtonSize,
                     height: SpotlightSearchLayoutMetrics.searchControlButtonSize
                 )
+                .overlay(
+                    Circle()
+                        .stroke(Color.retraceBorderStrong, lineWidth: 1)
+                )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Close search")
         }
         .padding(.horizontal, SpotlightSearchLayoutMetrics.searchBarHorizontalPadding)
         .padding(.vertical, SpotlightSearchLayoutMetrics.searchBarVerticalPadding)
         .overlay(
             UnevenRoundedRectangle(
-                topLeadingRadius: 12,
-                bottomLeadingRadius: isExpanded ? 0 : 12,
-                bottomTrailingRadius: isExpanded ? 0 : 12,
-                topTrailingRadius: 12
+                topLeadingRadius: .radiusLg,
+                bottomLeadingRadius: isExpanded ? 0 : .radiusLg,
+                bottomTrailingRadius: isExpanded ? 0 : .radiusLg,
+                topTrailingRadius: .radiusLg
             )
                 .stroke(
-                    Color.white.opacity(isExpanded ? 0 : (isSpotlightSearchGlowActive ? 0.60 : 0.28)),
+                    isSpotlightSearchGlowActive
+                        ? Color.retraceAccent.opacity(isExpanded ? 0 : 1)
+                        : Color.retraceBorderStrong.opacity(isExpanded ? 0 : 1),
                     lineWidth: isExpanded ? 0 : (isSpotlightSearchGlowActive ? 1.8 : 1.0)
                 )
-        )
-        .shadow(
-            color: Color.white.opacity(isExpanded ? 0 : (isSpotlightSearchGlowActive ? 0.28 : 0.10)),
-            radius: isSpotlightSearchGlowActive ? 14 : 7,
-            x: 0,
-            y: 0
-        )
-        .shadow(
-            color: Color.black.opacity(isSpotlightSearchGlowActive ? 0.32 : 0.14),
-            radius: isSpotlightSearchGlowActive ? 22 : 10,
-            x: 0,
-            y: 0
         )
         .animation(.easeOut(duration: 0.18), value: isSpotlightSearchGlowActive)
     }
@@ -764,26 +769,25 @@ public struct SpotlightSearchOverlay: View {
     private var recentEntriesPopover: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Image(systemName: "clock.arrow.circlepath")
-                    .font(.system(size: 11, weight: .semibold))
+                RetraceSymbol("clock.arrow.circlepath", size: 11, weight: .semibold)
                     .foregroundColor(RetraceMenuStyle.textColorMuted)
                 Text("Recent Entries")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.retraceLabel)
                     .foregroundColor(RetraceMenuStyle.textColorMuted)
                 Spacer(minLength: 8)
                 Button(action: {
                     dismissRecentEntriesPopoverByUser()
                 }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 9, weight: .semibold))
+                    RetraceSymbol("xmark", size: 9, weight: .semibold)
                         .foregroundColor(RetraceMenuStyle.textColorMuted)
                         .frame(width: 16, height: 16)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.08))
+                                .fill(Color.retraceSurfaceSunken)
                         )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Hide recent entries")
                 .help("Hide recent entries")
             }
             .padding(.horizontal, 16)
@@ -801,13 +805,13 @@ public struct SpotlightSearchOverlay: View {
                                 VStack(alignment: .leading, spacing: 7) {
                                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                                         Text(entry.query)
-                                            .font(.system(size: 14, weight: .semibold))
+                                            .font(.retraceCalloutBold)
                                             .foregroundColor(RetraceMenuStyle.textColor)
                                             .lineLimit(1)
                                             .truncationMode(.tail)
                                         Spacer(minLength: 6)
                                         Text(recentEntryRelativeTimeText(for: entry))
-                                            .font(.system(size: 11, weight: .medium))
+                                            .font(RetraceFont.mono(size: 11))
                                             .foregroundColor(RetraceMenuStyle.textColorMuted)
                                             .lineLimit(1)
                                             .fixedSize(horizontal: true, vertical: false)
@@ -824,8 +828,7 @@ public struct SpotlightSearchOverlay: View {
                             Button {
                                 removeRecentEntry(entry)
                             } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 8, weight: .semibold))
+                                RetraceSymbol("xmark", size: 8, weight: .semibold)
                                     .foregroundColor(RetraceMenuStyle.textColorMuted)
                             }
                             .buttonStyle(.plain)
@@ -834,16 +837,17 @@ public struct SpotlightSearchOverlay: View {
                             .opacity(isRowHovered ? 1 : 0)
                             .allowsHitTesting(isRowHovered)
                             .accessibilityHidden(!isRowHovered)
+                            .accessibilityLabel("Remove recent search")
                             .help("Remove recent search")
                         }
                         .frame(maxWidth: .infinity, minHeight: recentEntryRowHeight, maxHeight: recentEntryRowHeight, alignment: .leading)
                         .padding(.horizontal, 10)
                         .background(
-                            RoundedRectangle(cornerRadius: RetraceMenuStyle.itemCornerRadius)
+                            RoundedRectangle(cornerRadius: RetraceMenuStyle.itemCornerRadius, style: .continuous)
                                 .fill(index == highlightedRecentEntryIndex ? RetraceMenuStyle.itemHoverColor : Color.clear)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: RetraceMenuStyle.itemCornerRadius)
+                            RoundedRectangle(cornerRadius: RetraceMenuStyle.itemCornerRadius, style: .continuous)
                                 .stroke(
                                     index == highlightedRecentEntryIndex
                                         ? RetraceMenuStyle.filterStrokeMedium
@@ -870,8 +874,8 @@ public struct SpotlightSearchOverlay: View {
             .padding(.bottom, 10)
         }
         .frame(width: collapsedWidth - 8, alignment: .leading)
-        .timelineGlassSurface(.panel, cornerRadius: 12)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .timelineGlassSurface(.panel, cornerRadius: .radiusMd)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
     }
 
     private func recentEntryRelativeTimeText(for entry: SearchViewModel.RecentSearchEntry) -> String {
@@ -916,7 +920,7 @@ public struct SpotlightSearchOverlay: View {
 
             if !filters.tagIDs.isEmpty {
                 if filters.tagFilterMode == .exclude {
-                    recentEntryMetadataToken(icon: "minus.circle.fill", text: "Tags", tint: .orange.opacity(0.9))
+                    recentEntryMetadataToken(icon: "minus.circle.fill", text: "Tags", tint: .retraceWarningText)
                 }
                 ForEach(recentEntryTags(for: filters), id: \.id.value) { tag in
                     recentEntryTagBadge(tag)
@@ -942,7 +946,7 @@ public struct SpotlightSearchOverlay: View {
             }
 
             if !filters.windowNameTerms.isEmpty {
-                let tint: Color = filters.windowNameFilterMode == .exclude ? .orange.opacity(0.9) : RetraceMenuStyle.textColorMuted
+                let tint: Color = filters.windowNameFilterMode == .exclude ? .retraceWarningText : RetraceMenuStyle.textColorMuted
                 let icon = filters.windowNameFilterMode == .exclude ? "minus.circle.fill" : "rectangle.and.text.magnifyingglass"
                 ForEach(Array(filters.windowNameTerms.prefix(3)), id: \.self) { term in
                     recentEntryMetadataToken(icon: icon, text: "Title: \(term)", tint: tint)
@@ -953,7 +957,7 @@ public struct SpotlightSearchOverlay: View {
             }
 
             if !filters.browserUrlTerms.isEmpty {
-                let tint: Color = filters.browserUrlFilterMode == .exclude ? .orange.opacity(0.9) : RetraceMenuStyle.textColorMuted
+                let tint: Color = filters.browserUrlFilterMode == .exclude ? .retraceWarningText : RetraceMenuStyle.textColorMuted
                 let icon = filters.browserUrlFilterMode == .exclude ? "minus.circle.fill" : "link"
                 ForEach(Array(filters.browserUrlTerms.prefix(3)), id: \.self) { term in
                     recentEntryMetadataToken(icon: icon, text: "URL: \(term)", tint: tint)
@@ -968,14 +972,14 @@ public struct SpotlightSearchOverlay: View {
                     recentEntryMetadataToken(
                         icon: "minus.circle.fill",
                         text: excludedTerm,
-                        tint: .orange.opacity(0.9)
+                        tint: .retraceWarningText
                     )
                 }
                 if filters.excludedQueryTerms.count > 4 {
                     recentEntryMetadataToken(
                         icon: "ellipsis.circle",
                         text: "+\(filters.excludedQueryTerms.count - 4)",
-                        tint: .orange.opacity(0.9)
+                        tint: .retraceWarningText
                     )
                 }
             }
@@ -993,18 +997,17 @@ public struct SpotlightSearchOverlay: View {
 
         return HStack(spacing: 4) {
             if filters.appFilterMode == .exclude {
-                Image(systemName: "minus.circle.fill")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundColor(.orange.opacity(0.95))
+                RetraceSymbol("minus.circle.fill", size: 8, weight: .semibold)
+                    .foregroundColor(.retraceWarningText)
             }
 
             if bundleIDs.count == 1, let bundleID = bundleIDs.first {
                 HStack(spacing: 5) {
                     AppIconView(bundleID: bundleID, size: recentEntryAppIconSize)
                         .frame(width: recentEntryAppIconSize, height: recentEntryAppIconSize)
-                        .clipShape(RoundedRectangle(cornerRadius: 3.5))
+                        .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
                     Text(recentEntryAppName(for: bundleID))
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.retraceTiny)
                         .foregroundColor(RetraceMenuStyle.textColorMuted)
                         .lineLimit(1)
                 }
@@ -1013,7 +1016,7 @@ public struct SpotlightSearchOverlay: View {
                     ForEach(Array(bundleIDs.prefix(8)), id: \.self) { bundleID in
                         AppIconView(bundleID: bundleID, size: recentEntryAppIconSize)
                             .frame(width: recentEntryAppIconSize, height: recentEntryAppIconSize)
-                            .clipShape(RoundedRectangle(cornerRadius: 3.5))
+                            .clipShape(RoundedRectangle(cornerRadius: 3.5, style: .continuous))
                     }
                 }
             }
@@ -1033,11 +1036,10 @@ public struct SpotlightSearchOverlay: View {
 
     private func recentEntryMetadataToken(icon: String, text: String, tint: Color = RetraceMenuStyle.textColorMuted) -> some View {
         HStack(spacing: 3) {
-            Image(systemName: icon)
-                .font(.system(size: 8, weight: .semibold))
+            RetraceSymbol(icon, size: 8, weight: .semibold)
                 .foregroundColor(tint)
             Text(text)
-                .font(.system(size: 11, weight: .medium))
+                .font(.retraceTiny)
                 .foregroundColor(tint)
                 .lineLimit(1)
         }
@@ -1050,7 +1052,7 @@ public struct SpotlightSearchOverlay: View {
                 .fill(tint)
                 .frame(width: 5, height: 5)
             Text(tag.name)
-                .font(.system(size: 11, weight: .medium))
+                .font(.retraceTiny)
                 .foregroundColor(tint.opacity(0.95))
                 .lineLimit(1)
         }
@@ -1233,10 +1235,10 @@ public struct SpotlightSearchOverlay: View {
                 if viewModel.isLoadingMore {
                     HStack {
                         Spacer()
-                        SpinnerView(size: 16, lineWidth: 2, color: .white)
+                        SpinnerView(size: 16, lineWidth: 2, color: .retraceInk)
                         Text("Loading more...")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.white.opacity(0.5))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                         Spacer()
                     }
                     .padding(.vertical, 16)
@@ -1281,26 +1283,25 @@ public struct SpotlightSearchOverlay: View {
 
     private var searchingView: some View {
         VStack(spacing: 12) {
-            SpinnerView(size: 28, lineWidth: 3, color: .white)
+            SpinnerView(size: 28, lineWidth: 3, color: .retraceInk)
 
             Text("Searching...")
                 .font(.retraceCallout)
-                .foregroundColor(.white.opacity(0.5))
+                .foregroundColor(.retraceMuted)
 
             // Show slow query alert when filtering by app with "All" mode
             if viewModel.selectedAppFilters != nil && !viewModel.selectedAppFilters!.isEmpty && viewModel.searchMode == .all {
                 HStack(spacing: 6) {
-                    Image(systemName: "info.circle.fill")
-                        .font(.retraceCaption2)
+                    RetraceSymbol("info.circle.fill", size: 12)
                     Text("\"All\" queries with app filters are slower")
                         .font(.retraceCaption2)
                 }
-                .foregroundColor(.yellow.opacity(0.8))
+                .foregroundColor(.retraceWarningText)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.yellow.opacity(0.15))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceWarningBg)
                 )
                 .padding(.top, 4)
             }
@@ -1310,17 +1311,16 @@ public struct SpotlightSearchOverlay: View {
 
     private var noResultsView: some View {
         VStack(spacing: 12) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.retraceDisplay2)
-                .foregroundColor(.white.opacity(0.3))
+            RetraceSymbol("doc.text.magnifyingglass", size: 36)
+                .foregroundColor(.retraceMuted)
 
             Text(viewModel.hasActiveFilters ? "No results match this query with current filters" : "No results found")
                 .font(.retraceBodyMedium)
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(.retraceInk2)
 
             Text(viewModel.hasActiveFilters ? "Try broadening filters or changing your query" : "Try a different search term")
-                .font(.retraceCaption)
-                .foregroundColor(.white.opacity(0.4))
+                .font(.retraceMeta)
+                .foregroundColor(.retraceMuted)
 
             if viewModel.hasActiveFilters {
                 noResultsActionButton(title: "Clear Filters") {
@@ -1336,17 +1336,17 @@ public struct SpotlightSearchOverlay: View {
     private func noResultsActionButton(title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white.opacity(0.92))
+                .font(.retraceLabel)
+                .foregroundColor(.retraceInk)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(
-                    RoundedRectangle(cornerRadius: 7)
-                        .fill(Color.white.opacity(0.14))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 7)
-                        .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceBorderStrong, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -1455,8 +1455,14 @@ public struct SpotlightSearchOverlay: View {
         let thumbnail = NSImage(size: size)
         thumbnail.lockFocus()
 
-        // Dark gray background
-        NSColor(white: 0.15, alpha: 1.0).setFill()
+        // Dusk background (resolved against the Dusk appearance so the cached bitmap matches the timeline)
+        var backgroundColor = NSColor.black
+        var glyphColor = NSColor.gray
+        RetraceAppearance.dusk?.performAsCurrentDrawingAppearance {
+            backgroundColor = NSColor.retrace(RetraceTokens.surfaceSunken).usingColorSpace(.sRGB) ?? backgroundColor
+            glyphColor = NSColor.retraceMuted.usingColorSpace(.sRGB) ?? glyphColor
+        }
+        backgroundColor.setFill()
         NSRect(origin: .zero, size: size).fill()
 
         // Draw "unavailable" icon
@@ -1468,7 +1474,7 @@ public struct SpotlightSearchOverlay: View {
             height: iconSize
         )
 
-        NSColor.white.withAlphaComponent(0.3).setStroke()
+        glyphColor.setStroke()
         let iconPath = NSBezierPath(ovalIn: iconRect.insetBy(dx: 5, dy: 5))
         iconPath.lineWidth = 2
         iconPath.stroke()
@@ -2027,32 +2033,30 @@ private struct GalleryResultCard: View {
                         HStack(spacing: 6) {
                             Text(displayTitle)
                                 .font(.retraceCaption2Medium)
-                                .foregroundColor(.white)
+                                .foregroundColor(.retraceInk)
                                 .lineLimit(1)
 
                             // Source badge
-                            Text(result.source == .native ? "Retrace" : "Rewind")
-                                .font(.retraceTinyBold)
-                                .foregroundColor(result.source == .native ? RetraceMenuStyle.actionBlue : .purple)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(result.source == .native ? RetraceMenuStyle.actionBlue.opacity(0.2) : Color.purple.opacity(0.2))
-                                .cornerRadius(3)
+                            RetraceBadge(
+                                result.source == .native ? "Retrace" : "Rewind",
+                                tone: result.source == .native ? .accent : .neutral
+                            )
                         }
 
                         // Timestamp and relevance
                         HStack(spacing: 6) {
                             Text(formatTimestamp(result.timestamp))
-                                .font(.retraceTiny)
-                                .foregroundColor(.white.opacity(0.5))
+                                .font(RetraceFont.mono(size: 11))
+                                .foregroundColor(.retraceMuted)
 
                             Text("•")
                                 .font(.retraceTiny)
-                                .foregroundColor(.white.opacity(0.3))
+                                .foregroundColor(.retraceMuted)
 
                             Text(String(format: "relevance: %.0f%%", result.relevanceScore * 100))
                                 .font(.retraceMonoSmall)
-                                .foregroundColor(.yellow.opacity(0.7))
+                                .monospacedDigit()
+                                .foregroundColor(.retraceInk2)
                         }
                     }
 
@@ -2060,23 +2064,22 @@ private struct GalleryResultCard: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
-                .background(Color.black.opacity(0.3))
             }
             .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.white.opacity(0.05))
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .fill(Color.retraceSurface)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isHovered ? Color.white.opacity(0.3) : Color.white.opacity(0.1), lineWidth: isHovered ? 2 : 1)
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .stroke(isHovered ? Color.retraceBorderStrong : Color.retraceBorder, lineWidth: 1)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                     .stroke(Color.retraceAccent, lineWidth: 2)
                     .opacity(isKeyboardSelected ? 1 : 0)
             )
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .shadow(color: .black.opacity(isHovered ? 0.4 : 0.2), radius: isHovered ? 8 : 4, x: 0, y: 2)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
+            .retraceElevation(isHovered ? .md : .sm)
         }
         .buttonStyle(.plain)
         .scaleEffect(isHovered ? 1.02 : 1.0)
@@ -2100,7 +2103,7 @@ private struct GalleryResultCard: View {
                     .frame(width: thumbnailSize.width, height: thumbnailSize.height)
                     .clipped()
             } else {
-                SpinnerView(size: 16, lineWidth: 2, color: .white.opacity(0.4))
+                SpinnerView(size: 16, lineWidth: 2, color: .retraceMuted)
             }
         }
         .frame(width: thumbnailSize.width, height: thumbnailSize.height)
@@ -2144,12 +2147,12 @@ struct SpotlightSearchField: NSViewRepresentable {
         textField.placeholderAttributedString = NSAttributedString(
             string: placeholder,
             attributes: [
-                .foregroundColor: NSColor.white.withAlphaComponent(0.35),
-                .font: NSFont.systemFont(ofSize: 17, weight: .medium)
+                .foregroundColor: NSColor.retraceMuted,
+                .font: NSFont.retraceTimelineSerif(size: 17)
             ]
         )
-        textField.font = .systemFont(ofSize: 17, weight: .medium)
-        textField.textColor = .white
+        textField.font = NSFont.retraceTimelineSerif(size: 17)
+        textField.textColor = NSColor.retraceInk
         textField.backgroundColor = .clear
         textField.isBordered = false
         textField.focusRingType = .none
@@ -2404,7 +2407,7 @@ struct SpotlightSearchOverlay_Previews: PreviewProvider {
             onDismiss: {}
         )
         .frame(width: 800, height: 600)
-        .background(Color.gray.opacity(0.3))
+        .background(Color.retraceSurfaceSunken)
         .preferredColorScheme(.dark)
     }
 }

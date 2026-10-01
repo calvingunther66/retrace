@@ -3,8 +3,9 @@ import AppKit
 import CryptoKit
 import Shared
 
-/// Retrace design system
-/// Provides consistent colors, typography, and spacing across the UI
+/// Retrace design system (Linen / Dusk)
+/// Provides consistent colors, typography, spacing, elevation and components across the UI.
+/// Tokens mirror the "Calvin Gunther" design system: warm paper, clay accent, serif type, hairlines, soft shadows.
 public struct AppTheme {
     private init() {}
 }
@@ -473,89 +474,216 @@ public enum TagColorStore {
     }
 }
 
-// MARK: - Colors
+// MARK: - Design tokens (Linen / Dusk)
+//
+// Every color below is adaptive: the first value is Linen (light), the second is Dusk (dark). They mirror
+// `tokens.json` in the "Calvin Gunther" design system. Prefer these semantic tokens over literal colors.
+//
+// Roles
+//   page            – window / page background
+//   surface         – cards, panels, inputs, menus, popovers
+//   surfaceSunken   – sidebars, table headers, inset wells
+//   surfaceHover    – row / nav / ghost-button hover wash
+//   ink, ink2       – primary / secondary text
+//   muted           – captions and tertiary text (page and surface only)
+//   border          – decorative hairlines; borderStrong – control edges (3:1)
+//   accent (clay)   – the single voice: primary fills, links, focus ring, selection
+//   accentWash      – quiet selected state (text on it is `ink`)
+//   good / warning / critical (+ `…Bg`) – status text on its own tinted background
+
+/// A light/dark pair of sRGB hex values.
+public struct RetraceToken: Sendable {
+    public let light: UInt32
+    public let dark: UInt32
+
+    public init(_ light: UInt32, _ dark: UInt32) {
+        self.light = light
+        self.dark = dark
+    }
+}
+
+public enum RetraceTokens {
+    public static let page = RetraceToken(0xF7F3EA, 0x1F1B16)
+    public static let surface = RetraceToken(0xFDFBF6, 0x292420)
+    public static let surfaceSunken = RetraceToken(0xEEE8DA, 0x17140F)
+    public static let surfaceHover = RetraceToken(0xF2ECDF, 0x322C26)
+    public static let ink = RetraceToken(0x3B352D, 0xECE4D4)
+    public static let ink2 = RetraceToken(0x5F564A, 0xC3B9A5)
+    public static let muted = RetraceToken(0x766D5D, 0x9D9380)
+    public static let border = RetraceToken(0xE4DCCB, 0x3A342C)
+    public static let borderStrong = RetraceToken(0x8F8568, 0x7D7360)
+    public static let accent = RetraceToken(0xA4573A, 0xE0997A)
+    public static let accentHover = RetraceToken(0x8F4A31, 0xEBAB90)
+    public static let onAccent = RetraceToken(0xFFFAF2, 0x2A1A12)
+    public static let accentWash = RetraceToken(0xF3E4DA, 0x3A2A22)
+    public static let good = RetraceToken(0x4F6B40, 0xA9C28F)
+    public static let goodBg = RetraceToken(0xE6ECDA, 0x2E3326)
+    public static let warning = RetraceToken(0x7A5C14, 0xE0C27A)
+    public static let warningBg = RetraceToken(0xF4EAD0, 0x38301D)
+    public static let critical = RetraceToken(0x8F4030, 0xEBA08C)
+    public static let criticalBg = RetraceToken(0xF3E2DA, 0x3B2722)
+    public static let series1 = RetraceToken(0xA4573A, 0xE0997A)
+    public static let series2 = RetraceToken(0x4F6B40, 0xA9C28F)
+    public static let series3 = RetraceToken(0x4F6F86, 0x8FB0C6)
+    public static let termBg = RetraceToken(0x2A2520, 0x12100D)
+    public static let termInk = RetraceToken(0xE9E2D2, 0xE9E2D2)
+}
+
+extension NSColor {
+    convenience init(retraceHex hex: UInt32, alpha: CGFloat = 1) {
+        self.init(
+            srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255,
+            alpha: alpha
+        )
+    }
+
+    /// Appearance-adaptive color for a design token (use in AppKit menus, status items and windows).
+    public static func retrace(_ token: RetraceToken, alpha: CGFloat = 1) -> NSColor {
+        NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(retraceHex: isDark ? token.dark : token.light, alpha: alpha)
+        }
+    }
+
+    public static var retraceInk: NSColor { retrace(RetraceTokens.ink) }
+    public static var retraceInk2: NSColor { retrace(RetraceTokens.ink2) }
+    public static var retraceMuted: NSColor { retrace(RetraceTokens.muted) }
+    public static var retracePage: NSColor { retrace(RetraceTokens.page) }
+    public static var retraceSurface: NSColor { retrace(RetraceTokens.surface) }
+    public static var retraceAccent: NSColor { retrace(RetraceTokens.accent) }
+}
 
 extension Color {
-    // MARK: Brand Colors (matching retrace-frontend design)
-    // Deep blue background: #051127
-    public static let retraceDeepBlue = Color(red: 5/255, green: 17/255, blue: 39/255)
-
-    // Primary accent color - adapts based on user's color theme preference
-    // Blue: Retrace accent color (lighter blue for better visibility)
-    // Gold: Warm gold accent
-    // Purple: Royal purple accent
-    public static var retraceAccent: Color {
-        let theme = MilestoneCelebrationManager.getCurrentTheme()
-        switch theme {
-        case .blue:
-            return Color(red: 59/255, green: 130/255, blue: 246/255)  // #3B82F6 - lighter blue
-        case .gold:
-            return Color(red: 255/255, green: 200/255, blue: 0/255)  // Gold
-        case .purple:
-            return Color(red: 160/255, green: 100/255, blue: 255/255)  // Purple
-        }
+    /// Appearance-adaptive color for a design token.
+    public init(_ token: RetraceToken, opacity: Double = 1) {
+        self = Color(nsColor: NSColor.retrace(token, alpha: CGFloat(opacity)))
     }
 
-    // Original brand blue (for cases where we always want blue)
-    public static let retraceBrandBlue = Color(red: 11/255, green: 51/255, blue: 108/255)
-
-    // Submit/action button accent - slightly deeper tones for filled buttons
-    public static var retraceSubmitAccent: Color {
-        let theme = MilestoneCelebrationManager.getCurrentTheme()
-        switch theme {
-        case .blue:
-            return Color(red: 59/255, green: 130/255, blue: 246/255)
-        case .gold:
-            return Color(red: 245/255, green: 180/255, blue: 0/255)
-        case .purple:
-            return Color(red: 148/255, green: 84/255, blue: 242/255)
-        }
+    /// Adaptive color from explicit light/dark hex values with optional alpha (shadows and scrims).
+    public static func retraceDynamic(light: UInt32, dark: UInt32, lightAlpha: Double = 1, darkAlpha: Double = 1) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            return NSColor(retraceHex: isDark ? dark : light, alpha: CGFloat(isDark ? darkAlpha : lightAlpha))
+        })
     }
 
-    // Card background: hsl(222, 47%, 7%)
-    public static let retraceCard = Color(red: 9/255, green: 18/255, blue: 38/255)
+    // MARK: Surfaces
+    public static let retracePage = Color(RetraceTokens.page)
+    public static let retraceSurface = Color(RetraceTokens.surface)
+    public static let retraceSurfaceSunken = Color(RetraceTokens.surfaceSunken)
+    public static let retraceSurfaceHover = Color(RetraceTokens.surfaceHover)
 
-    // Secondary: hsl(217, 33%, 17%)
-    public static let retraceSecondaryColor = Color(red: 29/255, green: 41/255, blue: 58/255)
+    // MARK: Text
+    public static let retraceInk = Color(RetraceTokens.ink)
+    public static let retraceInk2 = Color(RetraceTokens.ink2)
+    public static let retraceMuted = Color(RetraceTokens.muted)
 
-    // Foreground: hsl(210, 40%, 98%)
-    public static let retraceForeground = Color(red: 247/255, green: 249/255, blue: 252/255)
+    // MARK: Lines
+    public static let retraceHairline = Color(RetraceTokens.border)
+    public static let retraceBorderStrong = Color(RetraceTokens.borderStrong)
 
-    // Muted foreground: hsl(215, 20%, 65%)
-    public static let retraceMutedForeground = Color(red: 150/255, green: 160/255, blue: 181/255)
+    // MARK: Accent (clay)
+    // The accent is always clay. `MilestoneCelebrationManager.ColorTheme` is still persisted for compatibility
+    // but no longer changes the palette: clay is the system's single voice.
+    public static let retraceAccent = Color(RetraceTokens.accent)
+    public static let retraceAccentHover = Color(RetraceTokens.accentHover)
+    public static let retraceOnAccent = Color(RetraceTokens.onAccent)
+    public static let retraceAccentWash = Color(RetraceTokens.accentWash)
+    public static let retraceSubmitAccent = Color(RetraceTokens.accent)
 
-    // State colors
-    public static let retraceDanger = Color(red: 220/255, green: 38/255, blue: 38/255)
-    public static let retraceSuccess = Color(red: 34/255, green: 197/255, blue: 94/255)
-    public static let retraceWarning = Color(red: 251/255, green: 146/255, blue: 60/255)
+    // MARK: Status
+    public static let retraceGood = Color(RetraceTokens.good)
+    public static let retraceGoodBg = Color(RetraceTokens.goodBg)
+    public static let retraceWarningText = Color(RetraceTokens.warning)
+    public static let retraceWarningBg = Color(RetraceTokens.warningBg)
+    public static let retraceCritical = Color(RetraceTokens.critical)
+    public static let retraceCriticalBg = Color(RetraceTokens.criticalBg)
 
-    // MARK: Segment Colors (extracted from app icon)
+    // MARK: Scrim (dims content behind modals; ink in Linen, black in Dusk, never a lightening wash)
+    public static let retraceScrim = Color.retraceDynamic(light: 0x3B352D, dark: 0x000000, lightAlpha: 0.35, darkAlpha: 0.55)
+
+    // MARK: Charts and terminal
+    public static let retraceSeries1 = Color(RetraceTokens.series1)
+    public static let retraceSeries2 = Color(RetraceTokens.series2)
+    public static let retraceSeries3 = Color(RetraceTokens.series3)
+    public static let retraceTermBg = Color(RetraceTokens.termBg)
+    public static let retraceTermInk = Color(RetraceTokens.termInk)
+
+    // MARK: Legacy names (kept so existing call sites restyle automatically)
+    public static let retraceDeepBlue = Color.retracePage
+    public static let retraceBrandBlue = Color.retraceAccent
+    public static let retraceCard = Color.retraceSurface
+    public static let retraceSecondaryColor = Color.retraceSurfaceSunken
+    public static let retraceForeground = Color.retraceInk
+    public static let retraceMutedForeground = Color.retraceMuted
+
+    public static let retraceDanger = Color.retraceCritical
+    public static let retraceSuccess = Color.retraceGood
+    public static let retraceWarning = Color.retraceWarningText
+
+    // MARK: Segment Colors (extracted from app icon; data, not chrome)
     public static func segmentColor(for bundleID: String) -> Color {
         AppIconColorCache.shared.color(for: bundleID)
     }
 
-    // MARK: Semantic Colors (adaptive to system light/dark mode)
-    public static let retraceBackground = Color.retraceDeepBlue
-    public static let retraceSecondaryBackground = Color.retraceCard
-    public static let retraceTertiaryBackground = Color.retraceSecondaryColor
+    // MARK: Semantic Colors (adapt to Linen / Dusk)
+    public static let retraceBackground = Color.retracePage
+    public static let retraceSecondaryBackground = Color.retraceSurface
+    public static let retraceTertiaryBackground = Color.retraceSurfaceSunken
 
-    public static let retracePrimary = Color.retraceForeground
-    public static let retraceSecondary = Color.retraceMutedForeground
+    public static let retracePrimary = Color.retraceInk
+    public static let retraceSecondary = Color.retraceInk2
 
-    public static let retraceBorder = Color.retraceSecondaryColor
-    public static let retraceHover = Color.retraceSecondaryColor.opacity(0.5)
+    public static let retraceBorder = Color.retraceHairline
+    public static let retraceHover = Color.retraceSurfaceHover
 
-    // MARK: Search Highlight
-    public static let retraceMatchHighlight = Color.yellow.opacity(0.4)
+    // MARK: Search Highlight (drawn over captured screenshots; stays a functional honey/clay)
+    public static let retraceMatchHighlight = Color(red: 232 / 255, green: 190 / 255, blue: 80 / 255).opacity(0.45)
     public static let retraceBoundingBox = Color.retraceAccent
-    public static let retraceBoundingBoxSecondary = Color(red: 11/255, green: 51/255, blue: 108/255)  // #0b336c
+    public static let retraceBoundingBoxSecondary = Color.retraceSeries3
+}
+
+// MARK: - Appearance
+
+/// Routes the Auto / Light / Dark preference to `NSApp.appearance`. Linen is light, Dusk is dark; the fullscreen
+/// timeline always sits on Dusk because it floats over arbitrary screenshots.
+public enum RetraceAppearance {
+    private static let store = UserDefaults(suiteName: "io.retrace.app") ?? .standard
+
+    /// Applies the stored `theme` preference ("auto" | "light" | "dark"); defaults to following the system.
+    @MainActor
+    public static func applyStoredPreference() {
+        // Persisted by Settings as ThemePreference raw values: "Auto" | "Light" | "Dark".
+        switch store.string(forKey: "theme")?.lowercased() {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil
+        }
+    }
+
+    /// Applies an explicit preference ("Auto" | "Light" | "Dark", case-insensitive).
+    @MainActor
+    public static func apply(_ rawValue: String) {
+        switch rawValue.lowercased() {
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: NSApp.appearance = nil
+        }
+    }
+
+    /// Dusk, for windows that must stay dark regardless of the preference.
+    public static var dusk: NSAppearance? { NSAppearance(named: .darkAqua) }
 }
 
 // MARK: - Typography
 
 /// Available font styles for the app
 public enum RetraceFontStyle: String, CaseIterable, Identifiable, Sendable {
+    /// Source Serif 4 + IBM Plex Mono, the design system's typefaces.
     case `default` = "default"
+    case sans = "sans"
     case rounded = "rounded"
     case serif = "serif"
 
@@ -563,7 +691,8 @@ public enum RetraceFontStyle: String, CaseIterable, Identifiable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .default: return "SF Pro"
+        case .default: return "Source Serif 4"
+        case .sans: return "SF Pro"
         case .rounded: return "SF Pro Rounded"
         case .serif: return "New York"
         }
@@ -571,7 +700,8 @@ public enum RetraceFontStyle: String, CaseIterable, Identifiable, Sendable {
 
     public var description: String {
         switch self {
-        case .default: return "Clean and professional"
+        case .default: return "Warm and readable"
+        case .sans: return "Clean and neutral"
         case .rounded: return "Friendly and approachable"
         case .serif: return "Classic and elegant"
         }
@@ -579,7 +709,8 @@ public enum RetraceFontStyle: String, CaseIterable, Identifiable, Sendable {
 
     var design: Font.Design {
         switch self {
-        case .default: return .default
+        case .default: return .serif
+        case .sans: return .default
         case .rounded: return .rounded
         case .serif: return .serif
         }
@@ -618,75 +749,138 @@ public enum RetraceFont {
         currentStyle.design
     }
 
-    /// Creates a font with the app's current design style
-    public static func font(size: CGFloat, weight: Font.Weight) -> Font {
-        .system(size: size, weight: weight, design: design)
+    private static var usesBundledFaces: Bool {
+        currentStyle == .default && RetraceFontRegistry.isAvailable
     }
 
-    /// Creates a monospaced font (ignores the global design setting)
+    /// Creates a font with the app's current design style (Source Serif 4 by default).
+    public static func font(size: CGFloat, weight: Font.Weight) -> Font {
+        guard usesBundledFaces else {
+            return .system(size: size, weight: weight, design: design)
+        }
+        switch weight {
+        case .semibold:
+            return .custom(RetraceFontRegistry.Face.serifSemibold, fixedSize: size)
+        case .bold, .heavy, .black:
+            return .custom(RetraceFontRegistry.Face.serifBold, fixedSize: size)
+        default:
+            return .custom(RetraceFontRegistry.Face.serifRegular, fixedSize: size)
+        }
+    }
+
+    /// Italic serif, for captions and metadata.
+    public static func italic(size: CGFloat) -> Font {
+        guard usesBundledFaces else {
+            return .system(size: size, weight: .regular, design: design).italic()
+        }
+        return .custom(RetraceFontRegistry.Face.serifItalic, fixedSize: size)
+    }
+
+    /// Creates a monospaced font (IBM Plex Mono; ignores the global design setting)
     public static func mono(size: CGFloat, weight: Font.Weight = .regular) -> Font {
-        .system(size: size, weight: weight, design: .monospaced)
+        guard RetraceFontRegistry.isAvailable else {
+            return .system(size: size, weight: weight, design: .monospaced)
+        }
+        switch weight {
+        case .medium, .semibold, .bold, .heavy, .black:
+            return .custom(RetraceFontRegistry.Face.monoMedium, fixedSize: size)
+        default:
+            return .custom(RetraceFontRegistry.Face.monoRegular, fixedSize: size)
+        }
     }
 }
 
 extension Font {
+    // Design-system type scale: page-title 28/600, section-title 20/600, body 15, body-sm 13.5,
+    // caption 12.5 (italic for metadata), label 12/600, stat 28 mono, code 13 mono.
+
     // MARK: Display (Hero text, large numbers)
-    public static var retraceDisplay: Font { RetraceFont.font(size: 48, weight: .bold) }
-    public static var retraceDisplay2: Font { RetraceFont.font(size: 36, weight: .bold) }
-    public static var retraceDisplay3: Font { RetraceFont.font(size: 32, weight: .bold) }
+    public static var retraceDisplay: Font { RetraceFont.font(size: 48, weight: .semibold) }
+    public static var retraceDisplay2: Font { RetraceFont.font(size: 36, weight: .semibold) }
+    public static var retraceDisplay3: Font { RetraceFont.font(size: 32, weight: .semibold) }
 
     // MARK: Titles
-    public static var retraceTitle: Font { RetraceFont.font(size: 28, weight: .bold) }
-    public static var retraceTitle2: Font { RetraceFont.font(size: 22, weight: .bold) }
-    public static var retraceTitle3: Font { RetraceFont.font(size: 20, weight: .semibold) }
+    /// page-title: one per page.
+    public static var retraceTitle: Font { RetraceFont.font(size: 28, weight: .semibold) }
+    /// section-title: panel and modal headings.
+    public static var retraceTitle2: Font { RetraceFont.font(size: 20, weight: .semibold) }
+    public static var retraceTitle3: Font { RetraceFont.font(size: 17, weight: .semibold) }
 
-    // MARK: Large Numbers (for stats/metrics display)
-    public static var retraceLargeNumber: Font { RetraceFont.font(size: 28, weight: .bold) }
-    public static var retraceMediumNumber: Font { RetraceFont.font(size: 24, weight: .semibold) }
+    // MARK: Large Numbers (stat: mono, tabular)
+    public static var retraceLargeNumber: Font { RetraceFont.mono(size: 28, weight: .medium) }
+    public static var retraceMediumNumber: Font { RetraceFont.mono(size: 22, weight: .medium) }
 
     // MARK: Body Text
     public static var retraceHeadline: Font { RetraceFont.font(size: 17, weight: .semibold) }
+    /// body: default copy.
     public static var retraceBody: Font { RetraceFont.font(size: 15, weight: .regular) }
-    public static var retraceBodyMedium: Font { RetraceFont.font(size: 15, weight: .medium) }
+    public static var retraceBodyMedium: Font { RetraceFont.font(size: 15, weight: .regular) }
     public static var retraceBodyBold: Font { RetraceFont.font(size: 15, weight: .semibold) }
-    public static var retraceCallout: Font { RetraceFont.font(size: 14, weight: .regular) }
-    public static var retraceCalloutMedium: Font { RetraceFont.font(size: 14, weight: .medium) }
-    public static var retraceCalloutBold: Font { RetraceFont.font(size: 14, weight: .semibold) }
+    /// body-sm: tables, nav, buttons.
+    public static var retraceCallout: Font { RetraceFont.font(size: 13.5, weight: .regular) }
+    public static var retraceCalloutMedium: Font { RetraceFont.font(size: 13.5, weight: .regular) }
+    public static var retraceCalloutBold: Font { RetraceFont.font(size: 13.5, weight: .semibold) }
 
     // MARK: Small Text
-    public static var retraceCaption: Font { RetraceFont.font(size: 13, weight: .regular) }
-    public static var retraceCaptionMedium: Font { RetraceFont.font(size: 13, weight: .medium) }
-    public static var retraceCaptionBold: Font { RetraceFont.font(size: 13, weight: .semibold) }
-    public static var retraceCaption2: Font { RetraceFont.font(size: 11, weight: .regular) }
-    public static var retraceCaption2Medium: Font { RetraceFont.font(size: 11, weight: .medium) }
-    public static var retraceCaption2Bold: Font { RetraceFont.font(size: 11, weight: .semibold) }
+    /// caption size, upright. Use `retraceMeta` for subtitles and metadata.
+    public static var retraceCaption: Font { RetraceFont.font(size: 12.5, weight: .regular) }
+    public static var retraceCaptionMedium: Font { RetraceFont.font(size: 12.5, weight: .regular) }
+    public static var retraceCaptionBold: Font { RetraceFont.font(size: 12.5, weight: .semibold) }
+    /// caption: italic, for subtitles and metadata in `muted`.
+    public static var retraceMeta: Font { RetraceFont.italic(size: 12.5) }
+    /// label: form and tile labels. Pair with `.retraceLabelTracking()`.
+    public static var retraceLabel: Font { RetraceFont.font(size: 12, weight: .semibold) }
+    public static var retraceCaption2: Font { RetraceFont.font(size: 12, weight: .regular) }
+    public static var retraceCaption2Medium: Font { RetraceFont.font(size: 12, weight: .regular) }
+    public static var retraceCaption2Bold: Font { RetraceFont.font(size: 12, weight: .semibold) }
 
-    // MARK: Tiny Text (for labels, badges)
-    public static var retraceTiny: Font { RetraceFont.font(size: 10, weight: .regular) }
-    public static var retraceTinyMedium: Font { RetraceFont.font(size: 10, weight: .medium) }
-    public static var retraceTinyBold: Font { RetraceFont.font(size: 10, weight: .semibold) }
+    // MARK: Tiny Text (for badges)
+    public static var retraceTiny: Font { RetraceFont.font(size: 11, weight: .regular) }
+    public static var retraceTinyMedium: Font { RetraceFont.font(size: 11, weight: .regular) }
+    public static var retraceTinyBold: Font { RetraceFont.font(size: 11, weight: .semibold) }
 
-    // MARK: Monospace (for IDs, technical data - always uses monospaced design)
+    // MARK: Monospace (code: IDs, timestamps, bytes; always Plex Mono)
     public static var retraceMono: Font { RetraceFont.mono(size: 13) }
-    public static var retraceMonoSmall: Font { RetraceFont.mono(size: 11) }
+    public static var retraceMonoSmall: Font { RetraceFont.mono(size: 12) }
     public static var retraceMonoLarge: Font { RetraceFont.mono(size: 15) }
 }
 
-// MARK: - Spacing
+extension View {
+    /// label tracking (0.03em at 12pt).
+    public func retraceLabelTracking() -> some View {
+        self.tracking(0.36)
+    }
+}
+
+// MARK: - Spacing, radius, borders
 
 extension CGFloat {
-    // MARK: Standard Spacing Scale
+    // MARK: Spacing scale (space-1 … space-7)
+    public static let space1: CGFloat = 4
+    public static let space2: CGFloat = 8
+    public static let space3: CGFloat = 12
+    public static let space4: CGFloat = 16
+    public static let space5: CGFloat = 20
+    public static let space6: CGFloat = 28
+    public static let space7: CGFloat = 40
+
+    // Legacy names
     public static let spacingXS: CGFloat = 4
     public static let spacingS: CGFloat = 8
     public static let spacingM: CGFloat = 16
-    public static let spacingL: CGFloat = 24
-    public static let spacingXL: CGFloat = 32
-    public static let spacingXXL: CGFloat = 48
+    public static let spacingL: CGFloat = 20
+    public static let spacingXL: CGFloat = 28
+    public static let spacingXXL: CGFloat = 40
 
-    // MARK: Component-specific
-    public static let cornerRadiusS: CGFloat = 4
-    public static let cornerRadiusM: CGFloat = 8
-    public static let cornerRadiusL: CGFloat = 12
+    // MARK: Radius (radius-sm / md / lg / pill)
+    public static let radiusSm: CGFloat = 8
+    public static let radiusMd: CGFloat = 12
+    public static let radiusLg: CGFloat = 18
+    public static let radiusPill: CGFloat = 999
+
+    public static let cornerRadiusS: CGFloat = 8
+    public static let cornerRadiusM: CGFloat = 12
+    public static let cornerRadiusL: CGFloat = 18
 
     public static let borderWidth: CGFloat = 1
     public static let borderWidthThick: CGFloat = 2
@@ -709,33 +903,81 @@ extension CGFloat {
     }
 }
 
-// MARK: - Shadow Styles
+// MARK: - Shadow Styles (shadow-sm / md / lg: soft, diffuse, never hard-offset)
 
-extension View {
-    public func retraceShadowLight() -> some View {
-        self.shadow(color: .black.opacity(0.05), radius: 2, x: 0, y: 1)
+public enum RetraceElevation: Sendable {
+    case sm, md, lg
+}
+
+private struct RetraceElevationModifier: ViewModifier {
+    let elevation: RetraceElevation
+
+    private static let tint: UInt32 = 0x3B352D
+
+    /// Two stacked shadow layers for every elevation so the view tree keeps the same structure when a call site
+    /// flips elevation on state changes (the unused layer is fully transparent).
+    private var layers: (a: (l: Double, d: Double, r: CGFloat, y: CGFloat), b: (l: Double, d: Double, r: CGFloat, y: CGFloat)) {
+        switch elevation {
+        case .sm: return ((0.06, 0.30, 1, 1), (0, 0, 0, 0))
+        case .md: return ((0.05, 0.30, 1, 1), (0.07, 0.32, 9, 6))
+        case .lg: return ((0.05, 0.30, 2, 2), (0.12, 0.45, 20, 16))
+        }
     }
 
-    public func retraceShadowMedium() -> some View {
-        self.shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+    func body(content: Content) -> some View {
+        let layers = layers
+        return content
+            .shadow(color: shade(light: layers.a.l, dark: layers.a.d), radius: layers.a.r, x: 0, y: layers.a.y)
+            .shadow(color: shade(light: layers.b.l, dark: layers.b.d), radius: layers.b.r, x: 0, y: layers.b.y)
     }
 
-    public func retraceShadowHeavy() -> some View {
-        self.shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
-    }
-
-    public func retraceGlow(color: Color = .retraceAccent, radius: CGFloat = 20) -> some View {
-        self.shadow(color: color.opacity(0.3), radius: radius, x: 0, y: 0)
+    private func shade(light: Double, dark: Double) -> Color {
+        Color.retraceDynamic(light: Self.tint, dark: 0x000000, lightAlpha: light, darkAlpha: dark)
     }
 }
 
-// MARK: - Glassmorphism Style
+extension View {
+    public func retraceElevation(_ elevation: RetraceElevation) -> some View {
+        self.modifier(RetraceElevationModifier(elevation: elevation))
+    }
+
+    public func retraceShadowLight() -> some View { retraceElevation(.sm) }
+    public func retraceShadowMedium() -> some View { retraceElevation(.md) }
+    public func retraceShadowHeavy() -> some View { retraceElevation(.lg) }
+
+    /// The design system has no glows; kept as a no-op so existing call sites compile.
+    public func retraceGlow(color: Color = .retraceAccent, radius: CGFloat = 20) -> some View {
+        self
+    }
+
+    /// 2px accent focus ring with 2px offset, shown when the control has keyboard focus.
+    public func retraceFocusRing(cornerRadius: CGFloat = .radiusMd) -> some View {
+        self.modifier(RetraceFocusRingModifier(cornerRadius: cornerRadius))
+    }
+}
+
+private struct RetraceFocusRingModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    @Environment(\.isFocused) private var isFocused
+
+    func body(content: Content) -> some View {
+        content.overlay(
+            RoundedRectangle(cornerRadius: cornerRadius + 2, style: .continuous)
+                .stroke(Color.retraceAccent, lineWidth: 2)
+                .padding(-4)
+                .opacity(isFocused ? 1 : 0)
+                .allowsHitTesting(false)
+        )
+    }
+}
+
+// MARK: - Matte surface (replaces glassmorphism: flat surface, hairline, soft shadow)
 
 public struct GlassmorphismModifier: ViewModifier {
     var cornerRadius: CGFloat
     var opacity: Double
 
-    public init(cornerRadius: CGFloat = 16, opacity: Double = 0.1) {
+    public init(cornerRadius: CGFloat = .radiusLg, opacity: Double = 0.1) {
         self.cornerRadius = cornerRadius
         self.opacity = opacity
     }
@@ -743,157 +985,148 @@ public struct GlassmorphismModifier: ViewModifier {
     public func body(content: Content) -> some View {
         content
             .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(Color.white.opacity(opacity))
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .fill(.ultraThinMaterial.opacity(0.3))
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .stroke(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.2),
-                                    Color.white.opacity(0.05)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                }
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color.retraceSurface)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.retraceBorder, lineWidth: 1)
+            )
+            .retraceElevation(.sm)
     }
 }
 
 extension View {
-    public func glassmorphism(cornerRadius: CGFloat = 16, opacity: Double = 0.1) -> some View {
+    /// Formerly glassmorphism; now the design system's flat `surface` with a hairline.
+    public func glassmorphism(cornerRadius: CGFloat = .radiusLg, opacity: Double = 0.1) -> some View {
         self.modifier(GlassmorphismModifier(cornerRadius: cornerRadius, opacity: opacity))
     }
 }
 
-// MARK: - Gradient Backgrounds
+// MARK: - Gradients
+//
+// The design system uses flat color only. These statics are kept (as two-stop gradients of one color) so
+// existing call sites compile; replace them with a solid token when touching a call site.
 
 extension LinearGradient {
-    // Accent gradient - adapts based on user's color theme preference
-    public static var retraceAccentGradient: LinearGradient {
-        let theme = MilestoneCelebrationManager.getCurrentTheme()
-        switch theme {
-        case .blue:
-            return LinearGradient(
-                colors: [
-                    Color(red: 60/255, green: 130/255, blue: 220/255),   // Bright blue
-                    Color(red: 90/255, green: 160/255, blue: 240/255)    // Lighter blue
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .gold:
-            return LinearGradient(
-                colors: [
-                    Color(red: 255/255, green: 215/255, blue: 0/255),    // Gold
-                    Color(red: 255/255, green: 180/255, blue: 0/255)     // Darker gold
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        case .purple:
-            return LinearGradient(
-                colors: [
-                    Color(red: 180/255, green: 130/255, blue: 255/255),  // Light purple
-                    Color(red: 138/255, green: 43/255, blue: 226/255)    // Blue violet
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+    private static func flat(_ color: Color) -> LinearGradient {
+        LinearGradient(colors: [color, color], startPoint: .top, endPoint: .bottom)
     }
 
-    // Original blue gradient (for cases where we always want blue)
-    public static let retraceBrandGradient = LinearGradient(
-        colors: [
-            Color(red: 60/255, green: 130/255, blue: 220/255),
-            Color(red: 90/255, green: 160/255, blue: 240/255)
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
-    public static let retracePurpleGradient = LinearGradient(
-        colors: [
-            Color(red: 70/255, green: 140/255, blue: 230/255),   // Bright blue for visibility
-            Color(red: 100/255, green: 170/255, blue: 250/255)   // Lighter blue
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
-    public static let retraceGreenGradient = LinearGradient(
-        colors: [
-            Color(red: 34/255, green: 197/255, blue: 94/255),
-            Color(red: 16/255, green: 185/255, blue: 129/255)
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
-    public static let retraceOrangeGradient = LinearGradient(
-        colors: [
-            Color(red: 251/255, green: 146/255, blue: 60/255),
-            Color(red: 251/255, green: 191/255, blue: 36/255)
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
-    public static let retraceSubtleGradient = LinearGradient(
-        colors: [
-            Color.white.opacity(0.05),
-            Color.white.opacity(0.02)
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
+    public static var retraceAccentGradient: LinearGradient { flat(.retraceAccent) }
+    public static let retraceBrandGradient = flat(.retraceAccent)
+    public static let retracePurpleGradient = flat(.retraceAccent)
+    public static let retraceGreenGradient = flat(.retraceGood)
+    public static let retraceOrangeGradient = flat(.retraceWarningText)
+    public static let retraceSubtleGradient = flat(.retraceSurfaceHover)
 }
 
 // MARK: - Button Styles
 
-public struct RetracePrimaryButtonStyle: ButtonStyle {
+public enum RetraceButtonKind: Sendable {
+    case primary, secondary, ghost, danger
+}
+
+public enum RetraceButtonSize: Sendable {
+    case md, sm
+}
+
+/// Design-system button: `primary` (once per view), `secondary`, `ghost`, plus `danger` for destructive actions.
+public struct RetraceButtonStyle: ButtonStyle {
+    let kind: RetraceButtonKind
+    let size: RetraceButtonSize
+
+    public init(_ kind: RetraceButtonKind = .secondary, size: RetraceButtonSize = .md) {
+        self.kind = kind
+        self.size = size
+    }
+
     public func makeBody(configuration: Configuration) -> some View {
+        RetraceButtonBody(configuration: configuration, kind: kind, size: size)
+    }
+}
+
+private struct RetraceButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let kind: RetraceButtonKind
+    let size: RetraceButtonSize
+
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovering = false
+
+    private var radius: CGFloat { size == .sm ? .radiusSm : .radiusMd }
+
+    var body: some View {
         configuration.label
-            .padding(.horizontal, .spacingM)
-            .padding(.vertical, .spacingS)
-            .background(Color.retraceAccent)
-            .foregroundColor(.white)
-            .cornerRadius(.cornerRadiusM)
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .font(size == .sm ? .retraceCaption : .retraceCallout)
+            .foregroundColor(foreground)
+            .padding(.horizontal, size == .sm ? 12 : 16)
+            .padding(.vertical, size == .sm ? 5 : 8)
+            .background(
+                RoundedRectangle(cornerRadius: radius, style: .continuous).fill(background)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: radius, style: .continuous).stroke(border, lineWidth: 1)
+            )
+            .shadow(color: showsShadow ? Color.retraceDynamic(light: 0x3B352D, dark: 0x000000, lightAlpha: 0.06, darkAlpha: 0.3) : .clear,
+                    radius: 1, x: 0, y: 1)
+            .retraceFocusRing(cornerRadius: radius)
+            .opacity(isEnabled ? (configuration.isPressed ? 0.88 : 1) : 0.5)
+            .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .onHover { isHovering = $0 }
+            .animation(.easeOut(duration: 0.18), value: isHovering)
+    }
+
+    private var showsShadow: Bool { isEnabled && isHovering && kind != .ghost && kind != .primary }
+
+    private var foreground: Color {
+        switch kind {
+        case .primary: return .retraceOnAccent
+        case .secondary: return .retraceInk
+        case .ghost: return .retraceAccent
+        case .danger: return .retraceCritical
+        }
+    }
+
+    private var background: Color {
+        let hovering = isEnabled && isHovering
+        switch kind {
+        case .primary: return hovering ? .retraceAccentHover : .retraceAccent
+        case .secondary: return hovering ? .retraceSurfaceHover : .retraceSurface
+        case .ghost: return hovering ? .retraceSurfaceHover : .clear
+        case .danger: return hovering ? Color.retraceCriticalBg.opacity(0.7) : .retraceCriticalBg
+        }
+    }
+
+    private var border: Color {
+        let hovering = isEnabled && isHovering
+        switch kind {
+        case .primary: return hovering ? .retraceAccentHover : .retraceAccent
+        case .secondary: return .retraceBorderStrong
+        case .ghost: return .clear
+        case .danger: return Color.retraceCritical
+        }
+    }
+}
+
+public struct RetracePrimaryButtonStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: Configuration) -> some View {
+        RetraceButtonStyle(.primary).makeBody(configuration: configuration)
     }
 }
 
 public struct RetraceSecondaryButtonStyle: ButtonStyle {
+    public init() {}
     public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, .spacingM)
-            .padding(.vertical, .spacingS)
-            .background(Color.retraceSecondaryBackground)
-            .foregroundColor(.retracePrimary)
-            .cornerRadius(.cornerRadiusM)
-            .overlay(
-                RoundedRectangle(cornerRadius: .cornerRadiusM)
-                    .stroke(Color.retraceBorder, lineWidth: .borderWidth)
-            )
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
+        RetraceButtonStyle(.secondary).makeBody(configuration: configuration)
     }
 }
 
 public struct RetraceDangerButtonStyle: ButtonStyle {
+    public init() {}
     public func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, .spacingM)
-            .padding(.vertical, .spacingS)
-            .background(Color.retraceDanger)
-            .foregroundColor(.white)
-            .cornerRadius(.cornerRadiusM)
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
+        RetraceButtonStyle(.danger).makeBody(configuration: configuration)
     }
 }
 
@@ -902,14 +1135,20 @@ public struct RetraceDangerButtonStyle: ButtonStyle {
 public struct RetraceCardModifier: ViewModifier {
     public func body(content: Content) -> some View {
         content
-            .padding(.spacingM)
-            .background(Color.retraceSecondaryBackground)
-            .cornerRadius(.cornerRadiusL)
-            .retraceShadowLight()
+            .padding(.horizontal, 20)
+            .padding(.vertical, .space4)
+            .background(
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous).fill(Color.retraceSurface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1)
+            )
+            .retraceElevation(.sm)
     }
 }
 
 extension View {
+    /// Card: `surface` with a `border` hairline, `radius-md` and `shadow-sm`. Cards sit on `page`, never in cards.
     public func retraceCard() -> some View {
         self.modifier(RetraceCardModifier())
     }
@@ -1113,29 +1352,29 @@ public struct RetraceMenuStyle {
     // MARK: - Container Styling
 
     /// Background color for all menus, popovers, and dialogs
-    public static let backgroundColor = Color(white: 0.1)
+    public static let backgroundColor = Color.retraceSurface
 
     /// Corner radius for all containers
     public static let cornerRadius: CGFloat = 12
 
-    /// Border color
-    public static let borderColor = Color.white.opacity(0.15)
+    /// Border color (hairline)
+    public static let borderColor = Color.retraceBorder
 
     /// Border width
     public static let borderWidth: CGFloat = 1
 
     /// Shadow configuration
-    public static let shadowColor = Color.black.opacity(0.5)
-    public static let shadowRadius: CGFloat = 20
-    public static let shadowY: CGFloat = 10
+    public static let shadowColor = Color.retraceDynamic(light: 0x3B352D, dark: 0x000000, lightAlpha: 0.14, darkAlpha: 0.5)
+    public static let shadowRadius: CGFloat = 18
+    public static let shadowY: CGFloat = 8
 
     // MARK: - Interactive Item Styling
 
     /// Hover background color for menu items
-    public static let itemHoverColor = Color.white.opacity(0.1)
+    public static let itemHoverColor = Color.retraceSurfaceHover
 
     /// Corner radius for menu items
-    public static let itemCornerRadius: CGFloat = 6
+    public static let itemCornerRadius: CGFloat = 8
 
     /// Horizontal padding for menu items
     public static let itemPaddingH: CGFloat = 12
@@ -1149,20 +1388,20 @@ public struct RetraceMenuStyle {
     // MARK: - Typography
 
     /// Font for menu item text
-    public static let font = Font.system(size: 13, weight: .medium)
+    public static var font: Font { RetraceFont.font(size: 13.5, weight: .regular) }
 
     /// Font size value (for non-SwiftUI contexts)
-    public static let fontSize: CGFloat = 13
+    public static let fontSize: CGFloat = 13.5
 
     /// Font for keyboard shortcut hints shown on the right side of menu rows
     /// Use default system design so symbol glyphs like "⌫" and "⌘" render cleanly.
-    public static let shortcutFont = Font.system(size: 14, weight: .semibold)
+    public static var shortcutFont: Font { RetraceFont.mono(size: 12.5) }
 
     /// Reserved width for the right-aligned shortcut column
     public static let shortcutColumnMinWidth: CGFloat = 38
 
     /// Font weight
-    public static let fontWeight: Font.Weight = .medium
+    public static let fontWeight: Font.Weight = .regular
 
     /// Icon size
     public static let iconSize: CGFloat = 13
@@ -1176,28 +1415,28 @@ public struct RetraceMenuStyle {
     // MARK: - Colors
 
     /// Primary text color
-    public static let textColor = Color.white
+    public static let textColor = Color.retraceInk
 
     /// Secondary text color (muted)
-    public static let textColorMuted = Color.white.opacity(0.7)
+    public static let textColorMuted = Color.retraceInk2
 
     /// Destructive action color
-    public static let destructiveColor = Color.red.opacity(0.9)
+    public static let destructiveColor = Color.retraceCritical
 
     /// Chevron color (for submenus)
-    public static let chevronColor = Color.white.opacity(0.4)
+    public static let chevronColor = Color.retraceMuted
 
     /// Chevron size
     public static let chevronSize: CGFloat = 10
 
     /// Action button color (used for all primary action buttons like Submit, Apply, Include)
     public static var actionBlue: Color {
-        Color.retraceSubmitAccent
+        Color.retraceAccent
     }
 
     /// UI blue - desaturated, calmer blue for focus rings and subtle accents
     /// Same hue as brand blue but lower saturation for less visual noise
-    public static let uiBlue = Color(red: 0.4, green: 0.55, blue: 0.7)
+    public static let uiBlue = Color.retraceAccent
 
     /// Base accent color for filter control strokes (buttons and fields).
     /// Uses the lighter Retrace accent for consistent focus/hover/open outlines.
@@ -1207,23 +1446,23 @@ public struct RetraceMenuStyle {
 
     /// Strong stroke color for hovered/focused/open filter controls.
     public static var filterStrokeStrong: Color {
-        filterStrokeAccent.opacity(0.95)
+        filterStrokeAccent
     }
 
     /// Medium stroke color for active/selected filter controls.
     public static var filterStrokeMedium: Color {
-        filterStrokeAccent.opacity(0.45)
+        filterStrokeAccent.opacity(0.6)
     }
 
     /// Subtle resting stroke color for filter controls.
     public static var filterStrokeSubtle: Color {
-        filterStrokeAccent.opacity(0.18)
+        Color.retraceBorderStrong
     }
 
     // MARK: - Search Field Styling (within menus)
 
     /// Search field background
-    public static let searchFieldBackground = Color.white.opacity(0.05)
+    public static let searchFieldBackground = Color.retraceSurfaceSunken
 
     /// Search field corner radius
     public static let searchFieldCornerRadius: CGFloat = 8
@@ -1238,7 +1477,7 @@ public struct RetraceMenuStyle {
     public static let hoverAnimationDuration: CGFloat = 0.1
 
     /// Animation for menu appearance
-    public static let appearanceAnimation = Animation.easeOut(duration: 0.15)
+    public static let appearanceAnimation = Animation.easeOut(duration: 0.18)
 }
 
 // MARK: - Timeline Overlay Surface Families
@@ -1250,60 +1489,32 @@ public enum RetraceTimelineGlassVariant {
     case banner
     case panel
 
-    var fillColor: Color {
-        switch self {
-        case .chip:
-            return Color.black.opacity(0.46)
-        case .banner:
-            return Color.black.opacity(0.56)
-        case .panel:
-            return Color.black.opacity(0.4)
-        }
-    }
+    /// Flat `surface` (Dusk, since the timeline window is forced dark); no blur, no glass.
+    var fillColor: Color { Color.retraceSurface }
 
-    var materialOpacity: Double {
-        switch self {
-        case .chip:
-            return 0.9
-        case .banner:
-            return 1.0
-        case .panel:
-            return 1.0
-        }
-    }
+    var materialOpacity: Double { 0 }
 
-    var borderColor: Color {
-        switch self {
-        case .chip:
-            return Color.white.opacity(0.18)
-        case .banner:
-            return Color.white.opacity(0.16)
-        case .panel:
-            return Color.white.opacity(0.15)
-        }
-    }
+    var borderColor: Color { Color.retraceBorder }
 
     var shadowColor: Color {
-        Color.black.opacity(0.5)
+        Color.retraceDynamic(light: 0x3B352D, dark: 0x000000, lightAlpha: 0.14, darkAlpha: 0.45)
     }
 
     var shadowRadius: CGFloat {
         switch self {
         case .chip:
-            return 12
-        case .banner:
-            return 20
-        case .panel:
-            return 20
+            return 8
+        case .banner, .panel:
+            return 16
         }
     }
 
     var shadowY: CGFloat {
         switch self {
         case .chip:
-            return 5
+            return 3
         case .banner, .panel:
-            return 10
+            return 8
         }
     }
 }
@@ -1317,12 +1528,7 @@ public struct RetraceTimelineGlassSurface: ViewModifier {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(.ultraThinMaterial.opacity(variant.materialOpacity))
-                    .environment(\.colorScheme, .dark)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                            .fill(variant.fillColor)
-                    )
+                    .fill(variant.fillColor)
                     .shadow(
                         color: variant.shadowColor,
                         radius: variant.shadowRadius,
@@ -1384,8 +1590,7 @@ public struct RetraceMenuButton: View {
     public var body: some View {
         Button(action: action) {
             HStack(spacing: RetraceMenuStyle.iconTextSpacing) {
-                Image(systemName: icon)
-                    .font(.system(size: RetraceMenuStyle.iconSize, weight: RetraceMenuStyle.fontWeight))
+                RetraceSymbol(icon, size: RetraceMenuStyle.iconSize, weight: RetraceMenuStyle.fontWeight)
                     .foregroundColor(foregroundColor)
                     .frame(width: RetraceMenuStyle.iconFrameWidth)
 
@@ -1409,8 +1614,7 @@ public struct RetraceMenuButton: View {
                 }
 
                 if showChevron {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: RetraceMenuStyle.chevronSize, weight: .bold))
+                    RetraceSymbol("chevron.right", size: RetraceMenuStyle.chevronSize, weight: .semibold)
                         .foregroundColor(RetraceMenuStyle.chevronColor)
                 }
             }
@@ -1446,9 +1650,9 @@ public struct RetraceMenuButton: View {
 
     private var shortcutColor: Color {
         if isDisabled {
-            return RetraceMenuStyle.textColorMuted.opacity(0.4)
+            return Color.retraceMuted.opacity(0.7)
         }
-        return RetraceMenuStyle.textColorMuted.opacity(isHovering ? 0.95 : 0.7)
+        return isHovering ? RetraceMenuStyle.textColor : RetraceMenuStyle.textColorMuted
     }
 }
 
@@ -1468,7 +1672,7 @@ public struct RetraceMenuContainer: ViewModifier {
 
     private var borderColor: Color {
         guard showColoredBorders else {
-            return Color.white.opacity(0.15)
+            return Color.retraceBorder
         }
         let theme = MilestoneCelebrationManager.getCurrentTheme()
         return theme.controlBorderColor
@@ -1544,14 +1748,13 @@ public struct RetraceMenuSearchField: View {
 
     public var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
+            RetraceSymbol("magnifyingglass", size: 12, weight: .medium)
+                .foregroundColor(.retraceMuted)
 
             TextField(placeholder, text: $text)
                 .textFieldStyle(.plain)
                 .font(RetraceMenuStyle.font)
-                .foregroundColor(.white)
+                .foregroundColor(.retraceInk)
                 .focused($isFocused)
                 .onSubmit {
                     onSubmit?()
@@ -1559,9 +1762,8 @@ public struct RetraceMenuSearchField: View {
 
             if !text.isEmpty {
                 Button(action: { text = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.4))
+                    RetraceSymbol("xmark.circle.fill", size: 12, weight: .medium)
+                        .foregroundColor(.retraceMuted)
                 }
                 .buttonStyle(.plain)
             }
@@ -1660,3 +1862,4 @@ extension Notification.Name {
     /// Posted to request a force restart of the AI Visual Semantic Indexer
     public static let forceRestartSemanticIndexing = Notification.Name("forceRestartSemanticIndexing")
 }
+

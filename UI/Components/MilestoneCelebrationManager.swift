@@ -34,29 +34,11 @@ public class MilestoneCelebrationManager: ObservableObject {
             }
         }
 
-        /// Glow color for subtle effects on UI elements
-        public var glowColor: Color {
-            switch self {
-            case .blue:
-                return Color(red: 59/255, green: 130/255, blue: 246/255)
-            case .gold:
-                return Color(red: 255/255, green: 215/255, blue: 0/255)
-            case .purple:
-                return Color(red: 180/255, green: 130/255, blue: 255/255)
-            }
-        }
+        /// Glow color for subtle effects on UI elements. The design system's accent is always clay.
+        public var glowColor: Color { Color.retraceAccent }
 
         /// Border color for timeline control buttons (subtle accent)
-        public var controlBorderColor: Color {
-            switch self {
-            case .blue:
-                return Color(red: 59/255, green: 130/255, blue: 246/255).opacity(0.35)
-            case .gold:
-                return Color(red: 255/255, green: 215/255, blue: 0/255).opacity(0.4)
-            case .purple:
-                return Color(red: 180/255, green: 130/255, blue: 255/255).opacity(0.5)
-            }
-        }
+        public var controlBorderColor: Color { Color.retraceAccent.opacity(0.5) }
     }
 
     // MARK: - Milestone Definition

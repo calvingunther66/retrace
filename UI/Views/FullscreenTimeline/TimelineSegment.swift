@@ -41,21 +41,15 @@ public struct TimelineSegment: View {
     public var body: some View {
         ZStack(alignment: .leading) {
             // Main segment bar
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                 .fill(segmentColor.opacity(isSelected ? 1.0 : 0.7))
                 .frame(width: segmentWidth, height: segmentHeight)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                         .stroke(
-                            isSelected ? Color.white : Color.clear,
+                            isSelected ? Color.retraceInk : Color.clear,
                             lineWidth: 2
                         )
-                )
-                .shadow(
-                    color: isHovered ? segmentColor.opacity(0.5) : .clear,
-                    radius: 4,
-                    x: 0,
-                    y: 2
                 )
 
             // App info tooltip on hover
@@ -63,19 +57,19 @@ public struct TimelineSegment: View {
                 HStack(spacing: .spacingS) {
                     // App icon placeholder
                     Circle()
-                        .fill(Color.white.opacity(0.3))
+                        .fill(Color.retraceInk.opacity(0.3))
                         .frame(width: 16, height: 16)
                         .overlay(
                             Text(String(appName.prefix(1)))
                                 .font(.retraceTinyBold)
-                                .foregroundColor(.white)
+                                .foregroundColor(.retraceInk)
                         )
 
                     // App name (if space allows)
                     if segmentWidth > 80 {
                         Text(appName)
                             .font(.retraceTinyMedium)
-                            .foregroundColor(.white)
+                            .foregroundColor(.retraceInk)
                             .lineLimit(1)
                     }
                 }

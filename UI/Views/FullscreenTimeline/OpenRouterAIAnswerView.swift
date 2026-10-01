@@ -18,9 +18,8 @@ public struct OpenRouterAIAnswerView: View {
             // Header
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(LinearGradient.retraceAccentGradient)
+                    RetraceSymbol("sparkles", size: 13, weight: .semibold)
+                        .foregroundColor(.retraceAccent)
                     Text("Retrace AI Answer")
                         .font(.retraceHeadline)
                         .foregroundColor(.retracePrimary)
@@ -42,19 +41,18 @@ public struct OpenRouterAIAnswerView: View {
                 Button(action: {
                     viewModel.clearAIAnswer()
                 }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(.retraceSecondary.opacity(0.7))
+                    RetraceSymbol("xmark.circle.fill", size: 14)
+                        .foregroundColor(.retraceInk2)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear AI answer")
             }
 
             // Error banner if any
             if let error = viewModel.aiError {
                 HStack(spacing: 10) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-                        .font(.system(size: 14))
+                    RetraceSymbol("exclamationmark.triangle.fill", size: 14)
+                        .foregroundColor(.retraceWarningText)
                     Text(error)
                         .font(.retraceCaption)
                         .foregroundColor(.retracePrimary)
@@ -67,14 +65,14 @@ public struct OpenRouterAIAnswerView: View {
                     .buttonStyle(.plain)
                 }
                 .padding(12)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(8)
+                .background(Color.retraceWarningBg)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
             } else if let answer = viewModel.aiGeneratedAnswer {
                 // Generated Text
                 ScrollView(.vertical, showsIndicators: true) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(answer.isEmpty && viewModel.isAIGenerating ? "Searching screen records..." : answer)
-                            .font(.system(size: 13, weight: .regular, design: .default))
+                            .font(.retraceCallout)
                             .lineSpacing(4)
                             .foregroundColor(.retracePrimary)
                             .textSelection(.enabled)
@@ -97,26 +95,25 @@ public struct OpenRouterAIAnswerView: View {
                                         onSelectCitation?(citation)
                                     }) {
                                         HStack(spacing: 6) {
-                                            Image(systemName: "clock.arrow.circlepath")
-                                                .font(.system(size: 10))
+                                            RetraceSymbol("clock.arrow.circlepath", size: 10, label: "")
                                                 .foregroundColor(.retraceAccent)
                                             VStack(alignment: .leading, spacing: 1) {
                                                 Text(citation.appName)
-                                                    .font(.system(size: 11, weight: .semibold))
+                                                    .font(.retraceTinyBold)
                                                     .foregroundColor(.retracePrimary)
                                                 Text(formatCitationDate(citation.timestamp))
-                                                    .font(.system(size: 9))
+                                                    .font(RetraceFont.mono(size: 9))
                                                     .foregroundColor(.retraceSecondary)
                                             }
                                         }
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 6)
-                                        .background(Color.white.opacity(0.06))
+                                        .background(Color.retraceSurfaceSunken)
                                         .overlay(
-                                            RoundedRectangle(cornerRadius: 6)
-                                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                                .stroke(Color.retraceBorder, lineWidth: 1)
                                         )
-                                        .cornerRadius(6)
+                                        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -127,13 +124,13 @@ public struct OpenRouterAIAnswerView: View {
             }
         }
         .padding(16)
-        .background(.ultraThinMaterial)
+        .background(Color.retraceSurface)
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(LinearGradient.retraceAccentGradient.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
-        .cornerRadius(12)
-        .shadow(color: Color.black.opacity(0.2), radius: 12, x: 0, y: 6)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
+        .retraceElevation(.md)
     }
 
     private func formatCitationDate(_ date: Date) -> String {

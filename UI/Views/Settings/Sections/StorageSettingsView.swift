@@ -54,8 +54,7 @@ extension SettingsView {
                     )
                 )
 
-                Divider()
-                    .background(Color.white.opacity(0.1))
+                Divider().overlay(Color.retraceBorder)
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .center) {
@@ -64,8 +63,8 @@ extension SettingsView {
                                 .font(.retraceCalloutMedium)
                                 .foregroundColor(.retracePrimary)
                             Text("Only Rewind frames before this date are shown. We use the start of the selected day. Default is \(defaultRewindCutoffDateDescription).")
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary.opacity(0.8))
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
                         }
 
                         Spacer()
@@ -80,24 +79,23 @@ extension SettingsView {
 
                     if hasCustomRewindCutoffDate {
                         HStack(alignment: .top, spacing: 10) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 12))
+                            RetraceSymbol("exclamationmark.triangle.fill", size: 12)
                                 .foregroundColor(.retraceWarning)
                                 .padding(.top, 1)
 
                             Text(customRewindCutoffWarningText)
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceInk2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.retraceWarning.opacity(0.08))
+                            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                                .fill(Color.retraceWarningBg)
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .strokeBorder(Color.retraceWarning.opacity(0.25), lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                                        .strokeBorder(Color.retraceWarningText.opacity(0.4), lineWidth: 1)
                                 )
                         )
                     }
@@ -108,12 +106,11 @@ extension SettingsView {
                                 applyRewindCutoffDate(SettingsDefaults.rewindCutoffDate)
                             }) {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 10))
+                                    RetraceSymbol("arrow.counterclockwise", size: 10)
                                     Text("Reset to Default")
                                         .font(.retraceCaption2)
                                 }
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(.retraceInk2)
                             }
                             .buttonStyle(.plain)
                             .disabled(isRefreshingRewindCutoff)
@@ -123,8 +120,8 @@ extension SettingsView {
                             ProgressView()
                                 .controlSize(.small)
                             Text("Updating...")
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
                         }
 
                         Spacer()
@@ -141,17 +138,16 @@ extension SettingsView {
                     // Warning when recording is active (only for Retrace)
                     if coordinatorWrapper.isRunning {
                         HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundColor(.orange)
-                                .font(.system(size: 12))
+                            RetraceSymbol("exclamationmark.triangle.fill", size: 12)
+                                .foregroundColor(.retraceWarningText)
                             Text("Stop recording to change Retrace database location")
-                                .font(.retraceCaption)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceInk2)
                         }
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.orange.opacity(0.1))
-                        .cornerRadius(8)
+                        .background(Color.retraceWarningBg)
+                        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                     }
 
                     // Retrace Database Location
@@ -163,21 +159,21 @@ extension SettingsView {
                                         .font(.retraceCalloutMedium)
                                         .foregroundColor(.retracePrimary)
                                     PingDotView(
-                                        color: retraceDBAccessible ? .green : .orange,
+                                        color: retraceDBAccessible ? .retraceGood : .retraceWarningText,
                                         size: 8,
                                         isAnimating: retraceDBAccessible
                                     )
                                 }
                                 HStack(spacing: 4) {
                                     Text(customRetraceDBLocation ?? AppPaths.defaultStorageRoot)
-                                        .font(.retraceCaption2)
-                                        .foregroundColor(retraceDBAccessible ? .retraceSecondary : .orange)
+                                        .font(.retraceMonoSmall)
+                                        .foregroundColor(retraceDBAccessible ? .retraceSecondary : .retraceWarningText)
                                         .lineLimit(1)
                                         .truncationMode(.middle)
                                     if !retraceDBAccessible {
                                         Text("(not found)")
                                             .font(.retraceCaption2)
-                                            .foregroundColor(.orange)
+                                            .foregroundColor(.retraceWarningText)
                                     }
                                 }
                             }
@@ -185,44 +181,39 @@ extension SettingsView {
                             Button("Choose Folder...") {
                                 selectRetraceDBLocation()
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.regular)
+                            .buttonStyle(RetraceButtonStyle(.secondary, size: .md))
                             .disabled(coordinatorWrapper.isRunning)
                             .help(coordinatorWrapper.isRunning ? "Stop recording to change Retrace database location" : "Select a folder to store the Retrace database")
                         }
                         Text("Select a folder where retrace.db will be stored")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
 
                         // Restart prompt directly under Retrace Database if it changed
                         if retraceDBLocationChanged {
                             HStack(spacing: 8) {
                                 Text("Restart the app to apply Retrace database changes")
-                                    .font(.retraceCaption)
-                                    .foregroundColor(.retraceSecondary)
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceInk2)
                                 Spacer()
                                 Button(action: restartApp) {
                                     HStack(spacing: 4) {
-                                        Image(systemName: "arrow.clockwise")
-                                            .font(.system(size: 10))
+                                        RetraceSymbol("arrow.clockwise", size: 10)
                                         Text("Restart")
                                             .font(.retraceCaption)
                                     }
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .tint(.retraceAccent)
-                                .controlSize(.small)
+                                .buttonStyle(RetraceButtonStyle(.primary, size: .sm))
                             }
                             .padding(10)
-                            .background(Color.retraceAccent.opacity(0.1))
-                            .cornerRadius(6)
+                            .background(Color.retraceAccentWash)
+                            .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         }
                     }
 
                     // Rewind Database Folder (only shown when Use Rewind data is enabled)
                     if useRewindData {
-                        Divider()
-                            .background(Color.white.opacity(0.1))
+                        Divider().overlay(Color.retraceBorder)
 
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -232,21 +223,21 @@ extension SettingsView {
                                             .font(.retraceCalloutMedium)
                                             .foregroundColor(.retracePrimary)
                                         PingDotView(
-                                            color: rewindDBAccessible ? .green : .orange,
+                                            color: rewindDBAccessible ? .retraceGood : .retraceWarningText,
                                             size: 8,
                                             isAnimating: rewindDBAccessible
                                         )
                                     }
                                     HStack(spacing: 4) {
                                         Text(rewindFolderPath)
-                                            .font(.retraceCaption2)
-                                            .foregroundColor(rewindDBAccessible ? .retraceSecondary : .orange)
+                                            .font(.retraceMonoSmall)
+                                            .foregroundColor(rewindDBAccessible ? .retraceSecondary : .retraceWarningText)
                                             .lineLimit(1)
                                             .truncationMode(.middle)
                                         if !rewindDBAccessible {
                                             Text("(not found)")
                                                 .font(.retraceCaption2)
-                                                .foregroundColor(.orange)
+                                                .foregroundColor(.retraceWarningText)
                                         }
                                     }
                                 }
@@ -254,30 +245,26 @@ extension SettingsView {
                                 Button("Choose Folder...") {
                                     selectRewindDBLocation()
                                 }
-                                .buttonStyle(.bordered)
-                                .controlSize(.regular)
+                                .buttonStyle(RetraceButtonStyle(.secondary, size: .md))
                                 .help("Select the folder containing Rewind's db-enc.sqlite3 file")
                             }
                             Text("Select the folder containing db-enc.sqlite3 (chunks folder should be in the same directory)")
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary.opacity(0.7))
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
                         }
                     }
 
                     if customRetraceDBLocation != nil || (useRewindData && customRewindDBLocation != nil) {
-                        Divider()
-                            .background(Color.white.opacity(0.1))
+                        Divider().overlay(Color.retraceBorder)
 
                         Button(action: resetDatabaseLocations) {
                             HStack(spacing: 6) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 12))
+                                RetraceSymbol("arrow.counterclockwise", size: 12)
                                 Text("Reset to Defaults")
                                     .font(.retraceCalloutMedium)
                             }
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                         .disabled(coordinatorWrapper.isRunning && customRetraceDBLocation != nil)
                         .help(coordinatorWrapper.isRunning && customRetraceDBLocation != nil ? "Stop recording to reset Retrace database location" : "")
                     }
@@ -301,13 +288,7 @@ extension SettingsView {
                             }
                         }
                         Spacer()
-                        Text(retentionDisplayTextFor(previewRetentionDays ?? retentionDays))
-                            .font(.retraceCalloutBold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.retraceAccent.opacity(0.3))
-                            .cornerRadius(8)
+                        RetraceBadge(retentionDisplayTextFor(previewRetentionDays ?? retentionDays), tone: .accent)
                     }
 
                     RetentionPolicyPicker(
@@ -359,12 +340,11 @@ extension SettingsView {
                                 startRetentionChangeTimer()
                             }) {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 10))
+                                    RetraceSymbol("arrow.counterclockwise", size: 10)
                                     Text("Reset to Default")
                                         .font(.retraceCaption2)
                                 }
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(.retraceInk2)
                             }
                             .buttonStyle(.plain)
                         }
@@ -374,29 +354,27 @@ extension SettingsView {
                         VStack(spacing: 8) {
                             HStack {
                                 Text("Changes will take effect within an hour or on next launch")
-                                    .font(.retraceCaption)
-                                    .foregroundColor(.retraceSecondary)
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceInk2)
                                 Spacer()
                                 Button("Restart Now") {
                                     dismissRetentionChangeNotification()
                                     restartApp()
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .tint(.retraceAccent)
-                                .controlSize(.small)
+                                .buttonStyle(RetraceButtonStyle(.primary, size: .sm))
                             }
 
                             // Auto-dismiss progress bar (Cloudflare-style)
                             GeometryReader { geometry in
                                 ZStack(alignment: .leading) {
                                     // Background track
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.white.opacity(0.1))
+                                    Capsule(style: .continuous)
+                                        .fill(Color.retraceSurfaceSunken)
                                         .frame(height: 3)
 
                                     // Progress fill
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.retraceAccent.opacity(0.6))
+                                    Capsule(style: .continuous)
+                                        .fill(Color.retraceAccent)
                                         .frame(width: geometry.size.width * retentionChangeProgress, height: 3)
                                 }
                             }
@@ -415,7 +393,7 @@ extension SettingsView {
                         }
                     }
 
-                    Divider()
+                    Divider().overlay(Color.retraceBorder)
                         .padding(.vertical, 4)
 
                     // TODO: Re-enable retention exclusions in a future version
@@ -497,22 +475,22 @@ extension SettingsView {
                     //                 retentionExcludeHidden.toggle()
                     //             }) {
                     //                 HStack(spacing: 8) {
-                    //                     Image(systemName: "eye.slash.fill")
-                    //                         .font(.system(size: 12))
+                    //                     RetraceSymbol("eye.slash.fill", size: 13)
+                    //                         .font(.retraceCaption2)
                     //                     Text(retentionExcludeHidden ? "Excluded" : "Not excluded")
                     //                         .font(.retraceCaptionMedium)
-                    //                     Image(systemName: retentionExcludeHidden ? "checkmark" : "plus")
-                    //                         .font(.system(size: 10, weight: .bold))
+                    //                     RetraceSymbol(retentionExcludeHidden ? "checkmark" : "plus", size: 13)
+                    //                         .font(RetraceFont.font(size: 10, weight: .bold))
                     //                 }
                     //                 .padding(.horizontal, 12)
                     //                 .padding(.vertical, 8)
                     //                 .background(
-                    //                     RoundedRectangle(cornerRadius: 8)
-                    //                         .fill(retentionExcludeHidden ? Color.retraceAccent.opacity(0.3) : Color.white.opacity(0.08))
+                    //                     RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    //                         .fill(retentionExcludeHidden ? Color.retraceAccentWash : Color.white.opacity(0.08))
                     //                 )
                     //                 .overlay(
-                    //                     RoundedRectangle(cornerRadius: 8)
-                    //                         .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    //                     RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    //                         .stroke(Color.retraceBorderStrong, lineWidth: 1)
                     //                 )
                     //             }
                     //             .buttonStyle(.plain)
@@ -525,8 +503,8 @@ extension SettingsView {
                     //                 clearRetentionExclusions()
                     //                 retentionExcludeHidden = false
                     //             }) {
-                    //                 Image(systemName: "xmark.circle")
-                    //                     .font(.system(size: 14, weight: .medium))
+                    //                 RetraceSymbol("xmark.circle", size: 13)
+                    //                     .font(.retraceCallout)
                     //                     .foregroundColor(.retraceSecondary)
                     //             }
                     //             .buttonStyle(.plain)
@@ -563,7 +541,7 @@ extension SettingsView {
 
 private struct RewindSettingsLogoIcon: View {
     var body: some View {
-        RewindLogoIcon(color: .white)
+        RewindLogoIcon(color: .retraceInk2)
             .frame(width: 18, height: 12)
     }
 }
@@ -615,24 +593,24 @@ private struct RewindCutoffCalendarTrigger: View {
     var body: some View {
         Button(action: openCalendar) {
             HStack(spacing: 10) {
-                Image(systemName: "calendar")
-                    .font(.retraceCalloutMedium)
+                RetraceSymbol("calendar", size: 13.5)
 
                 Text(selectedDate.formatted(date: .abbreviated, time: .omitted))
-                    .font(.retraceCaptionMedium)
-                    .foregroundColor(.white)
+                    .font(.retraceMono)
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
             .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isDisabled ? Color.white.opacity(0.04) : Color.white.opacity(0.08))
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .fill(Color.retraceSurface)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isPresented ? RetraceMenuStyle.actionBlue.opacity(0.75) : Color.white.opacity(0.12), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .stroke(isPresented ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
             )
+            .opacity(isDisabled ? 0.5 : 1)
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
@@ -650,8 +628,7 @@ private struct RewindCutoffCalendarTrigger: View {
     private var browserPanel: some View {
         VStack(spacing: 0) {
             calendarPane
-            Divider()
-                .background(Color.white.opacity(0.1))
+            Divider().overlay(Color.retraceBorder)
 
             HStack {
                 Button("Today") {
@@ -660,8 +637,8 @@ private struct RewindCutoffCalendarTrigger: View {
                     displayedMonth = monthAnchor(for: today)
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white.opacity(0.82))
+                .font(.retraceTinyBold)
+                .foregroundColor(.retraceInk2)
 
                 Spacer()
 
@@ -669,20 +646,20 @@ private struct RewindCutoffCalendarTrigger: View {
                     closeWithoutSaving()
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white.opacity(0.68))
+                .font(.retraceTinyBold)
+                .foregroundColor(.retraceInk2)
 
                 Button("Apply") {
                     commitSelection()
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white)
+                .font(.retraceTinyBold)
+                .foregroundColor(.retraceOnAccent)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(RetraceMenuStyle.actionBlue)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceAccent)
                 )
             }
             .padding(.horizontal, 14)
@@ -690,30 +667,14 @@ private struct RewindCutoffCalendarTrigger: View {
         }
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(Color(white: 0.08))
+                RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                    .fill(Color.retraceSurface)
 
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.08), Color.white.opacity(0.02)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.15), Color.white.opacity(0.03)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
+                RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                    .stroke(Color.retraceBorder, lineWidth: 1)
             }
         )
-        .shadow(color: .black.opacity(0.28), radius: 28, y: 14)
+        .retraceElevation(.lg)
         .frame(width: panelWidth)
         .padding(2)
     }
@@ -724,7 +685,7 @@ private struct RewindCutoffCalendarTrigger: View {
                 Spacer()
                 Text("Choose Cutoff Date")
                     .font(.retraceCalloutBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(.retraceInk)
                 Spacer()
             }
             .padding(.top, 14)
@@ -732,32 +693,32 @@ private struct RewindCutoffCalendarTrigger: View {
 
             HStack {
                 Button(action: { changeMonth(by: -1) }) {
-                    Image(systemName: "chevron.left")
-                        .font(.retraceCaption2Bold)
-                        .foregroundColor(.white.opacity(0.6))
+                    RetraceSymbol("chevron.left", size: 12, weight: .semibold)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.08))
+                        .background(Color.retraceSurfaceSunken)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Previous month")
 
                 Spacer()
 
                 Text(monthYearString)
-                    .font(.retraceCaptionMedium)
-                    .foregroundColor(.white.opacity(0.8))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
 
                 Spacer()
 
                 Button(action: { changeMonth(by: 1) }) {
-                    Image(systemName: "chevron.right")
-                        .font(.retraceCaption2Bold)
-                        .foregroundColor(.white.opacity(canAdvanceMonth ? 0.6 : 0.25))
+                    RetraceSymbol("chevron.right", size: 12, weight: .semibold)
+                        .foregroundColor(canAdvanceMonth ? .retraceInk2 : .retraceMuted)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(canAdvanceMonth ? 0.08 : 0.03))
+                        .background(canAdvanceMonth ? Color.retraceSurfaceSunken : Color.clear)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Next month")
                 .disabled(!canAdvanceMonth)
             }
             .padding(.horizontal, 16)
@@ -767,7 +728,7 @@ private struct RewindCutoffCalendarTrigger: View {
                 ForEach(weekdaySymbols, id: \.self) { day in
                     Text(day)
                         .font(.retraceTinyMedium)
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.retraceMuted)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -881,23 +842,23 @@ private struct RewindCutoffCalendarTrigger: View {
                     selectDay(normalizedDay)
                 }) {
                     Text("\(calendar.component(.day, from: normalizedDay))")
-                        .font(isToday ? .retraceCaptionBold : .retraceCaption)
+                        .font(RetraceFont.mono(size: 12.5, weight: isToday ? .medium : .regular))
                         .foregroundColor(
                             isFuture
-                                ? .white.opacity(0.16)
+                                ? Color.retraceMuted.opacity(0.5)
                                 : (isSelected
-                                    ? .white
-                                    : .white.opacity(isCurrentMonth ? 0.9 : 0.35))
+                                    ? .retraceOnAccent
+                                    : (isCurrentMonth ? .retraceInk : .retraceMuted))
                         )
                         .frame(width: 32, height: 32)
                         .background(
                             ZStack {
                                 if isSelected {
                                     Circle()
-                                        .fill(RetraceMenuStyle.actionBlue)
+                                        .fill(Color.retraceAccent)
                                 } else if isToday {
                                     Circle()
-                                        .stroke(RetraceMenuStyle.actionBlue, lineWidth: 1.5)
+                                        .stroke(Color.retraceAccent, lineWidth: 1.5)
                                 }
                             }
                         )

@@ -43,20 +43,19 @@ public struct OpenRouterSettingsView: View {
                 HStack(spacing: 12) {
                     ZStack {
                         Circle()
-                            .fill(LinearGradient.retraceAccentGradient.opacity(0.15))
+                            .fill(Color.retraceAccentWash)
                             .frame(width: 40, height: 40)
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(LinearGradient.retraceAccentGradient)
+                        RetraceSymbol("sparkles", size: 18, weight: .semibold)
+                            .foregroundColor(.retraceAccent)
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("OpenRouter & AI Search")
-                            .font(.retraceTitle3)
-                            .foregroundColor(.retracePrimary)
+                            .font(.retraceTitle2)
+                            .foregroundColor(.retraceInk)
                         Text("Granular AI search, natural language queries, and timeline Q&A with any LLM")
-                            .font(.retraceCaption)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                     }
                 }
             }
@@ -64,21 +63,25 @@ public struct OpenRouterSettingsView: View {
 
             // Master Enable Toggle
             VStack(alignment: .leading, spacing: 16) {
-                Toggle(isOn: $isEnabled) {
+                HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Enable AI Granular Search")
                             .font(.retraceBodyMedium)
                             .foregroundColor(.retracePrimary)
                         Text("Synthesize answers across screen history using OpenRouter models")
-                            .font(.retraceCaption)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                     }
+
+                    Spacer(minLength: 12)
+
+                    Toggle("", isOn: $isEnabled)
+                        .labelsHidden()
+                        .toggleStyle(RetraceSwitchStyle())
+                        .accessibilityLabel("Enable AI Granular Search")
                 }
-                .toggleStyle(SwitchToggleStyle(tint: .retraceAccent))
             }
-            .padding(16)
-            .background(Color.white.opacity(0.04))
-            .cornerRadius(12)
+            .retraceCard()
 
             // API Key Section
             VStack(alignment: .leading, spacing: 16) {
@@ -95,8 +98,7 @@ public struct OpenRouterSettingsView: View {
                         HStack(spacing: 4) {
                             Text("Get API Key")
                                 .font(.retraceCaptionMedium)
-                            Image(systemName: "arrow.up.right")
-                                .font(.system(size: 10))
+                            RetraceSymbol("arrow.up.right", size: 10, label: "")
                         }
                         .foregroundColor(.retraceAccent)
                     }
@@ -105,87 +107,90 @@ public struct OpenRouterSettingsView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("OpenRouter API Key")
-                        .font(.retraceCaptionMedium)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
 
                     HStack(spacing: 8) {
                         if isShowingKey {
                             TextField("sk-or-v1-...", text: $apiKeyInput)
                                 .textFieldStyle(.plain)
-                                .font(.system(.body, design: .monospaced))
+                                .font(.retraceMono)
+                                .foregroundColor(.retraceInk)
                                 .padding(10)
-                                .background(Color.white.opacity(0.06))
-                                .cornerRadius(8)
+                                .background(Color.retraceSurface)
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorderStrong, lineWidth: 1))
                                 .onSubmit {
                                     saveKey()
                                 }
                         } else {
                             SecureField(hasStoredKey ? "••••••••••••••••••••••••••••••••" : "sk-or-v1-...", text: $apiKeyInput)
                                 .textFieldStyle(.plain)
-                                .font(.system(.body, design: .monospaced))
+                                .font(.retraceMono)
+                                .foregroundColor(.retraceInk)
                                 .padding(10)
-                                .background(Color.white.opacity(0.06))
-                                .cornerRadius(8)
+                                .background(Color.retraceSurface)
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorderStrong, lineWidth: 1))
                                 .onSubmit {
                                     saveKey()
                                 }
                         }
 
                         Button(action: toggleKeyVisibility) {
-                            Image(systemName: isShowingKey ? "eye.slash" : "eye")
+                            RetraceSymbol(isShowingKey ? "eye.slash" : "eye", size: 13)
                                 .foregroundColor(.retraceSecondary)
                                 .frame(width: 36, height: 36)
-                                .background(Color.white.opacity(0.06))
-                                .cornerRadius(8)
+                                .background(Color.retraceSurface)
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorderStrong, lineWidth: 1))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(isShowingKey ? "Hide API key" : "Show API key")
                         .help(isShowingKey ? "Hide API key" : "Show API key")
 
                         if hasStoredKey || !apiKeyInput.isEmpty {
                             Button(action: copyKey) {
-                                Image(systemName: "doc.on.doc")
+                                RetraceSymbol("doc.on.doc", size: 13)
                                     .foregroundColor(.retraceSecondary)
                                     .frame(width: 36, height: 36)
-                                    .background(Color.white.opacity(0.06))
-                                    .cornerRadius(8)
+                                    .background(Color.retraceSurface)
+                                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorderStrong, lineWidth: 1))
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Copy API key")
                             .help("Copy API key to clipboard")
                         }
 
                         Button(action: saveKey) {
                             Text("Save")
-                                .font(.retraceCaptionMedium)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 14)
-                                .frame(height: 36)
-                                .background(Color.retraceAccent)
-                                .cornerRadius(8)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(RetraceButtonStyle(.primary))
                         .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                         if hasStoredKey {
                             Button(action: deleteKey) {
-                                Image(systemName: "trash")
-                                    .foregroundColor(.red.opacity(0.8))
+                                RetraceSymbol("trash", size: 13)
+                                    .foregroundColor(.retraceCritical.opacity(0.8))
                                     .frame(width: 36, height: 36)
-                                    .background(Color.white.opacity(0.06))
-                                    .cornerRadius(8)
+                                    .background(Color.retraceSurface)
+                                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorderStrong, lineWidth: 1))
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Delete API key")
                             .help("Delete API key from Keychain")
                         }
                     }
 
                     if hasStoredKey {
                         HStack(spacing: 6) {
-                            Image(systemName: "checkmark.shield.fill")
-                                .font(.system(size: 11))
-                                .foregroundColor(.green)
+                            RetraceSymbol("checkmark.shield.fill", size: 11)
+                                .foregroundColor(.retraceGood)
                             Text("API Key is securely saved in macOS Keychain")
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
                         }
                         .padding(.top, 2)
                     }
@@ -200,25 +205,18 @@ public struct OpenRouterSettingsView: View {
                                     .scaleEffect(0.7)
                                     .frame(width: 14, height: 14)
                             } else {
-                                Image(systemName: "bolt.horizontal.fill")
-                                    .font(.system(size: 11))
+                                RetraceSymbol("bolt.horizontal.fill", size: 11)
                             }
                             Text("Test API Connection")
-                                .font(.retraceCaptionMedium)
                         }
-                        .foregroundColor(.retracePrimary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.08))
-                        .cornerRadius(8)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.secondary))
                     .disabled(isTestingConnection || (!hasStoredKey && apiKeyInput.isEmpty))
 
                     if let message = testStatusMessage {
                         HStack(spacing: 6) {
-                            Image(systemName: testStatusIsError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
-                                .foregroundColor(testStatusIsError ? .orange : .green)
+                            RetraceSymbol(testStatusIsError ? "exclamationmark.circle.fill" : "checkmark.circle.fill", size: 13)
+                                .foregroundColor(testStatusIsError ? .retraceWarningText : .retraceGood)
                             Text(message)
                                 .font(.retraceCaption)
                                 .foregroundColor(.retracePrimary)
@@ -226,9 +224,7 @@ public struct OpenRouterSettingsView: View {
                     }
                 }
             }
-            .padding(16)
-            .background(Color.white.opacity(0.04))
-            .cornerRadius(12)
+            .retraceCard()
 
             // Model Selection
             VStack(alignment: .leading, spacing: 16) {
@@ -238,8 +234,8 @@ public struct OpenRouterSettingsView: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Selected Model")
-                        .font(.retraceCaptionMedium)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
 
                     Picker("", selection: $selectedModelPickerTag) {
                         ForEach(OpenRouterConfig.popularModels, id: \.self) { modelName in
@@ -260,10 +256,12 @@ public struct OpenRouterSettingsView: View {
                         HStack {
                             TextField("Enter any OpenRouter model slug (e.g. qwen/qwen-2.5-72b-instruct)", text: $customModelInput)
                                 .textFieldStyle(.plain)
-                                .font(.system(.body, design: .monospaced))
+                                .font(.retraceMono)
+                                .foregroundColor(.retraceInk)
                                 .padding(10)
-                                .background(Color.white.opacity(0.06))
-                                .cornerRadius(8)
+                                .background(Color.retraceSurface)
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorderStrong, lineWidth: 1))
 
                             Button("Apply") {
                                 let trimmed = customModelInput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -271,87 +269,87 @@ public struct OpenRouterSettingsView: View {
                                     selectedModel = trimmed
                                 }
                             }
-                            .font(.retraceCaptionMedium)
-                            .foregroundColor(.retracePrimary)
-                            .padding(.horizontal, 12)
-                            .frame(height: 36)
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(8)
-                            .buttonStyle(.plain)
+                            .buttonStyle(RetraceButtonStyle(.secondary))
                         }
                         .padding(.top, 4)
                     }
                 }
 
-                Divider().opacity(0.1)
+                Divider().overlay(Color.retraceBorder)
 
                 // Granular Context Window
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Context Window Size")
-                            .font(.retraceCaptionMedium)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                         Spacer()
                         Text("\(Int(maxContextFrames)) frames")
-                            .font(.retraceCaptionMedium)
-                            .foregroundColor(.retracePrimary)
+                            .font(.retraceMonoSmall)
+                            .monospacedDigit()
+                            .foregroundColor(.retraceInk)
                     }
 
                     Slider(value: $maxContextFrames, in: 5...50, step: 5)
                         .tint(.retraceAccent)
 
                     Text("Number of highest-relevance OCR frames passed into the model prompt.")
-                        .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary.opacity(0.8))
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 }
 
-                Divider().opacity(0.1)
+                Divider().overlay(Color.retraceBorder)
 
                 // Temperature Slider
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("Temperature (Creativity vs Determinism)")
-                            .font(.retraceCaptionMedium)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                         Spacer()
                         Text(String(format: "%.1f", temperature))
-                            .font(.retraceCaptionMedium)
-                            .foregroundColor(.retracePrimary)
+                            .font(.retraceMonoSmall)
+                            .monospacedDigit()
+                            .foregroundColor(.retraceInk)
                     }
 
                     Slider(value: $temperature, in: 0.0...1.0, step: 0.1)
                         .tint(.retraceAccent)
 
                     Text("Lower values (0.0 - 0.3) provide more factual, grounded citations.")
-                        .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary.opacity(0.8))
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 }
             }
-            .padding(16)
-            .background(Color.white.opacity(0.04))
-            .cornerRadius(12)
+            .retraceCard()
 
             // AI Visual Semantic Indexing
             VStack(alignment: .leading, spacing: 16) {
-                Toggle(isOn: $isSemanticIndexingEnabled) {
+                HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Enable AI Visual Indexing")
                             .font(.retraceHeadline)
                             .foregroundColor(.retracePrimary)
                         Text("Processes frames in two stages: fast on-device Apple Intelligence baseline indexing (unlimited, zero network requests) followed by deep visual multi-layer cross-referencing (self-limited to 600 requests/day). Direct searches in the timeline have an independent dedicated quota of 100 requests/day. Screenshots from apps excluded from OCR are never sent.")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.8))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                     }
+
+                    Spacer(minLength: 12)
+
+                    Toggle("", isOn: $isSemanticIndexingEnabled)
+                        .labelsHidden()
+                        .toggleStyle(RetraceSwitchStyle())
+                        .accessibilityLabel("Enable AI Visual Indexing")
                 }
-                .toggleStyle(.switch)
 
                 if isSemanticIndexingEnabled {
-                    Divider().opacity(0.1)
+                    Divider().overlay(Color.retraceBorder)
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Indexing Model (must support image input)")
-                            .font(.retraceCaptionMedium)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
 
                         Picker("", selection: $indexingModelPickerTag) {
                             Text("NVIDIA Nemotron 3 Nano Omni (free, vision)").tag(OpenRouterCredentialsManager.defaultIndexingModel)
@@ -370,10 +368,12 @@ public struct OpenRouterSettingsView: View {
                             HStack {
                                 TextField("Enter a vision-capable OpenRouter model slug", text: $customIndexingModelInput)
                                     .textFieldStyle(.plain)
-                                    .font(.system(.body, design: .monospaced))
+                                    .font(.retraceMono)
+                                    .foregroundColor(.retraceInk)
                                     .padding(10)
-                                    .background(Color.white.opacity(0.06))
-                                    .cornerRadius(8)
+                                    .background(Color.retraceSurface)
+                                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorderStrong, lineWidth: 1))
 
                                 Button("Apply") {
                                     let trimmed = customIndexingModelInput.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -381,19 +381,13 @@ public struct OpenRouterSettingsView: View {
                                         indexingModel = trimmed
                                     }
                                 }
-                                .font(.retraceCaptionMedium)
-                                .foregroundColor(.retracePrimary)
-                                .padding(.horizontal, 12)
-                                .frame(height: 36)
-                                .background(Color.white.opacity(0.08))
-                                .cornerRadius(8)
-                                .buttonStyle(.plain)
+                                .buttonStyle(RetraceButtonStyle(.secondary))
                             }
                             .padding(.top, 4)
                         }
                     }
 
-                    Divider().opacity(0.1)
+                    Divider().overlay(Color.retraceBorder)
 
                     HStack(spacing: 12) {
                         Button(action: {
@@ -420,33 +414,24 @@ public struct OpenRouterSettingsView: View {
                                         .scaleEffect(0.6)
                                         .frame(width: 14, height: 14)
                                 } else {
-                                    Image(systemName: "arrow.clockwise")
-                                        .font(.system(size: 11, weight: .semibold))
+                                    RetraceSymbol("arrow.clockwise", size: 11, weight: .semibold, label: "")
                                 }
                                 Text(isRestartingIndexing ? "Restarting…" : "Force Restart Indexing")
-                                    .font(.retraceCaptionMedium)
                             }
-                            .foregroundColor(.retracePrimary)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(8)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(RetraceButtonStyle(.secondary))
                         .disabled(isRestartingIndexing)
                         .help("Clears rate-limit backoff, resets stalled frames to pending, and immediately triggers an indexing cycle")
 
                         if let msg = restartStatusMessage {
                             Text(msg)
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
                         }
                     }
                 }
             }
-            .padding(16)
-            .background(Color.white.opacity(0.04))
-            .cornerRadius(12)
+            .retraceCard()
         }
         .onAppear {
             loadKeyStatus()

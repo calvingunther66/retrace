@@ -57,47 +57,42 @@ struct ModernSettingsCard<Content: View>: View {
                     if let customIcon {
                         customIcon
                     } else if let icon {
-                        Image(systemName: icon)
-                            .font(.retraceCalloutMedium)
-                            .foregroundColor(dangerous ? .retraceDanger : .retraceSecondary)
+                        RetraceSymbol(icon, size: 13.5)
+                            .foregroundColor(dangerous ? .retraceCritical : .retraceInk2)
                     }
                 }
                 .frame(width: 18, height: 16, alignment: .center)
 
                 Text(title)
-                    .font(.retraceBodyBold)
-                    .foregroundColor(dangerous ? .retraceDanger : .retracePrimary)
+                    .font(.retraceHeadline)
+                    .foregroundColor(dangerous ? .retraceCritical : .retraceInk)
 
                 Spacer()
 
                 if let action = trailingAction, let actionIcon = trailingActionIcon {
                     Button(action: action) {
-                        Image(systemName: actionIcon)
-                            .font(.system(size: 14))
-                            .foregroundColor(.white.opacity(0.5))
+                        RetraceSymbol(actionIcon, size: 14)
+                            .foregroundColor(.retraceMuted)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(trailingActionTooltip ?? "Action")
                     .help(trailingActionTooltip ?? "")
                 }
             }
 
             content()
         }
-        .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white.opacity(0.03))
-        )
+        .retraceCard()
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(dangerous ? Color.retraceDanger.opacity(0.3) : Color.white.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(dangerous ? Color.retraceCritical.opacity(0.4) : Color.clear, lineWidth: 1)
         )
     }
 }
 
 struct RewindLogoIcon: View {
-    var color: Color = .white
+    var color: Color = .retraceInk
 
     var body: some View {
         RewindLogoShape()
@@ -164,27 +159,21 @@ struct ModernToggleRow: View {
                         .foregroundColor(disabled ? .retraceSecondary : .retracePrimary)
 
                     if let badge = badge {
-                        Text(badge)
-                            .font(.retraceTinyBold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.retraceAccent.opacity(0.3))
-                            .cornerRadius(4)
+                        RetraceBadge(badge, tone: .accent)
                     }
                 }
 
                 Text(subtitle)
-                    .font(.retraceCaption2)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
 
             Spacer()
 
             Toggle("", isOn: $isOn)
                 .labelsHidden()
-                .toggleStyle(SwitchToggleStyle(tint: .retraceAccent))
-                .scaleEffect(0.85)
+                .toggleStyle(RetraceSwitchStyle())
+                .accessibilityLabel(title)
                 .disabled(disabled)
         }
         .padding(.vertical, 4)
@@ -205,11 +194,12 @@ struct ModernShortcutRow: View {
 
             Text(shortcut)
                 .font(.retraceMono)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(6)
+                .background(Color.retraceSurfaceSunken)
+                .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorderStrong, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
         }
     }
 }
@@ -234,29 +224,29 @@ struct ModernPermissionRow: View {
                 ZStack {
                     HStack(spacing: 8) {
                         Circle()
-                            .fill(Color.retraceSuccess)
+                            .fill(Color.retraceGood)
                             .frame(width: 8, height: 8)
 
                         Text(status.rawValue)
                             .font(.retraceCaptionMedium)
-                            .foregroundColor(.retraceSuccess)
+                            .foregroundColor(.retraceGood)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .frame(width: Self.grantedControlWidth)
-                    .background(Color.retraceSuccess.opacity(0.1))
-                    .cornerRadius(8)
+                    .background(Color.retraceGoodBg)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                     .opacity((openSettingsAction != nil && isHoveringGrantedControl) ? 0 : 1)
 
                     if let openSettingsAction {
                         Button(action: openSettingsAction) {
                             Text("Change")
                                 .font(.retraceCaption2Bold)
-                                .foregroundColor(.white)
+                                .foregroundColor(.retraceOnAccent)
                                 .padding(.vertical, 6)
                                 .frame(width: Self.grantedControlWidth)
                                 .background(Color.retraceAccent)
-                                .cornerRadius(6)
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         }
                         .buttonStyle(.plain)
                         .opacity(isHoveringGrantedControl ? 1 : 0)
@@ -273,39 +263,38 @@ struct ModernPermissionRow: View {
                 HStack(spacing: 12) {
                     HStack(spacing: 8) {
                         Circle()
-                            .fill(Color.retraceWarning)
+                            .fill(Color.retraceWarningText)
                             .frame(width: 8, height: 8)
 
                         Text("Not Enabled")
                             .font(.retraceCaptionMedium)
-                            .foregroundColor(.retraceWarning)
+                            .foregroundColor(.retraceWarningText)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(Color.retraceWarning.opacity(0.1))
-                    .cornerRadius(8)
+                    .background(Color.retraceWarningBg)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
 
                     if let action = enableAction {
                         Button(action: action) {
                             Text("Enable")
                                 .font(.retraceCaption2Bold)
-                                .foregroundColor(.white)
+                                .foregroundColor(.retraceOnAccent)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 6)
                                 .background(Color.retraceAccent)
-                                .cornerRadius(6)
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
 
                     if let settingsAction = openSettingsAction {
                         Button(action: settingsAction) {
-                            Image(systemName: "gear")
-                                .font(.retraceCaption2Medium)
+                            RetraceSymbol("gear", size: 12)
                                 .foregroundColor(.retraceSecondary)
                                 .padding(6)
-                                .background(Color.white.opacity(0.05))
-                                .cornerRadius(6)
+                                .background(Color.retraceSurfaceSunken)
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         }
                         .buttonStyle(.plain)
                         .help("Open System Settings")
@@ -330,12 +319,13 @@ struct ModernSlider: View {
             let thumbPosition = trackWidth * progress
 
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.white.opacity(0.08))
+                Capsule(style: .continuous)
+                    .fill(Color.retraceSurfaceSunken)
+                    .overlay(Capsule(style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
                     .frame(height: 6)
 
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(LinearGradient.retraceAccentGradient)
+                Capsule(style: .continuous)
+                    .fill(Color.retraceAccent)
                     .frame(width: max(0, thumbPosition), height: 6)
 
                 Circle()
@@ -343,9 +333,9 @@ struct ModernSlider: View {
                     .frame(width: isDragging ? 16 : 14, height: isDragging ? 16 : 14)
                     .overlay(
                         Circle()
-                            .stroke(Color.white.opacity(0.3), lineWidth: 2)
+                            .stroke(Color.retraceSurface, lineWidth: 2)
                     )
-                    .shadow(color: Color.retraceAccent.opacity(0.5), radius: isDragging ? 6 : 4)
+                    .retraceElevation(.sm)
                     .offset(x: max(0, min(thumbPosition - 7, trackWidth - 14)))
             }
             .frame(height: 20)
@@ -385,21 +375,27 @@ struct ModernSegmentedPicker<T: Hashable, Content: View>: View {
                 Button(action: { selection = option }) {
                     label(option)
                         .font(selection == option ? .retraceCaptionBold : .retraceCaptionMedium)
-                        .foregroundColor(selection == option ? .retracePrimary : .retraceSecondary)
+                        .foregroundColor(selection == option ? .retraceInk : .retraceInk2)
                         .frame(maxWidth: .infinity, minHeight: 36)
                         .padding(.vertical, 10)
                         .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(selection == option ? Color.white.opacity(0.1) : Color.clear)
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .fill(selection == option ? Color.retraceAccentWash : Color.clear)
                         )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .stroke(selection == option ? Color.retraceAccent : Color.clear, lineWidth: 1)
+                        )
+                        .retraceFocusRing(cornerRadius: .radiusSm)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(4)
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(10)
+        .background(Color.retraceSurfaceSunken)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
     }
 }
 
@@ -421,22 +417,23 @@ struct ModernDropdown: View {
         } label: {
             HStack {
                 Text(options.first(where: { $0.0 == selection })?.1 ?? "")
-                    .font(.retraceCalloutMedium)
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceCallout)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
+                // Native Menu labels only reliably render Text/Image, so this stays an SF Symbol.
                 Image(systemName: "chevron.down")
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceCaption2)
+                    .foregroundColor(.retraceInk2)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(Color.white.opacity(0.05))
-            .cornerRadius(10)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
             )
         }
         .menuStyle(.borderlessButton)
@@ -457,46 +454,19 @@ struct ModernButton: View {
         Button(action: action) {
             HStack(spacing: 8) {
                 if let icon = icon {
-                    Image(systemName: icon)
-                        .font(.retraceCaptionMedium)
+                    RetraceSymbol(icon, size: 12.5)
                 }
                 Text(title)
-                    .font(.retraceCaptionMedium)
             }
-            .foregroundColor(foregroundColor)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(backgroundColor)
-            .cornerRadius(10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(borderColor, lineWidth: 1)
-            )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RetraceButtonStyle(buttonKind))
     }
 
-    private var foregroundColor: Color {
+    private var buttonKind: RetraceButtonKind {
         switch style {
-        case .primary: return .white
-        case .secondary: return .retracePrimary
-        case .danger: return .retraceDanger
-        }
-    }
-
-    private var backgroundColor: Color {
-        switch style {
-        case .primary: return .retraceAccent
-        case .secondary: return Color.white.opacity(0.05)
-        case .danger: return Color.retraceDanger.opacity(0.1)
-        }
-    }
-
-    private var borderColor: Color {
-        switch style {
-        case .primary: return Color.clear
-        case .secondary: return Color.white.opacity(0.08)
-        case .danger: return Color.retraceDanger.opacity(0.3)
+        case .primary: return .primary
+        case .secondary: return .secondary
+        case .danger: return .danger
         }
     }
 }
@@ -512,84 +482,51 @@ struct FontStylePicker: View {
                 }) {
                     VStack(spacing: 8) {
                         Text("Aa")
-                            .font(.system(size: 24, weight: .semibold, design: style.design))
-                            .foregroundColor(selection == style ? .retracePrimary : .retraceSecondary)
+                            .font(Self.previewFont(style, size: 24, semibold: true))
+                            .foregroundColor(selection == style ? .retraceInk : .retraceInk2)
 
                         VStack(spacing: 2) {
                             Text(style.displayName)
-                                .font(.system(size: 11, weight: .semibold, design: style.design))
-                                .foregroundColor(selection == style ? .retracePrimary : .retraceSecondary)
+                                .font(Self.previewFont(style, size: 11, semibold: true))
+                                .foregroundColor(selection == style ? .retraceInk : .retraceInk2)
 
                             Text(style.description)
-                                .font(.system(size: 10, weight: .regular, design: style.design))
-                                .foregroundColor(.retraceSecondary)
+                                .font(Self.previewFont(style, size: 10, semibold: false))
+                                .foregroundColor(.retraceInk2)
                                 .lineLimit(1)
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(selection == style ? Color.white.opacity(0.08) : Color.clear)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .fill(selection == style ? Color.retraceAccentWash : Color.clear)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(selection == style ? Color.retraceAccent.opacity(0.5) : Color.clear, lineWidth: 1.5)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .stroke(selection == style ? Color.retraceAccent : Color.clear, lineWidth: 1)
                     )
+                    .retraceFocusRing(cornerRadius: .radiusMd)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(6)
-        .background(Color.white.opacity(0.03))
-        .cornerRadius(12)
-    }
-}
-
-struct ColorThemePicker: View {
-    @Binding var selection: MilestoneCelebrationManager.ColorTheme
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ForEach(MilestoneCelebrationManager.ColorTheme.allCases) { theme in
-                themeOptionButton(for: theme)
-            }
-        }
-        .padding(6)
-        .background(Color.white.opacity(0.03))
-        .cornerRadius(12)
+        .background(Color.retraceSurfaceSunken)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
     }
 
-    @ViewBuilder
-    private func themeOptionButton(for theme: MilestoneCelebrationManager.ColorTheme) -> some View {
-        let isSelected = selection == theme
-
-        Button(action: {
-            selection = theme
-        }) {
-            VStack(spacing: 8) {
-                Circle()
-                    .fill(theme.glowColor)
-                    .frame(width: 32, height: 32)
-
-                Text(theme.displayName)
-                    .font(.retraceCaptionBold)
-                    .foregroundColor(isSelected ? .retracePrimary : .retraceSecondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? Color.white.opacity(0.08) : Color.clear)
+    /// Each option previews its own typeface, so this deliberately ignores the app-wide current style.
+    private static func previewFont(_ style: RetraceFontStyle, size: CGFloat, semibold: Bool) -> Font {
+        if style == .default, RetraceFontRegistry.isAvailable {
+            return .custom(
+                semibold ? RetraceFontRegistry.Face.serifSemibold : RetraceFontRegistry.Face.serifRegular,
+                fixedSize: size
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isSelected ? theme.glowColor.opacity(0.5) : Color.clear, lineWidth: 1.5)
-            )
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        return .system(size: size, weight: semibold ? .semibold : .regular, design: style.design)
     }
 }
 
@@ -602,12 +539,16 @@ struct CaptureIntervalPicker: View {
             ForEach(Self.intervals, id: \.self) { interval in
                 Text(Self.intervalLabel(interval))
                     .font(selectedInterval == interval ? .retraceCalloutBold : .retraceCalloutMedium)
-                    .foregroundColor(selectedInterval == interval ? .retracePrimary : .retraceSecondary)
+                    .foregroundColor(selectedInterval == interval ? .retraceInk : .retraceInk2)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(selectedInterval == interval ? Color.white.opacity(0.1) : Color.clear)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(selectedInterval == interval ? Color.retraceAccentWash : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .stroke(selectedInterval == interval ? Color.retraceAccent : Color.clear, lineWidth: 1)
                     )
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -616,8 +557,8 @@ struct CaptureIntervalPicker: View {
             }
         }
         .padding(4)
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(10)
+        .background(Color.retraceSurfaceSunken)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
     }
 
     static func intervalLabel(_ interval: Double) -> String {
@@ -644,12 +585,16 @@ struct PauseReminderDelayPicker: View {
             ForEach(options, id: \.minutes) { option in
                 Text(option.label)
                     .font(selectedMinutes == option.minutes ? .retraceCalloutBold : .retraceCalloutMedium)
-                    .foregroundColor(selectedMinutes == option.minutes ? .retracePrimary : .retraceSecondary)
+                    .foregroundColor(selectedMinutes == option.minutes ? .retraceInk : .retraceInk2)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(selectedMinutes == option.minutes ? Color.white.opacity(0.1) : Color.clear)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(selectedMinutes == option.minutes ? Color.retraceAccentWash : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .stroke(selectedMinutes == option.minutes ? Color.retraceAccent : Color.clear, lineWidth: 1)
                     )
                     .contentShape(Rectangle())
                     .onTapGesture {
@@ -658,8 +603,8 @@ struct PauseReminderDelayPicker: View {
             }
         }
         .padding(4)
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(10)
+        .background(Color.retraceSurfaceSunken)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
     }
 }
 
@@ -688,26 +633,25 @@ struct RetentionPolicyPicker: View {
                 let segmentWidth = trackWidth / CGFloat(options.count - 1)
 
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.white.opacity(0.08))
+                    Capsule(style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
                         .frame(width: trackWidth, height: 4)
                         .offset(x: horizontalInset)
 
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(LinearGradient.retraceAccentGradient)
+                    Capsule(style: .continuous)
+                        .fill(Color.retraceAccent)
                         .frame(width: max(0, CGFloat(sliderIndex) * segmentWidth), height: 4)
                         .offset(x: horizontalInset)
 
                     HStack(spacing: 0) {
                         ForEach(0..<options.count, id: \.self) { index in
                             Circle()
-                                .fill(index <= Int(sliderIndex) ? Color.retraceAccent : Color.white.opacity(0.3))
+                                .fill(index <= Int(sliderIndex) ? Color.retraceAccent : Color.retraceBorderStrong)
                                 .frame(width: index == Int(sliderIndex) ? 14 : 8, height: index == Int(sliderIndex) ? 14 : 8)
                                 .overlay(
                                     Circle()
-                                        .stroke(Color.white.opacity(0.2), lineWidth: index == Int(sliderIndex) ? 2 : 0)
+                                        .stroke(Color.retraceSurface, lineWidth: index == Int(sliderIndex) ? 2 : 0)
                                 )
-                                .shadow(color: index == Int(sliderIndex) ? Color.retraceAccent.opacity(0.5) : .clear, radius: 4)
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -739,7 +683,7 @@ struct RetentionPolicyPicker: View {
                 ForEach(0..<options.count, id: \.self) { index in
                     Text(options[index].label)
                         .font(index == Int(sliderIndex) ? .retraceTinyBold : .retraceTiny)
-                        .foregroundColor(index == Int(sliderIndex) ? .retracePrimary : .retraceSecondary)
+                        .foregroundColor(index == Int(sliderIndex) ? .retraceInk : .retraceInk2)
                         .frame(maxWidth: .infinity)
                 }
             }

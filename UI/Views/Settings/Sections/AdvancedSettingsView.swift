@@ -65,8 +65,8 @@ extension SettingsView {
                             .foregroundColor(.retracePrimary)
 
                         Text("Refresh cached app names if they appear incorrect or outdated")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                     }
 
                     Spacer()
@@ -97,8 +97,8 @@ extension SettingsView {
             // Build info section
             VStack(alignment: .leading, spacing: 6) {
                 Text("Build Info")
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
 
                 buildInfoRow(label: "Version", value: BuildInfo.fullVersion)
                 buildInfoRow(label: "Build Type", value: AdvancedSettingsViewModel.buildTypeText(isDevBuild: BuildInfo.isDevBuild))
@@ -111,7 +111,7 @@ extension SettingsView {
                 buildInfoRow(label: "Config", value: BuildInfo.buildConfig)
             }
 
-            Divider()
+            Divider().overlay(Color.retraceBorder)
                 .padding(.vertical, 8)
 
             ModernToggleRow(
@@ -128,7 +128,7 @@ extension SettingsView {
 
             // Temporarily disabled while overlay diffing behavior is under investigation.
 
-            Divider()
+            Divider().overlay(Color.retraceBorder)
                 .padding(.vertical, 8)
 
             ModernButton(title: "Show Database Schema", icon: "doc.text", style: .secondary) {
@@ -140,7 +140,7 @@ extension SettingsView {
             }
 
             if BuildInfo.isDevBuild {
-                Divider()
+                Divider().overlay(Color.retraceBorder)
                     .padding(.vertical, 8)
 
                 ModernButton(title: "Reset Master Key", icon: "key.horizontal", style: .danger) {
@@ -154,13 +154,13 @@ extension SettingsView {
     func buildInfoRow(label: String, value: String, fullValue: String? = nil, url: URL? = nil) -> some View {
         HStack(spacing: 8) {
             Text(label)
-                .font(.retraceCaption2)
-                .foregroundColor(.retraceSecondary)
+                .font(.retraceMeta)
+                .foregroundColor(.retraceMuted)
                 .frame(width: 80, alignment: .trailing)
             if let url {
                 Text(value)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(.blue.opacity(0.8))
+                    .font(RetraceFont.mono(size: 11, weight: .regular))
+                    .foregroundColor(.retraceAccent)
                     .textSelection(.enabled)
                     .help(fullValue ?? value)
                     .onTapGesture { NSWorkspace.shared.open(url) }
@@ -169,7 +169,7 @@ extension SettingsView {
                     }
             } else {
                 Text(value)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(RetraceFont.mono(size: 11, weight: .regular))
                     .foregroundColor(.retracePrimary)
                     .textSelection(.enabled)
                     .help(fullValue ?? value)

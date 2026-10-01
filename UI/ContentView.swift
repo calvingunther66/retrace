@@ -62,7 +62,7 @@ public struct ContentView: View {
                 }
             } else {
                 // Loading state - show nothing or a loading indicator
-                Color.retraceBackground
+                Color.retracePage
                     .ignoresSafeArea()
             }
         }
@@ -254,7 +254,6 @@ struct ContentView_Previews: PreviewProvider {
         let coordinator = AppCoordinator()
 
         ContentView(coordinator: coordinator)
-            .preferredColorScheme(.dark)
     }
 }
 #endif

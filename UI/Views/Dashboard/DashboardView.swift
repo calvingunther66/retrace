@@ -23,13 +23,13 @@ private enum LayoutSize {
     // MARK: - Icon Sizes
 
     var iconCircleSize: CGFloat { 44 }
-    var iconFont: Font { .retraceHeadline }
+    var iconSize: CGFloat { 17 }
 
     // MARK: - Text Fonts
 
-    var titleFont: Font { .retraceCaption2Medium }
+    var titleFont: Font { .retraceLabel }
     var valueFont: Font { .retraceMediumNumber }
-    var subtitleFont: Font { .retraceCaption2Medium }
+    var subtitleFont: Font { .retraceMeta }
 
     // MARK: - Spacing & Padding
 
@@ -432,7 +432,8 @@ public struct DashboardView: View {
                             },
                             onDismiss: {
                                 viewModel.dismissScreenRecordingWarning()
-                            }
+                            },
+                            isPrimary: true
                         )
                     }
 
@@ -504,7 +505,8 @@ public struct DashboardView: View {
                             },
                             onRelaunch: {
                                 viewModel.relaunchAppForOCRRecovery()
-                            }
+                            },
+                            isPrimary: !viewModel.showScreenRecordingWarning
                         )
                     }
 
@@ -630,14 +632,8 @@ public struct DashboardView: View {
             .environmentObject(coordinatorWrapper)
         }
         .background(
-            ZStack {
-                // Theme-aware base background color
-                themeBaseBackground
-
-                // Theme-aware ambient glow background
-                themeAmbientBackground
-            }
-            .ignoresSafeArea()
+            Color.retracePage
+                .ignoresSafeArea()
         )
         .background(
             Button("") {
@@ -684,7 +680,7 @@ public struct DashboardView: View {
                 if showPauseOptionsPopover, let anchor {
                     let anchorRect = proxy[anchor]
                     ZStack(alignment: .topLeading) {
-                        Color.black.opacity(0.001)
+                        Color.clear
                             .ignoresSafeArea()
                             .contentShape(Rectangle())
                             .onTapGesture {
@@ -717,7 +713,7 @@ public struct DashboardView: View {
                 if showAppUsageDatePopover, let anchor {
                     let anchorRect = proxy[anchor]
                     ZStack(alignment: .topLeading) {
-                        Color.black.opacity(0.001)
+                        Color.clear
                             .ignoresSafeArea()
                             .contentShape(Rectangle())
                             .onTapGesture {
@@ -728,7 +724,7 @@ public struct DashboardView: View {
                             }
 
                         appUsageDatePopover
-                            .shadow(color: .black.opacity(0.4), radius: 12, y: 4)
+                            .retraceElevation(.lg)
                             .offset(
                                 x: max(anchorRect.maxX - Self.appUsageDatePopoverWidth, 0),
                                 y: anchorRect.maxY + 8
@@ -747,7 +743,7 @@ public struct DashboardView: View {
             if showSessionsSheet, let app = selectedApp {
                 ZStack {
                     // Dimmed background
-                    Color.black.opacity(0.6)
+                    Color.retraceDynamic(light: 0x3B352D, dark: 0x000000, lightAlpha: 0.4, darkAlpha: 0.6)
                         .ignoresSafeArea()
                         .onTapGesture {
                             withAnimation(.easeOut(duration: 0.15)) {
@@ -803,8 +799,12 @@ public struct DashboardView: View {
                             )
                         }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .shadow(color: .black.opacity(0.5), radius: 30, x: 0, y: 10)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                            .stroke(Color.retraceBorder, lineWidth: 1)
+                    )
+                    .retraceElevation(.lg)
                     .transition(.scale.combined(with: .opacity))
                 }
                 .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showSessionsSheet)
@@ -816,7 +816,7 @@ public struct DashboardView: View {
                 if let milestone = milestoneCelebrationManager.currentMilestone {
                     ZStack {
                         // Dimmed background
-                        Color.black.opacity(0.6)
+                        Color.retraceDynamic(light: 0x3B352D, dark: 0x000000, lightAlpha: 0.4, darkAlpha: 0.6)
                             .ignoresSafeArea()
                             .onTapGesture {
                                 // Dismiss on background tap
@@ -846,7 +846,7 @@ public struct DashboardView: View {
 
                 if showDiscordFollowup {
                     ZStack {
-                        Color.black.opacity(0.65)
+                        Color.retraceDynamic(light: 0x3B352D, dark: 0x000000, lightAlpha: 0.4, darkAlpha: 0.6)
                             .ignoresSafeArea()
                             .onTapGesture {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -912,20 +912,11 @@ public struct DashboardView: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Retrace logo + Dashboard text
                 HStack(spacing: 8) {
-                    HStack(spacing: 4) {
-                        LogoTriangle()
-                            .fill(Color.white)
-                            .frame(width: 14, height: 18)
-                            .rotationEffect(.degrees(180))
-                        LogoTriangle()
-                            .fill(Color.white)
-                            .frame(width: 14, height: 18)
-                    }
+                    RetraceMarkView(size: 22)
 
                     Text("Dashboard")
-                        .font(.retraceTitle3)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.white)
+                        .font(.retraceTitle)
+                        .foregroundColor(.retraceInk)
                 }
             }
 
@@ -949,21 +940,20 @@ public struct DashboardView: View {
     private func actionButton(icon: String, label: String?, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.retraceCalloutMedium)
+                RetraceSymbol(icon, size: 13.5)
                 if let label = label {
                     Text(label)
                         .font(.retraceCaptionMedium)
                 }
             }
-            .foregroundColor(.retraceSecondary)
+            .foregroundColor(.retraceInk2)
             .padding(.horizontal, label != nil ? 14 : 10)
             .padding(.vertical, label != nil ? 8 : 10)
-            .background(Color.white.opacity(0.05))
-            .cornerRadius(8)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -1013,18 +1003,18 @@ public struct DashboardView: View {
         Button(action: {
             TimelineWindowController.shared.show()
         }) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.retraceCalloutMedium)
-                .foregroundColor(.retraceSecondary)
+            RetraceSymbol("clock.arrow.circlepath", size: 13.5)
+                .foregroundColor(.retraceInk2)
                 .padding(10)
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(8)
+                .background(Color.retraceSurface)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceBorderStrong, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Open timeline")
         .contentShape(Rectangle())
         .scaleEffect(isHoveringTimeline ? 1.03 : 1.0)
         .animation(.easeOut(duration: 0.12), value: isHoveringTimeline)
@@ -1070,20 +1060,20 @@ public struct DashboardView: View {
             }
             NotificationCenter.default.post(name: .openSettings, object: nil)
         }) {
-            Image(systemName: "gearshape")
-                .font(.retraceCalloutMedium)
-                .foregroundColor(.retraceSecondary)
+            RetraceSymbol("gearshape", size: 13.5)
+                .foregroundColor(.retraceInk2)
                 .rotationEffect(.degrees(settingsRotation + (isHoveringSettings ? 30 : 0)))
                 .animation(.easeInOut(duration: 0.2), value: isHoveringSettings)
                 .padding(10)
-                .background(Color.white.opacity(0.05))
-                .cornerRadius(8)
+                .background(Color.retraceSurface)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceBorderStrong, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Open settings")
         .contentShape(Rectangle())
         .scaleEffect(isHoveringSettings ? 1.03 : 1.0)
         .animation(.easeOut(duration: 0.12), value: isHoveringSettings)
@@ -1138,43 +1128,40 @@ public struct DashboardView: View {
         }) {
             HStack(spacing: 6) {
                 if viewModel.isRecording && isHoveringRecordingIndicator {
-                    Image(systemName: "pause.fill")
-                        .font(.system(size: 8))
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("pause.fill", size: 8, weight: .regular)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 6)
                         .transition(.opacity)
                 } else if viewModel.recordingPauseRemainingSeconds != nil {
-                    Image(systemName: "timer")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("timer", size: 9, weight: .semibold)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 8)
                         .transition(.opacity)
                 } else if viewModel.isRecordingPaused {
-                    Image(systemName: "pause.circle")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("pause.circle", size: 9, weight: .semibold)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 8)
                         .transition(.opacity)
                 } else {
                     Circle()
-                        .fill(viewModel.isRecording ? Color.retraceDanger : Color.retraceSecondary.opacity(0.5))
+                        .fill(viewModel.isRecording ? Color.retraceCritical : Color.retraceMuted)
                         .frame(width: 6, height: 6)
                         .transition(.opacity)
                 }
 
                 Text(recordingIndicatorLabel)
                     .font(.retraceCaptionMedium)
-                    .foregroundColor(.retraceSecondary)
+                    .foregroundColor(.retraceInk2)
                     .contentTransition(.interpolate)
                     .frame(width: 74, alignment: .center)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(Color.white.opacity(0.05))
-            .cornerRadius(8)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -1228,8 +1215,7 @@ public struct DashboardView: View {
                 handlePauseSelection(duration: 60 * 60)
             }
 
-            Divider()
-                .background(Color.white.opacity(0.1))
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
                 .padding(.vertical, 1)
 
             PauseMenuOptionRow(title: "Turn Off") {
@@ -1268,15 +1254,15 @@ public struct DashboardView: View {
             Button(action: action) {
                 HStack(spacing: 0) {
                     Text(title)
-                        .font(.system(size: 12.5, weight: .medium))
-                        .foregroundColor(isHovering ? .white : .white.opacity(0.78))
+                        .font(RetraceFont.font(size: 12.5, weight: .medium))
+                        .foregroundColor(isHovering ? .retraceInk : .retraceInk2)
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 10)
                 .frame(height: 24)
                 .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(isHovering ? Color.white.opacity(0.12) : Color.clear)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(isHovering ? Color.retraceSurfaceHover : Color.clear)
                 )
                 .contentShape(Rectangle())
             }
@@ -1341,7 +1327,7 @@ public struct DashboardView: View {
                 value: formatScreenTimeFromDaily(viewModel.dailyScreenTimeData),
                 subtitle: activitySubtitle,
                 graphData: viewModel.dailyScreenTimeData.isEmpty ? nil : viewModel.dailyScreenTimeData,
-                graphColor: .blue,
+                graphColor: .retraceSeries1,
                 valueFormatter: { milliseconds in
                     let hours = Double(milliseconds) / 1000.0 / 3600.0
                     return String(format: "%.1fh", hours)
@@ -1353,7 +1339,7 @@ public struct DashboardView: View {
                 value: storageValue,
                 subtitle: storageSubtitle,
                 graphData: viewModel.dailyStorageData.isEmpty ? nil : viewModel.dailyStorageData,
-                graphColor: .cyan
+                graphColor: .retraceSeries1
             ),
             StatCardData(
                 icon: "timelapse",
@@ -1361,7 +1347,7 @@ public struct DashboardView: View {
                 value: "\(viewModel.timelineOpensThisWeek)",
                 subtitle: activitySubtitle,
                 graphData: viewModel.dailyTimelineOpensData.isEmpty ? nil : viewModel.dailyTimelineOpensData,
-                graphColor: .purple
+                graphColor: .retraceSeries1
             ),
             StatCardData(
                 icon: "magnifyingglass",
@@ -1369,7 +1355,7 @@ public struct DashboardView: View {
                 value: "\(viewModel.searchesThisWeek)",
                 subtitle: activitySubtitle,
                 graphData: viewModel.dailySearchesData.isEmpty ? nil : viewModel.dailySearchesData,
-                graphColor: .orange
+                graphColor: .retraceSeries1
             ),
             StatCardData(
                 icon: "doc.on.doc",
@@ -1377,7 +1363,7 @@ public struct DashboardView: View {
                 value: "\(viewModel.textCopiesThisWeek)",
                 subtitle: activitySubtitle,
                 graphData: viewModel.dailyTextCopiesData.isEmpty ? nil : viewModel.dailyTextCopiesData,
-                graphColor: .green
+                graphColor: .retraceSeries1
             ),
         ]
     }
@@ -1393,34 +1379,35 @@ public struct DashboardView: View {
         valueFormatter: ((Int64) -> String)?,
         layoutSize: LayoutSize = .normal
     ) -> some View {
-        // Use a consistent muted color for all icons
-        let iconColor = Color.retraceSecondary
+        // One accent color for all icons
+        let iconColor = Color.retraceAccent
 
         return VStack(spacing: 0) {
             HStack(spacing: layoutSize.iconSpacing) {
                 // Icon
                 ZStack {
                     Circle()
-                        .fill(iconColor.opacity(0.10))
+                        .fill(Color.retraceAccentWash)
                         .frame(width: layoutSize.iconCircleSize, height: layoutSize.iconCircleSize)
 
-                    Image(systemName: icon)
-                        .font(layoutSize.iconFont)
+                    RetraceSymbol(icon, size: layoutSize.iconSize, weight: .semibold, label: "")
                         .foregroundColor(iconColor)
                 }
 
                 VStack(alignment: .leading, spacing: layoutSize.textSpacing) {
                     Text(title)
                         .font(layoutSize.titleFont)
-                        .foregroundColor(.retraceSecondary)
+                        .retraceLabelTracking()
+                        .foregroundColor(.retraceInk2)
 
                     Text(value)
                         .font(layoutSize.valueFont)
-                        .foregroundColor(.retracePrimary)
+                        .monospacedDigit()
+                        .foregroundColor(.retraceInk)
 
                     Text(subtitle)
                         .font(layoutSize.subtitleFont)
-                        .foregroundColor(.retraceSecondary.opacity(0.7))
+                        .foregroundColor(.retraceMuted)
                 }
 
                 Spacer()
@@ -1441,12 +1428,15 @@ public struct DashboardView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.02))
-        .cornerRadius(14)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(theme.controlBorderColor.opacity(0.6), lineWidth: 1)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
+        )
+        .retraceElevation(.sm)
     }
 
     private func formatStorageSize(_ bytes: Int64) -> String {
@@ -1483,7 +1473,7 @@ public struct DashboardView: View {
             HStack {
                 Text("App Usage")
                     .font(.retraceHeadline)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
@@ -1493,18 +1483,20 @@ public struct DashboardView: View {
             .padding(.vertical, 16)
             .zIndex(showAppUsageDatePopover ? 10 : 1)
 
-            Divider()
-                .background(Color.white.opacity(0.06))
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
                 .zIndex(showAppUsageDatePopover ? 9 : 0)
 
             appUsageSectionBody(layoutSize: appUsageLayout)
         }
-        .background(Color.white.opacity(0.03))
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(themeBorderColor.opacity(1.2), lineWidth: 1.2)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                .fill(Color.retraceSurface)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
+        )
+        .retraceElevation(.sm)
     }
 
     @ViewBuilder
@@ -1555,147 +1547,9 @@ public struct DashboardView: View {
         }
     }
 
-    private var themeBorderColor: Color {
-        currentTheme.controlBorderColor
-    }
-
-    /// Keeps the scroll fades aligned with the selected accent without changing
-    /// the dashboard's actual background surface.
+    /// Scroll-edge fades match the page surface.
     private var themeScrollAffordanceColor: Color {
-        let baseColor = NSColor(themeBaseBackground).usingColorSpace(.sRGB) ?? NSColor.black
-        let accentColor = NSColor(currentTheme.glowColor).usingColorSpace(.sRGB) ?? baseColor
-
-        let tintStrength: CGFloat = 0.22
-        let darknessScale: CGFloat = 0.60
-
-        let red = ((baseColor.redComponent * (1 - tintStrength)) + (accentColor.redComponent * tintStrength)) * darknessScale
-        let green = ((baseColor.greenComponent * (1 - tintStrength)) + (accentColor.greenComponent * tintStrength)) * darknessScale
-        let blue = ((baseColor.blueComponent * (1 - tintStrength)) + (accentColor.blueComponent * tintStrength)) * darknessScale
-
-        return Color(
-            .sRGB,
-            red: Double(min(max(red, 0), 1)),
-            green: Double(min(max(green, 0), 1)),
-            blue: Double(min(max(blue, 0), 1)),
-            opacity: 1
-        )
-    }
-
-    /// Theme-aware base background color
-    /// Gold theme uses a warmer, darker tone that complements gold better than blue
-    private var themeBaseBackground: Color {
-        switch currentTheme {
-        case .gold:
-            // Warm dark brown/slate that complements gold
-            // HSL roughly: 30°, 20%, 5% - a very dark warm gray with slight brown undertone
-            return Color(red: 15/255, green: 12/255, blue: 8/255)
-        default:
-            // Default deep blue for all other themes
-            return Color.retraceBackground
-        }
-    }
-
-    /// Theme-aware ambient background with subtle glow effects
-    private var themeAmbientBackground: some View {
-        let theme = currentTheme
-
-        // Use custom colors for better contrast against backgrounds
-        let ambientGlowColor: Color = {
-            switch theme {
-            case .blue:
-                // Deeper blue orb: #0e2a68
-                return Color(red: 14/255, green: 42/255, blue: 104/255)
-            case .gold:
-                // Warm amber instead of pure gold
-                return Color(red: 255/255, green: 160/255, blue: 60/255)
-            case .purple:
-                return theme.glowColor
-            }
-        }()
-
-        // Adjust opacity per theme for best visual balance
-        // Blue gets moderate opacity - enough presence without being theatrical
-        let glowOpacity: Double = {
-            switch theme {
-            case .blue: return 0.3
-            case .gold: return 0.05
-            case .purple: return 0.08
-            }
-        }()
-        let edgeGlowOpacity: Double = {
-            switch theme {
-            case .blue: return 0.6
-            case .gold: return 0.04
-            case .purple: return 0.06
-            }
-        }()
-        let cornerGlowOpacity: Double = {
-            switch theme {
-            case .blue: return 0.5
-            case .gold: return 0.03
-            case .purple: return 0.05
-            }
-        }()
-
-        return GeometryReader { geometry in
-            ZStack {
-                // Primary accent orb (top-left) - uses theme color
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [Color.retraceAccent.opacity(0.10), Color.clear],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: 300
-                        )
-                    )
-                    .frame(width: 600, height: 600)
-                    .offset(x: -200, y: -100)
-                    .blur(radius: 60)
-
-                // Secondary orb (top-left) - theme glow color
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [ambientGlowColor.opacity(glowOpacity), Color.clear],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: 250
-                        )
-                    )
-                    .frame(width: 500, height: 500)
-                    .offset(x: -150, y: -50)
-                    .blur(radius: 50)
-
-                // Top edge glow - all themes get this now
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [ambientGlowColor.opacity(edgeGlowOpacity), Color.clear],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(height: 150)
-                    .frame(maxWidth: .infinity)
-                    .position(x: geometry.size.width / 2, y: 0)
-                    .blur(radius: 30)
-
-                // Bottom-right corner glow - all themes get this now
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [ambientGlowColor.opacity(cornerGlowOpacity), Color.clear],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: 400
-                        )
-                    )
-                    .frame(width: 800, height: 800)
-                    .position(x: geometry.size.width, y: geometry.size.height)
-                    .blur(radius: 80)
-            }
-        }
+        Color.retracePage
     }
 
     private var appUsageRangeControls: some View {
@@ -1723,7 +1577,7 @@ public struct DashboardView: View {
                 }
 
                 Rectangle()
-                    .fill(Color.white.opacity(0.08))
+                    .fill(Color.retraceBorder)
                     .frame(width: 1, height: 30)
 
                 HStack(spacing: 2) {
@@ -1733,12 +1587,11 @@ public struct DashboardView: View {
                         }
                     }) {
                         HStack(spacing: 6) {
-                            Image(systemName: "calendar")
-                                .font(.retraceCaption2Medium)
+                            RetraceSymbol("calendar", size: 12)
                             Text(rangeControlLabel)
                                 .font(.retraceCaptionMedium)
                         }
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                         .padding(.leading, 12)
                         .padding(.trailing, isResetEnabled ? 4 : 12)
                         .frame(height: 30)
@@ -1757,15 +1610,15 @@ public struct DashboardView: View {
                         Button(action: {
                             resetAppUsageRangeFromInlineButton()
                         }) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.retraceSecondary.opacity(0.9))
+                            RetraceSymbol("arrow.counterclockwise", size: 10, weight: .semibold)
+                                .foregroundColor(.retraceInk2)
                                 .padding(.leading, 2)
                                 .padding(.trailing, 12)
                                 .frame(height: 30)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Reset date range")
                         .onHover { hovering in
                             isHoveringAppUsageRangeReset = hovering
                             if hovering {
@@ -1783,7 +1636,7 @@ public struct DashboardView: View {
                     }
                 }
                 .frame(height: 30)
-                .background(showAppUsageDatePopover ? Color.white.opacity(0.06) : Color.clear)
+                .background(showAppUsageDatePopover ? Color.retraceSurfaceHover : Color.clear)
                 .anchorPreference(
                     key: AppUsageDatePopoverAnchorPreferenceKey.self,
                     value: .bounds
@@ -1834,7 +1687,7 @@ public struct DashboardView: View {
                 }
 
                 Rectangle()
-                    .fill(Color.white.opacity(0.08))
+                    .fill(Color.retraceBorder)
                     .frame(width: 1, height: 30)
 
                 rangeShiftButton(
@@ -1852,21 +1705,21 @@ public struct DashboardView: View {
             }
             .background(
                 UnevenRoundedRectangle(
-                    topLeadingRadius: 8,
-                    bottomLeadingRadius: 8,
-                    bottomTrailingRadius: 8,
-                    topTrailingRadius: 8
+                    topLeadingRadius: .radiusSm,
+                    bottomLeadingRadius: .radiusSm,
+                    bottomTrailingRadius: .radiusSm,
+                    topTrailingRadius: .radiusSm
                 )
-                .fill(Color.white.opacity(0.06))
+                .fill(Color.retraceSurface)
             )
             .overlay(
                 UnevenRoundedRectangle(
-                    topLeadingRadius: 8,
-                    bottomLeadingRadius: 8,
-                    bottomTrailingRadius: 8,
-                    topTrailingRadius: 8
+                    topLeadingRadius: .radiusSm,
+                    bottomLeadingRadius: .radiusSm,
+                    bottomTrailingRadius: .radiusSm,
+                    topTrailingRadius: .radiusSm
                 )
-                .stroke(Color.white.opacity(showAppUsageDatePopover ? 0.22 : 0.1), lineWidth: 1)
+                .stroke(showAppUsageDatePopover ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
             )
         }
     }
@@ -1936,34 +1789,35 @@ public struct DashboardView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.retraceSecondary.opacity(isEnabled ? 0.9 : 0.35))
+            RetraceSymbol(icon, size: 10, weight: .semibold)
+                .foregroundColor(.retraceInk2)
+                .opacity(isEnabled ? 1 : 0.5)
                 .frame(width: 30, height: 30)
                 .background(
                     Group {
                         if position == .leading {
                             UnevenRoundedRectangle(
-                                topLeadingRadius: 8,
-                                bottomLeadingRadius: 8,
+                                topLeadingRadius: .radiusSm,
+                                bottomLeadingRadius: .radiusSm,
                                 bottomTrailingRadius: 0,
                                 topTrailingRadius: 0
                             )
-                            .fill(Color.white.opacity(isEnabled ? 0.03 : 0.01))
+                            .fill(Color.clear)
                         } else {
                             UnevenRoundedRectangle(
                                 topLeadingRadius: 0,
                                 bottomLeadingRadius: 0,
-                                bottomTrailingRadius: 8,
-                                topTrailingRadius: 8
+                                bottomTrailingRadius: .radiusSm,
+                                topTrailingRadius: .radiusSm
                             )
-                            .fill(Color.white.opacity(isEnabled ? 0.03 : 0.01))
+                            .fill(Color.clear)
                         }
                     }
                 )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(position == .leading ? "Previous date range" : "Next date range")
         .disabled(!isEnabled)
         .onHover { hovering in
             guard isEnabled else { return }
@@ -1980,8 +1834,8 @@ public struct DashboardView: View {
             SpinnerView(size: 32, lineWidth: 3)
 
             Text("Loading activity...")
-                .font(.retraceHeadline)
-                .foregroundColor(.retraceSecondary)
+                .font(.retraceMeta)
+                .foregroundColor(.retraceMuted)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.vertical, 48)
@@ -1996,22 +1850,21 @@ public struct DashboardView: View {
         return VStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(LinearGradient.retraceAccentGradient.opacity(0.2))
+                    .fill(Color.retraceAccentWash)
                     .frame(width: 80, height: 80)
 
-                Image(systemName: copy.symbolName)
-                    .font(.retraceDisplay3)
-                    .foregroundStyle(LinearGradient.retraceAccentGradient)
+                RetraceSymbol(copy.symbolName, size: 32, weight: .semibold)
+                    .foregroundColor(.retraceAccent)
             }
 
             VStack(spacing: 8) {
                 Text(copy.title)
                     .font(.retraceHeadline)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 Text(copy.message)
-                    .font(.retraceCallout)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 360)
             }
@@ -2030,12 +1883,12 @@ public struct DashboardView: View {
                 Link(destination: URL(string: "https://retrace.to/l/haseab-twitter")!) {
                     HStack(spacing: 4) {
                         Text("Made with")
-                            .foregroundColor(.retraceSecondary)
+                            .foregroundColor(.retraceInk2)
                         Text("❤️")
                         Text("by")
-                            .foregroundColor(.retraceSecondary)
+                            .foregroundColor(.retraceInk2)
                         Text("@haseab")
-                            .foregroundColor(Color(red: 74/255, green: 144/255, blue: 226/255))  // Bright blue for link
+                            .foregroundColor(.retraceAccent)
                             .scaleEffect(isHoveringHaseab ? 1.05 : 1.0)
                             .animation(.easeInOut(duration: 0.15), value: isHoveringHaseab)
                     }
@@ -2052,17 +1905,16 @@ public struct DashboardView: View {
                 }
 
                 Circle()
-                    .fill(Color.retraceSecondary.opacity(0.5))
+                    .fill(Color.retraceMuted)
                     .frame(width: 3, height: 3)
 
                 Link(destination: URL(string: "https://retrace.to/l/support-haseab")!) {
                     HStack(spacing: 6) {
-                        Image(systemName: "cup.and.saucer.fill")
-                            .font(.retraceCaption2)
+                        RetraceSymbol("cup.and.saucer.fill", size: 12)
                         Text("Support Me")
                     }
                     .font(.retraceCaption2Medium)
-                    .foregroundColor(.retraceSecondary)
+                    .foregroundColor(.retraceInk2)
                     .scaleEffect(isHoveringSupportMe ? 1.05 : 1.0)
                     .animation(.easeInOut(duration: 0.15), value: isHoveringSupportMe)
                 }
@@ -2077,26 +1929,25 @@ public struct DashboardView: View {
                 }
 
                 Circle()
-                    .fill(Color.retraceSecondary.opacity(0.5))
+                    .fill(Color.retraceMuted)
                     .frame(width: 3, height: 3)
 
                 Button(action: {
                     presentFeedbackSheet()
                 }) {
                     HStack(spacing: 6) {
-                        Image(systemName: "questionmark.circle")
-                            .font(.retraceCalloutMedium)
+                        RetraceSymbol("questionmark.circle", size: 13.5)
                         Text("Help")
                             .font(.retraceCaptionMedium)
                     }
-                    .foregroundColor(.retraceSecondary)
+                    .foregroundColor(.retraceInk2)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.05))
-                    .cornerRadius(8)
+                    .background(Color.retraceSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .stroke(Color.retraceBorderStrong, lineWidth: 1)
                     )
                     .scaleEffect(isHoveringFeedback ? 1.05 : 1.0)
                     .animation(.easeInOut(duration: 0.15), value: isHoveringFeedback)
@@ -2113,7 +1964,7 @@ public struct DashboardView: View {
                 }
 
                 Circle()
-                    .fill(Color.retraceSecondary.opacity(0.5))
+                    .fill(Color.retraceMuted)
                     .frame(width: 3, height: 3)
 
                 Group {
@@ -2128,11 +1979,11 @@ public struct DashboardView: View {
                     }
                 }
                 .font(.retraceCaption2)
-                .foregroundColor(.retraceSecondary.opacity(0.5))
+                .foregroundColor(.retraceMuted)
 
                 #if DEBUG
                 Circle()
-                    .fill(Color.retraceSecondary.opacity(0.5))
+                    .fill(Color.retraceMuted)
                     .frame(width: 3, height: 3)
 
                 Menu {
@@ -2221,12 +2072,11 @@ public struct DashboardView: View {
                     .disabled(!viewModel.isRecording)
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "ant.fill")
-                            .font(.retraceCaption2)
+                        RetraceSymbol("ant.fill", size: 12)
                         Text("Debug")
                     }
                     .font(.retraceCaption2Medium)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.retraceWarningText)
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
@@ -2379,13 +2229,12 @@ private struct UnexpectedRecordingStopBanner: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "record.circle")
-                .foregroundColor(.orange)
-                .font(.retraceTitle3)
+            RetraceSymbol("record.circle", size: 17, weight: .semibold)
+                .foregroundColor(.retraceWarningText)
 
             Text(messageText)
                 .font(.retraceCaption)
-                .foregroundColor(.primary)
+                .foregroundColor(.retraceInk)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
 
@@ -2393,31 +2242,23 @@ private struct UnexpectedRecordingStopBanner: View {
 
             HStack(spacing: 10) {
                 Button("Submit Bug Report", action: onSubmitBugReport)
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.orange.opacity(0.9))
-                    .cornerRadius(6)
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
             }
 
             Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.secondary)
+                RetraceSymbol("xmark.circle.fill", size: 17, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .background(
-            Color(red: 0.42, green: 0.18, blue: 0.11).opacity(0.22)
-        )
-        .cornerRadius(8)
+        .background(Color.retraceWarningBg)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 }
@@ -2443,13 +2284,12 @@ private struct CrashReportBanner: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
-                .foregroundColor(.orange)
-                .font(.retraceTitle3)
+            RetraceSymbol("exclamationmark.arrow.trianglehead.2.clockwise.rotate.90", size: 17, weight: .semibold)
+                .foregroundColor(.retraceWarningText)
 
             Text(messageText)
                 .font(.retraceCaption)
-                .foregroundColor(.primary)
+                .foregroundColor(.retraceInk)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
 
@@ -2457,44 +2297,26 @@ private struct CrashReportBanner: View {
 
             HStack(spacing: 10) {
                 Button("Details", action: onDetails)
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.white.opacity(0.92))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.ghost, size: .sm))
 
                 Button("Submit Bug Report", action: onSubmitBugReport)
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.orange.opacity(0.9))
-                    .cornerRadius(6)
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
             }
 
             Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.secondary)
+                RetraceSymbol("xmark.circle.fill", size: 17, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .background(
-            Color(red: 0.42, green: 0.18, blue: 0.11).opacity(0.22)
-        )
-        .cornerRadius(8)
+        .background(Color.retraceWarningBg)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 }
@@ -2508,13 +2330,12 @@ private struct CrashRecoveryStatusBanner: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90.circle.fill")
-                .foregroundColor(.orange)
-                .font(.retraceTitle3)
+            RetraceSymbol("arrow.trianglehead.2.clockwise.rotate.90.circle.fill", size: 17, weight: .semibold)
+                .foregroundColor(.retraceWarningText)
 
             Text(state.messageText)
                 .font(.retraceCaption)
-                .foregroundColor(.primary)
+                .foregroundColor(.retraceInk)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
 
@@ -2523,17 +2344,7 @@ private struct CrashRecoveryStatusBanner: View {
             HStack(spacing: 10) {
                 if let onOpenSettings {
                     Button("Open Settings", action: onOpenSettings)
-                        .font(.retraceCaption2Medium)
-                        .foregroundColor(.white.opacity(0.92))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(Color.white.opacity(0.08))
-                        .cornerRadius(6)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                        )
-                        .buttonStyle(.plain)
+                        .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                 }
 
                 Button(action: onRetry) {
@@ -2546,30 +2357,24 @@ private struct CrashRecoveryStatusBanner: View {
                         Text(isRetrying ? "Retrying…" : "Retry")
                     }
                 }
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.orange.opacity(isRetrying ? 0.5 : 0.9))
-                    .cornerRadius(6)
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                     .disabled(isRetrying)
             }
 
             Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.secondary)
+                RetraceSymbol("xmark.circle.fill", size: 17, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .background(Color.orange.opacity(0.12))
-        .cornerRadius(8)
+        .background(Color.retraceWarningBg)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 }
@@ -2589,13 +2394,12 @@ private struct WALFailureCrashBanner: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "externaldrive.badge.exclamationmark")
-                .foregroundColor(.orange)
-                .font(.retraceTitle3)
+            RetraceSymbol("externaldrive.badge.exclamationmark", size: 17, weight: .semibold)
+                .foregroundColor(.retraceWarningText)
 
             Text(messageText)
                 .font(.retraceCaption)
-                .foregroundColor(.primary)
+                .foregroundColor(.retraceInk)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .multilineTextAlignment(.leading)
@@ -2604,44 +2408,26 @@ private struct WALFailureCrashBanner: View {
 
             HStack(spacing: 10) {
                 Button("Details", action: onDetails)
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.white.opacity(0.92))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(6)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.ghost, size: .sm))
 
                 Button("Submit Bug Report", action: onSubmitBugReport)
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.orange.opacity(0.9))
-                    .cornerRadius(6)
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
             }
 
             Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.secondary)
+                RetraceSymbol("xmark.circle.fill", size: 17, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .background(
-            Color(red: 0.42, green: 0.18, blue: 0.11).opacity(0.22)
-        )
-        .cornerRadius(8)
+        .background(Color.retraceWarningBg)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 }
@@ -2651,39 +2437,36 @@ private struct StorageHealthBanner: View {
     let onDismiss: () -> Void
 
     private var accentColor: Color {
-        state.shouldStop ? .red : .orange
+        state.shouldStop ? .retraceCritical : .retraceWarningText
     }
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: state.shouldStop ? "externaldrive.fill.badge.xmark" : "externaldrive.badge.exclamationmark")
+            RetraceSymbol(state.shouldStop ? "externaldrive.fill.badge.xmark" : "externaldrive.badge.exclamationmark", size: 17, weight: .semibold)
                 .foregroundColor(accentColor)
-                .font(.retraceTitle3)
 
             Text(state.messageText)
                 .font(.retraceCaption)
-                .foregroundColor(.primary)
+                .foregroundColor(.retraceInk)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
 
             Spacer(minLength: 12)
 
             Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.secondary)
+                RetraceSymbol("xmark.circle.fill", size: 17, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .background(
-            (state.shouldStop ? Color.red : Color.orange).opacity(0.16)
-        )
-        .cornerRadius(8)
+        .background(state.shouldStop ? Color.retraceCriticalBg : Color.retraceWarningBg)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(accentColor.opacity(0.28), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 }
@@ -2695,6 +2478,8 @@ private struct OCRDegradedBanner: View {
     let likelyRequiresRelaunch: Bool
     let onRestart: () -> Void
     let onRelaunch: () -> Void
+    /// Primary only when no higher-urgency (permission) banner is showing.
+    var isPrimary: Bool = true
 
     private var messageText: String {
         if restartInFlight {
@@ -2708,13 +2493,12 @@ private struct OCRDegradedBanner: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "text.viewfinder")
-                .foregroundColor(.orange)
-                .font(.retraceTitle3)
+            RetraceSymbol("text.viewfinder", size: 17, weight: .semibold)
+                .foregroundColor(.retraceWarningText)
 
             Text(messageText)
                 .font(.retraceCaption)
-                .foregroundColor(.primary)
+                .foregroundColor(.retraceInk)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
 
@@ -2725,32 +2509,29 @@ private struct OCRDegradedBanner: View {
                     .scaleEffect(0.6)
             } else if likelyRequiresRelaunch {
                 Button("Relaunch App", action: onRelaunch)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                    .buttonStyle(RetraceButtonStyle(isPrimary ? .primary : .secondary, size: .sm))
             } else {
                 Button("Restart OCR", action: onRestart)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                    .buttonStyle(RetraceButtonStyle(isPrimary ? .primary : .secondary, size: .sm))
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .background(Color.orange.opacity(0.16))
-        .cornerRadius(8)
+        .background(Color.retraceWarningBg)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.28), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 }
 
 // MARK: - Scroll Affordance
 
-/// A subtle inner shadow at the bottom of a container that suggests scrollable content continues
-/// This is the Apple-favorite pattern for indicating scrollability
+/// A subtle fade (functional scroll-edge mask) at the bottom of a container that suggests scrollable content continues
 private struct ScrollAffordance: View {
     var height: CGFloat = 24
-    var color: Color = .black
+    var color: Color = .retracePage
 
     var body: some View {
         VStack {
@@ -2800,20 +2581,20 @@ private struct MonitorButton: View {
             NotificationCenter.default.post(name: .openSystemMonitor, object: nil)
         }) {
             ZStack {
-                Image(systemName: "waveform.path.ecg")
-                    .font(.retraceCalloutMedium)
-                    .foregroundColor(isProcessing ? .green : .retraceSecondary)
+                RetraceSymbol("waveform.path.ecg", size: 13.5)
+                    .foregroundColor(isProcessing ? .retraceGood : .retraceInk2)
                     .scaleEffect(isProcessing ? heartbeatScale : 1.0)
             }
             .padding(10)
-            .background(Color.white.opacity(0.05))
-            .cornerRadius(8)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Open system monitor")
         .contentShape(Rectangle())
         .scaleEffect(isHovering ? 1.03 : 1.0)
         .animation(.easeOut(duration: 0.12), value: isHovering)
@@ -2881,16 +2662,16 @@ private struct CompactTopTooltip: ViewModifier {
             .overlay(alignment: .top) {
                 if isVisible {
                     Text(text)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.95))
+                        .font(RetraceFont.font(size: 10, weight: .semibold))
+                        .foregroundColor(.retracePage)
                         .lineLimit(isMultiline ? 2 : 1)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: true, vertical: true)
                         .padding(.horizontal, 8)
                         .padding(.vertical, isMultiline ? 5 : 3)
                         .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color.black.opacity(0.82))
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .fill(Color.retraceInk)
                         )
                         .offset(y: verticalOffset)
                         .transition(.opacity.combined(with: .offset(y: 3)))
@@ -2921,7 +2702,6 @@ struct DashboardView_Previews: PreviewProvider {
             milestoneCelebrationManager: milestoneManager
         )
         .frame(width: 1200, height: 900)
-        .preferredColorScheme(.dark)
     }
 }
 #endif

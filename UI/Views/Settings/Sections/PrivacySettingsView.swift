@@ -33,17 +33,8 @@ struct QuickDeleteButton: View {
                 }
             }
             .frame(minWidth: 70)
-            .foregroundColor(isDeleting ? .retraceSecondary : .retraceDanger)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color.retraceDanger.opacity(isDeleting ? 0.05 : 0.1))
-            .cornerRadius(10)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.retraceDanger.opacity(isDeleting ? 0.15 : 0.3), lineWidth: 1)
-            )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(RetraceButtonStyle(.danger))
         .disabled(isDeleting)
     }
 }
@@ -67,8 +58,8 @@ extension SettingsView {
         ModernSettingsCard(title: "App Level Redaction", icon: "app.badge.checkmark") {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Exclude entire apps from capture.")
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
 
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Excluded Apps")
@@ -131,12 +122,12 @@ extension SettingsView {
                 }
                 .padding(12)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.025))
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
             }
         }
@@ -150,8 +141,8 @@ extension SettingsView {
         ModernSettingsCard(title: "Quick Delete", icon: "clock.arrow.circlepath") {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Permanently delete recent recordings")
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
 
                 HStack(spacing: 12) {
                     QuickDeleteButton(
@@ -200,8 +191,8 @@ extension SettingsView {
         ModernSettingsCard(title: "Window Level Redaction", icon: "eye.slash") {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Mask matching window regions in captured frames (case-insensitive substring).")
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
 
                 VStack(alignment: .leading, spacing: 12) {
                     ModernToggleRow(
@@ -210,24 +201,22 @@ extension SettingsView {
                         isOn: privateWindowRedactionBinding
                     )
                     if excludePrivateWindows {
-                        Divider()
-                            .background(Color.white.opacity(0.08))
+                        Divider().overlay(Color.retraceBorder)
 
                         privateModeAutomationSetupSection
                     }
                 }
                 .padding(12)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.025))
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
 
-                Divider()
-                    .background(Color.white.opacity(0.08))
+                Divider().overlay(Color.retraceBorder)
 
                 VStack(alignment: .leading, spacing: 12) {
                     ModernToggleRow(
@@ -240,8 +229,7 @@ extension SettingsView {
                     }
 
                     if enableCustomPatternWindowRedaction {
-                        Divider()
-                            .background(Color.white.opacity(0.08))
+                        Divider().overlay(Color.retraceBorder)
 
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Custom window title patterns (one per line)")
@@ -264,18 +252,18 @@ extension SettingsView {
                         }
 
                         Text("Note: Firefox Browser URL Redaction will not work because it is not possible to read the URL")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.85))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceInk2)
                     }
                 }
                 .padding(12)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.025))
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
             }
             .onChange(of: redactWindowTitlePatternsRaw) { _ in

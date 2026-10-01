@@ -9,14 +9,13 @@ struct DatabaseSchemaView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Database Schema")
-                    .font(.retraceTitle3)
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceTitle2)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
                 Button(action: { isPresented = false }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 20))
+                    RetraceSymbol("xmark.circle.fill", size: 20)
                         .foregroundColor(.retraceSecondary)
                 }
                 .buttonStyle(.plain)
@@ -24,19 +23,19 @@ struct DatabaseSchemaView: View {
             .padding()
             .background(Color.retraceBackground)
 
-            Divider()
+            Divider().overlay(Color.retraceBorder)
 
             ScrollView {
                 Text(schemaText.isEmpty ? "Loading..." : schemaText)
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceMonoSmall)
+                    .foregroundColor(.retraceTermInk)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
             }
-            .background(Color.black.opacity(0.3))
+            .background(Color.retraceTermBg)
 
-            Divider()
+            Divider().overlay(Color.retraceBorder)
 
             HStack {
                 Spacer()
@@ -46,23 +45,24 @@ struct DatabaseSchemaView: View {
                     NSPasteboard.general.setString(schemaText, forType: .string)
                 }) {
                     HStack(spacing: 6) {
-                        Image(systemName: "doc.on.doc")
+                        RetraceSymbol("doc.on.doc", size: 13)
                         Text("Copy to Clipboard")
                     }
-                    .font(.retraceCalloutMedium)
+                    .font(.retraceCallout)
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.retraceAccent)
+                .foregroundColor(.retraceInk)
                 .padding(.horizontal)
                 .padding(.vertical, 8)
-                .background(Color.retraceAccent.opacity(0.1))
-                .cornerRadius(8)
+                .background(Color.retraceAccentWash)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
             }
             .padding()
             .background(Color.retraceBackground)
         }
         .frame(width: 600, height: 500)
         .background(Color.retraceBackground)
-        .cornerRadius(12)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
     }
 }

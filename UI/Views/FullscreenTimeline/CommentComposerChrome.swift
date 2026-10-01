@@ -8,7 +8,7 @@ struct CommentChromeHeader<Leading: View, Accessory: View>: View {
     let spacing: CGFloat
     let iconContainerSize: CGFloat
     let iconCornerRadius: CGFloat
-    let iconFont: Font
+    let iconSize: CGFloat
     let leading: Leading
     let accessory: Accessory
 
@@ -17,8 +17,8 @@ struct CommentChromeHeader<Leading: View, Accessory: View>: View {
         onClose: @escaping () -> Void,
         spacing: CGFloat = 12,
         iconContainerSize: CGFloat = 34,
-        iconCornerRadius: CGFloat = 10,
-        iconFont: Font = .system(size: 14, weight: .semibold),
+        iconCornerRadius: CGFloat = .radiusMd,
+        iconSize: CGFloat = 14,
         @ViewBuilder leading: () -> Leading,
         @ViewBuilder accessory: () -> Accessory
     ) {
@@ -27,7 +27,7 @@ struct CommentChromeHeader<Leading: View, Accessory: View>: View {
         self.spacing = spacing
         self.iconContainerSize = iconContainerSize
         self.iconCornerRadius = iconCornerRadius
-        self.iconFont = iconFont
+        self.iconSize = iconSize
         self.leading = leading()
         self.accessory = accessory()
     }
@@ -37,8 +37,8 @@ struct CommentChromeHeader<Leading: View, Accessory: View>: View {
         onClose: @escaping () -> Void,
         spacing: CGFloat = 12,
         iconContainerSize: CGFloat = 34,
-        iconCornerRadius: CGFloat = 10,
-        iconFont: Font = .system(size: 14, weight: .semibold),
+        iconCornerRadius: CGFloat = .radiusMd,
+        iconSize: CGFloat = 14,
         @ViewBuilder accessory: () -> Accessory
     ) where Leading == EmptyView {
         self.init(
@@ -47,7 +47,7 @@ struct CommentChromeHeader<Leading: View, Accessory: View>: View {
             spacing: spacing,
             iconContainerSize: iconContainerSize,
             iconCornerRadius: iconCornerRadius,
-            iconFont: iconFont,
+            iconSize: iconSize,
             leading: { EmptyView() },
             accessory: accessory
         )
@@ -58,8 +58,8 @@ struct CommentChromeHeader<Leading: View, Accessory: View>: View {
         onClose: @escaping () -> Void,
         spacing: CGFloat = 12,
         iconContainerSize: CGFloat = 34,
-        iconCornerRadius: CGFloat = 10,
-        iconFont: Font = .system(size: 14, weight: .semibold)
+        iconCornerRadius: CGFloat = .radiusMd,
+        iconSize: CGFloat = 14
     ) where Leading == EmptyView, Accessory == EmptyView {
         self.init(
             title: title,
@@ -67,7 +67,7 @@ struct CommentChromeHeader<Leading: View, Accessory: View>: View {
             spacing: spacing,
             iconContainerSize: iconContainerSize,
             iconCornerRadius: iconCornerRadius,
-            iconFont: iconFont,
+            iconSize: iconSize,
             leading: { EmptyView() },
             accessory: { EmptyView() }
         )
@@ -77,19 +77,18 @@ struct CommentChromeHeader<Leading: View, Accessory: View>: View {
         HStack(spacing: spacing) {
             leading
 
-            RoundedRectangle(cornerRadius: iconCornerRadius)
-                .fill(Color.white.opacity(0.08))
+            RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous)
+                .fill(Color.retraceSurfaceSunken)
                 .frame(width: iconContainerSize, height: iconContainerSize)
                 .overlay(
-                    Image(systemName: "text.bubble.fill")
-                        .font(iconFont)
-                        .foregroundColor(.retracePrimary.opacity(0.92))
+                    RetraceSymbol("text.bubble.fill", size: iconSize, weight: .semibold)
+                        .foregroundColor(.retraceInk)
                 )
 
             VStack(alignment: .leading, spacing: 0) {
                 Text(title)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceHeadline)
+                    .foregroundColor(.retraceInk)
             }
 
             Spacer()
@@ -99,13 +98,13 @@ struct CommentChromeHeader<Leading: View, Accessory: View>: View {
             CommentChromeCircleButton(
                 icon: "xmark",
                 action: onClose,
-                iconFont: .system(size: 10, weight: .bold),
-                baseForeground: .retraceSecondary,
-                hoverForeground: Color.retracePrimary.opacity(0.96),
-                baseFill: Color.white.opacity(0.08),
-                hoverFill: Color.retraceSubmitAccent.opacity(0.13),
-                baseStroke: Color.white.opacity(0.14),
-                hoverStroke: Color.retraceSubmitAccent.opacity(0.42)
+                iconSize: 10,
+                baseForeground: .retraceInk2,
+                hoverForeground: .retraceInk,
+                baseFill: .retraceSurfaceSunken,
+                hoverFill: .retraceAccentWash,
+                baseStroke: .retraceBorder,
+                hoverStroke: .retraceAccent
             )
         }
     }
@@ -114,21 +113,31 @@ struct CommentChromeHeader<Leading: View, Accessory: View>: View {
 struct CommentChromeCircleButton: View {
     let icon: String
     let action: () -> Void
-    var iconFont: Font = .system(size: 10, weight: .bold)
-    var baseForeground: Color = .retraceSecondary
-    var hoverForeground: Color = Color.retracePrimary.opacity(0.96)
-    var baseFill: Color = Color.white.opacity(0.08)
-    var hoverFill: Color = Color.retraceSubmitAccent.opacity(0.13)
-    var baseStroke: Color = Color.white.opacity(0.14)
-    var hoverStroke: Color = Color.retraceSubmitAccent.opacity(0.42)
+    /// VoiceOver name; defaults to a verb derived from the icon.
+    var label: String? = nil
+    var iconSize: CGFloat = 10
+    var baseForeground: Color = .retraceInk2
+    var hoverForeground: Color = .retraceInk
+    var baseFill: Color = .retraceSurfaceSunken
+    var hoverFill: Color = .retraceAccentWash
+    var baseStroke: Color = .retraceBorder
+    var hoverStroke: Color = .retraceAccent
     var onHoverChanged: ((Bool) -> Void)? = nil
 
     @State private var isHovering = false
 
+    private static func defaultLabel(forIcon icon: String) -> String {
+        switch icon {
+        case "xmark", "xmark.circle.fill": return "Close"
+        case "plus": return "Add"
+        case "trash": return "Delete"
+        default: return "Button"
+        }
+    }
+
     var body: some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(iconFont)
+            RetraceSymbol(icon, size: iconSize, weight: .semibold, label: "")
                 .foregroundColor(isHovering ? hoverForeground : baseForeground)
                 .frame(width: 24, height: 24)
                 .background(
@@ -141,6 +150,8 @@ struct CommentChromeCircleButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label ?? Self.defaultLabel(forIcon: icon))
+        .retraceFocusRing(cornerRadius: .radiusMd)
         .onHover { hovering in
             isHovering = hovering
             onHoverChanged?(hovering)
@@ -159,68 +170,50 @@ enum CommentChromeCapsuleButtonStyle: Equatable {
     case tagSelection(isSelected: Bool)
 
     func foregroundColor(isHovering: Bool, isEnabled: Bool) -> Color {
-        guard isEnabled else { return .retraceSecondary }
+        guard isEnabled else { return .retraceInk2 }
 
         switch self {
         case .accentOutline:
-            return isHovering
-                ? Color.retracePrimary.opacity(0.98)
-                : Color.retracePrimary.opacity(0.9)
+            return .retraceInk
         case .submit:
-            return isHovering
-                ? Color.retracePrimary.opacity(0.98)
-                : Color.retraceSubmitAccent.opacity(0.96)
+            return isHovering ? .retraceInk : .retraceAccent
         case .tagSelection(let isSelected):
             if isSelected {
-                return .white
+                return .retraceInk
             }
-            return isHovering
-                ? Color.retracePrimary.opacity(0.98)
-                : Color.retraceSecondary.opacity(0.96)
+            return isHovering ? .retraceInk : .retraceInk2
         }
     }
 
     func backgroundColor(isHovering: Bool, isEnabled: Bool) -> Color {
-        guard isEnabled else { return Color.white.opacity(0.08) }
+        guard isEnabled else { return .retraceSurfaceSunken }
 
         switch self {
         case .accentOutline:
-            return isHovering
-                ? Color.retraceSubmitAccent.opacity(0.13)
-                : Color.white.opacity(0.08)
+            return isHovering ? .retraceAccentWash : .retraceSurfaceSunken
         case .submit:
-            return isHovering
-                ? Color.retraceSubmitAccent.opacity(0.18)
-                : Color.retraceSubmitAccent.opacity(0.14)
+            return .retraceAccentWash
         case .tagSelection(let isSelected):
             if isSelected {
-                return Color.white.opacity(0.2)
+                return .retraceAccentWash
             }
-            return isHovering
-                ? Color.white.opacity(0.12)
-                : Color.white.opacity(0.08)
+            return isHovering ? .retraceSurfaceHover : .retraceSurfaceSunken
         }
     }
 
     func borderColor(isHovering: Bool, isEnabled: Bool) -> Color {
-        guard isEnabled else { return Color.white.opacity(0.12) }
+        guard isEnabled else { return .retraceBorder }
 
         switch self {
         case .accentOutline:
-            return isHovering
-                ? Color.retraceSubmitAccent.opacity(0.42)
-                : Color.white.opacity(0.14)
+            return isHovering ? .retraceAccent : .retraceBorderStrong
         case .submit:
-            return isHovering
-                ? Color.retraceSubmitAccent.opacity(0.42)
-                : Color.retraceSubmitAccent.opacity(0.28)
+            return isHovering ? .retraceAccent : Color.retraceAccent.opacity(0.5)
         case .tagSelection(let isSelected):
             if isSelected {
-                return Color.white.opacity(0.24)
+                return .retraceAccent
             }
-            return isHovering
-                ? Color.white.opacity(0.18)
-                : Color.white.opacity(0.12)
+            return isHovering ? .retraceBorderStrong : .retraceBorder
         }
     }
 }
@@ -263,11 +256,11 @@ struct CommentChromeCapsuleButton<Label: View>: View {
                 .padding(.horizontal, horizontalPadding)
                 .padding(.vertical, verticalPadding)
                 .background(
-                    Capsule()
+                    Capsule(style: .continuous)
                         .fill(style.backgroundColor(isHovering: isActivelyHovering, isEnabled: isEnabled))
                 )
                 .overlay(
-                    Capsule()
+                    Capsule(style: .continuous)
                         .stroke(
                             style.borderColor(isHovering: isActivelyHovering, isEnabled: isEnabled),
                             lineWidth: 1
@@ -275,6 +268,8 @@ struct CommentChromeCapsuleButton<Label: View>: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(style == .tagSelection(isSelected: true) ? .isSelected : [])
+        .retraceFocusRing(cornerRadius: .radiusMd)
         .disabled(!isEnabled)
         .onHover { hovering in
             isHovering = hovering
@@ -333,11 +328,10 @@ struct CommentChromeChip<Accessory: View>: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: icon)
-                .font(.system(size: 9, weight: .semibold))
+            RetraceSymbol(icon, size: 9, weight: .semibold)
 
             Text(text)
-                .font(.system(size: 10, weight: .semibold))
+                .font(RetraceFont.font(size: 10, weight: .semibold))
                 .lineLimit(1)
 
             accessory(isHovering)
@@ -346,14 +340,14 @@ struct CommentChromeChip<Accessory: View>: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .background(
-            Capsule()
+            Capsule(style: .continuous)
                 .fill(backgroundColor)
         )
         .overlay(
-            Capsule()
+            Capsule(style: .continuous)
                 .stroke(borderColor, lineWidth: 1)
         )
-        .contentShape(Capsule())
+        .contentShape(Capsule(style: .continuous))
         .animation(.easeOut(duration: 0.12), value: isHovering)
         .onHover { hovering in
             isHovering = hovering
@@ -385,21 +379,21 @@ struct CommentChromeEditorSurface<Editor: View>: View {
 
             if textIsEmpty {
                 Text(placeholder)
-                    .font(.system(size: 12))
-                    .foregroundColor(.retraceSecondary.opacity(0.75))
+                    .font(.retraceCaption)
+                    .foregroundColor(.retraceMuted)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
                     .allowsHitTesting(false)
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.04))
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurfaceSunken)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                 .stroke(
-                    isFocused ? Color.white.opacity(0.22) : Color.white.opacity(0.1),
+                    isFocused ? Color.retraceAccent : Color.retraceBorderStrong,
                     lineWidth: 1
                 )
         )
@@ -423,7 +417,7 @@ enum CommentTagPickerStyle {
     var borderColor: Color {
         switch self {
         case .contextMenu:
-            return Color.white.opacity(0.15)
+            return Color.retraceBorder
         case .commentOverlay:
             return RetraceMenuStyle.borderColor
         }
@@ -500,14 +494,13 @@ struct CommentTagPickerMenu: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.5))
+                RetraceSymbol("magnifyingglass", size: 12)
+                    .foregroundColor(.retraceMuted)
 
                 TextField("Search or create...", text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13))
-                    .foregroundColor(.white)
+                    .font(.retraceCallout)
+                    .foregroundColor(.retraceInk)
                     .focused($isSearchFocused)
                     .onSubmit {
                         selectHighlightedTagOrCreate()
@@ -516,8 +509,8 @@ struct CommentTagPickerMenu: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.white.opacity(0.08))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(Color.retraceSurfaceSunken)
             )
             .contentShape(Rectangle())
             .onTapGesture {
@@ -528,13 +521,13 @@ struct CommentTagPickerMenu: View {
             .padding(.bottom, 6)
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(Color.retraceBorder)
                 .padding(.horizontal, 8)
 
             if visibleTags.isEmpty && !showCreateOption {
                 Text("No tags found")
-                    .font(.system(size: 12))
-                    .foregroundColor(.white.opacity(0.5))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
             } else {
@@ -558,13 +551,12 @@ struct CommentTagPickerMenu: View {
                         if showCreateOption {
                             Button(action: createTagFromSearch) {
                                 HStack(spacing: 10) {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(LinearGradient.retraceAccentGradient)
+                                    RetraceSymbol("plus", size: 12, weight: .medium)
+                                        .foregroundColor(.retraceAccent)
 
                                     Text("Create \"\(trimmedSearchText)\"")
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundStyle(LinearGradient.retraceAccentGradient)
+                                        .font(.retraceCallout)
+                                        .foregroundColor(.retraceAccent)
 
                                     Spacer()
                                 }
@@ -584,19 +576,18 @@ struct CommentTagPickerMenu: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(Color.retraceBorder)
                 .padding(.horizontal, 8)
                 .padding(.top, 6)
 
             Button(action: onOpenSettings) {
                 HStack(spacing: 10) {
-                    Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.72))
+                    RetraceSymbol("slider.horizontal.3", size: 12, weight: .medium)
+                        .foregroundColor(.retraceInk2)
 
                     Text("Tag Settings")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.white.opacity(0.9))
+                        .font(.retraceCallout)
+                        .foregroundColor(.retraceInk)
 
                     Spacer()
                 }
@@ -604,8 +595,8 @@ struct CommentTagPickerMenu: View {
                 .padding(.trailing, 12)
                 .padding(.vertical, 4)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(isHoveringSettingsButton ? Color.white.opacity(0.1) : Color.clear)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(isHoveringSettingsButton ? Color.retraceSurfaceHover : Color.clear)
                 )
                 .contentShape(Rectangle())
             }
@@ -624,19 +615,15 @@ struct CommentTagPickerMenu: View {
         .padding(.vertical, 2)
         .frame(width: 180)
         .background(
-            RoundedRectangle(cornerRadius: RetraceMenuStyle.cornerRadius)
+            RoundedRectangle(cornerRadius: RetraceMenuStyle.cornerRadius, style: .continuous)
                 .fill(style.backgroundColor)
-                .shadow(
-                    color: RetraceMenuStyle.shadowColor,
-                    radius: RetraceMenuStyle.shadowRadius,
-                    y: RetraceMenuStyle.shadowY
-                )
+                .retraceElevation(.md)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: RetraceMenuStyle.cornerRadius)
+            RoundedRectangle(cornerRadius: RetraceMenuStyle.cornerRadius, style: .continuous)
                 .stroke(style.borderColor, lineWidth: RetraceMenuStyle.borderWidth)
         )
-        .contentShape(RoundedRectangle(cornerRadius: RetraceMenuStyle.cornerRadius))
+        .contentShape(RoundedRectangle(cornerRadius: RetraceMenuStyle.cornerRadius, style: .continuous))
         .compositingGroup()
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -723,10 +710,10 @@ struct CommentTagPickerMenu: View {
 }
 
 struct CommentChromeSectionCard<Content: View>: View {
-    var cornerRadius: CGFloat = 14
+    var cornerRadius: CGFloat = .radiusMd
     let content: Content
 
-    init(cornerRadius: CGFloat = 14, @ViewBuilder content: () -> Content) {
+    init(cornerRadius: CGFloat = .radiusMd, @ViewBuilder content: () -> Content) {
         self.cornerRadius = cornerRadius
         self.content = content()
     }
@@ -735,21 +722,12 @@ struct CommentChromeSectionCard<Content: View>: View {
         content
             .padding(14)
             .background(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.045),
-                                Color.white.opacity(0.022)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color.retraceSurfaceSunken)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.retraceBorder, lineWidth: 1)
             )
     }
 }

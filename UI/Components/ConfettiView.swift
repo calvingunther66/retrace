@@ -28,11 +28,10 @@ struct ConfettiView: View {
     @State private var particles: [ConfettiParticle] = []
     @State private var currentTime: Date = Date()
 
+    // Clay / sage / honey / dusty-blue from the Linen palette
     private let colors: [Color] = [
-        .red, .orange, .yellow, .green, .blue, .purple, .pink,
-        Color(red: 255/255, green: 215/255, blue: 0/255), // Gold
-        Color(red: 0/255, green: 255/255, blue: 127/255), // Spring green
-        Color(red: 255/255, green: 105/255, blue: 180/255) // Hot pink
+        .retraceSeries1, .retraceSeries2, .retraceSeries3,
+        .retraceWarningText, .retraceAccentHover
     ]
 
     private let animationDuration: Double = 2.5
@@ -212,12 +211,11 @@ struct Triangle: Shape {
 struct ConfettiView_Previews: PreviewProvider {
     static var previews: some View {
         ZStack {
-            Color.black
+            Color.retracePage
                 .ignoresSafeArea()
 
             ConfettiView(particleCount: 100, burstCount: 3)
         }
-        .preferredColorScheme(.dark)
     }
 }
 #endif

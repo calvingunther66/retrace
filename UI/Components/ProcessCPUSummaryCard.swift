@@ -50,13 +50,12 @@ struct ProcessCPUSummaryCard: View {
 
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "cpu")
-                    .font(.retraceCallout)
-                    .foregroundColor(.retraceSecondary)
+                RetraceSymbol("cpu", size: 13.5)
+                    .foregroundColor(.retraceInk2)
 
                 Text("CPU Log")
                     .font(.retraceCalloutBold)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
             }
@@ -64,13 +63,12 @@ struct ProcessCPUSummaryCard: View {
             .padding(.top, 12)
             .padding(.bottom, 10)
 
-            Divider()
-                .background(Color.white.opacity(0.06))
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
             VStack(alignment: .leading, spacing: 12) {
             Text("Now % is the latest sampled share of total machine capacity (\(max(snapshot.logicalCoreCount, 1)) cores). Avg % is the window average. Energy is cumulative per-process estimate.")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.retraceSecondary.opacity(0.9))
+                .font(RetraceFont.font(size: 11, weight: .medium))
+                .foregroundColor(.retraceInk2)
 
             if snapshot.hasRenderableCPUData {
                 let totalRows = snapshot.topProcesses.count
@@ -86,30 +84,30 @@ struct ProcessCPUSummaryCard: View {
                         + " • Latest sample: \(formatLatestSampleTime(snapshot.latestSampleTimestamp))"
                         + " • \(formatEnergy(snapshot.totalTrackedEnergyJoules)) J"
                 )
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.retraceSecondary.opacity(0.65))
+                    .font(RetraceFont.font(size: 10, weight: .medium))
+                    .foregroundColor(.retraceInk2)
 
                 VStack(spacing: 0) {
                     HStack {
                         Text("Top processes")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(RetraceFont.font(size: 10, weight: .semibold))
+                            .foregroundColor(.retraceInk2)
                         Spacer()
                         Text("Now %")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(RetraceFont.font(size: 10, weight: .semibold))
+                            .foregroundColor(.retraceInk2)
                             .frame(width: 50, alignment: .trailing)
                         Text("Energy (J)")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(RetraceFont.font(size: 10, weight: .semibold))
+                            .foregroundColor(.retraceInk2)
                             .frame(width: 62, alignment: .trailing)
                         Text("Avg %")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.retraceAccent.opacity(0.95))
+                            .font(RetraceFont.font(size: 10, weight: .bold))
+                            .foregroundColor(.retraceAccent)
                             .frame(width: 46, alignment: .trailing)
                         Text("Peak %")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(RetraceFont.font(size: 10, weight: .semibold))
+                            .foregroundColor(.retraceInk2)
                             .frame(width: 50, alignment: .trailing)
                     }
                     .padding(.bottom, 6)
@@ -126,8 +124,8 @@ struct ProcessCPUSummaryCard: View {
 
                                     HStack(spacing: Self.processRowSpacing) {
                                         Text("\(rowNumber).")
-                                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                            .foregroundColor(.retraceSecondary.opacity(0.75))
+                                            .font(RetraceFont.mono(size: 12, weight: .medium))
+                                            .foregroundColor(.retraceInk2)
                                             .lineLimit(1)
                                             .frame(width: rankColumnWidth, alignment: .leading)
 
@@ -135,58 +133,47 @@ struct ProcessCPUSummaryCard: View {
                                             .frame(width: 17, height: 17)
 
                                         Text(row.name)
-                                            .font(.system(size: 12, weight: .regular))
-                                            .foregroundColor(.retracePrimary)
+                                            .font(RetraceFont.font(size: 12, weight: .regular))
+                                            .foregroundColor(.retraceInk)
                                             .lineLimit(1)
 
                                         if displayedRow.isPinnedRetrace && showsOCRBacklogAttribution {
-                                            Text("OCR running")
-                                                .font(.system(size: 9, weight: .semibold))
-                                                .foregroundColor(.retraceAccent.opacity(0.98))
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
-                                                .background(Color.retraceAccent.opacity(0.14))
-                                                .overlay(
-                                                    Capsule()
-                                                        .stroke(Color.retraceAccent.opacity(0.32), lineWidth: 1)
-                                                )
-                                                .clipShape(Capsule())
+                                            RetraceBadge("OCR running", tone: .accent)
                                         }
 
                                         Spacer(minLength: 2)
 
                                         Text(formatCPUPercent(row.currentCapacityPercent))
-                                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                            .foregroundColor(.retracePrimary)
+                                            .font(RetraceFont.mono(size: 12, weight: .medium))
+                                            .foregroundColor(.retraceInk)
                                             .frame(width: 50, alignment: .trailing)
 
                                         Text(formatEnergy(row.energyJoules))
-                                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                            .foregroundColor(.retracePrimary)
+                                            .font(RetraceFont.mono(size: 12, weight: .medium))
+                                            .foregroundColor(.retraceInk)
                                             .frame(width: 62, alignment: .trailing)
 
                                         Text(formatCPUPercent(row.capacityPercent))
-                                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                            .foregroundColor(.retraceAccent.opacity(0.95))
+                                            .font(RetraceFont.mono(size: 12, weight: .semibold))
+                                            .foregroundColor(.retraceInk)
                                             .frame(width: 46, alignment: .trailing)
 
                                         Text(formatCPUPercent(peakTotalSharePercent))
-                                            .font(.system(size: 12, weight: .medium, design: .monospaced))
-                                            .foregroundColor(.retraceSecondary.opacity(0.95))
+                                            .font(RetraceFont.mono(size: 12, weight: .medium))
+                                            .foregroundColor(.retraceInk2)
                                             .frame(width: 50, alignment: .trailing)
                                     }
                                     .padding(.vertical, 3)
                                     .background(
                                         displayedRow.isPinnedRetrace
-                                            ? Color.retraceAccent.opacity(0.08)
+                                            ? Color.retraceAccentWash
                                             : Color.clear
                                     )
-                                    .cornerRadius(4)
+                                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                                     .id(cpuProcessRowAnchorID(rowNumber))
 
                                     if index < displayedRows.count - 1 {
-                                        Divider()
-                                            .background(Color.white.opacity(0.06))
+                                        Rectangle().fill(Color.retraceBorder).frame(height: 1)
                                     }
                                 }
                             }
@@ -228,12 +215,12 @@ struct ProcessCPUSummaryCard: View {
                                 cpuProcessScrollTargetID = cpuProcessRowAnchorID(nextStartRow)
                             }
                             .buttonStyle(.plain)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.retraceAccent.opacity(0.95))
+                            .font(RetraceFont.font(size: 11, weight: .semibold))
+                            .foregroundColor(.retraceAccent)
 
                             Text("(\(visibleRows) / \(totalRows))")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(.retraceSecondary.opacity(0.75))
+                                .font(RetraceFont.font(size: 10, weight: .medium))
+                                .foregroundColor(.retraceInk2)
                             Spacer()
                         }
                         .padding(.top, 4)
@@ -242,8 +229,10 @@ struct ProcessCPUSummaryCard: View {
                 .padding(.leading, Self.tableLeadingPadding)
                 .padding(.trailing, Self.tableTrailingPadding)
                 .padding(.vertical, Self.tableVerticalPadding)
-                .background(Color.black.opacity(0.18))
-                .cornerRadius(8)
+                .background(
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurface)
+                )
 
                 cpuUsageGuidePanel
             } else {
@@ -252,14 +241,20 @@ struct ProcessCPUSummaryCard: View {
                         .controlSize(.small)
                     Text("No recent process CPU history yet. Sampling now...")
                         .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                 }
             }
             }
             .padding(12)
         }
-        .background(Color.white.opacity(0.02))
-        .cornerRadius(10)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurfaceSunken)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
+        )
         .onAppear {
             cpuProcessRowsVisible = Self.cpuRowsPageSize
             cpuProcessScrollTargetID = nil
@@ -306,24 +301,24 @@ struct ProcessCPUSummaryCard: View {
     private var cpuUsageGuidePanel: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Avg CPU Usage Guide")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.retracePrimary)
+                .font(RetraceFont.font(size: 11, weight: .semibold))
+                .foregroundColor(.retraceInk)
 
             cpuUsageScaleBar
                 .padding(.top, 4)
             cpuBoundaryValueRow
 
             Text("Note: Retrace will likely consume more Avg. CPU than other apps")
-                .font(.system(size: 10))
-                .foregroundColor(.retraceSecondary.opacity(0.85))
+                .font(RetraceFont.font(size: 10, weight: .regular))
+                .foregroundColor(.retraceInk2)
                 .lineLimit(nil)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 4)
             Text("That is fine so long as it is within the green range. Pause OCR to reduce CPU usage.")
-                .font(.system(size: 10))
-                .foregroundColor(.retraceSecondary.opacity(0.85))
+                .font(RetraceFont.font(size: 10, weight: .regular))
+                .foregroundColor(.retraceInk2)
                 .lineLimit(nil)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
@@ -332,43 +327,46 @@ struct ProcessCPUSummaryCard: View {
         }
 
         .padding(10)
-        .background(Color.white.opacity(0.03))
-        .cornerRadius(8)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .fill(Color.retraceSurface)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 
     private var cpuUsageScaleBar: some View {
-        Capsule()
-            .fill(
-                LinearGradient(
-                    stops: [
-                        .init(color: Color.green.opacity(0.85), location: 0.00),
-                        .init(color: Color.green.opacity(0.85), location: 0.33),
-                        .init(color: Color.yellow.opacity(0.90), location: 0.33),
-                        .init(color: Color.yellow.opacity(0.90), location: 0.66),
-                        .init(color: Color.red.opacity(0.90), location: 0.66),
-                        .init(color: Color.red.opacity(0.90), location: 1.00)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
+        Capsule(style: .continuous)
+            .fill(Color.retraceSurfaceSunken)
             .frame(height: 10)
+            .overlay {
+                // Three solid bands: good, caution, bad (thresholds at 33% and 66% of the bar).
+                GeometryReader { geometry in
+                    let width = geometry.size.width
+                    HStack(spacing: 1) {
+                        Rectangle().fill(Color.retraceGood).frame(width: width * 0.33)
+                        Rectangle().fill(Color.retraceWarningText).frame(width: width * 0.33)
+                        Rectangle().fill(Color.retraceCritical)
+                    }
+                    .background(Color.retraceSurface)
+                }
+                .clipShape(Capsule(style: .continuous))
+                .allowsHitTesting(false)
+            }
             .overlay {
                 GeometryReader { geometry in
                     let width = geometry.size.width
                     ZStack(alignment: .leading) {
-                        Capsule()
-                            .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                        Capsule(style: .continuous)
+                            .stroke(Color.retraceBorder, lineWidth: 1)
                         Rectangle()
-                            .fill(Color.white.opacity(0.45))
+                            .fill(Color.retraceInk2)
                             .frame(width: 1, height: 12)
                             .offset(x: max(0, (width * 0.33) - 0.5), y: -1)
                         Rectangle()
-                            .fill(Color.white.opacity(0.45))
+                            .fill(Color.retraceInk2)
                             .frame(width: 1, height: 12)
                             .offset(x: max(0, (width * 0.66) - 0.5), y: -1)
                     }
@@ -385,25 +383,30 @@ struct ProcessCPUSummaryCard: View {
             ZStack(alignment: .leading) {
                 HStack {
                     Text("Good")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(RetraceFont.font(size: 10, weight: .semibold))
                     Spacer()
                     Text("Bad")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(RetraceFont.font(size: 10, weight: .semibold))
                 }
 
+                Text("Caution")
+                    .font(RetraceFont.font(size: 10, weight: .semibold))
+                    .frame(width: 50, alignment: .center)
+                    .offset(x: max(0, (width * 0.495) - 25))
+
                 Text("5%")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(RetraceFont.mono(size: 10, weight: .semibold))
                     .frame(width: 30, alignment: .center)
                     .offset(x: max(0, (width * 0.33) - 15))
                 Text("10%")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(RetraceFont.mono(size: 10, weight: .semibold))
                     .frame(width: 36, alignment: .center)
                     .offset(x: max(0, (width * 0.66) - 18))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(height: 14)
-        .foregroundColor(.retraceSecondary.opacity(0.92))
+        .foregroundColor(.retraceInk2)
     }
 
     private func buildDisplayedRows(from snapshot: ProcessCPUSnapshot, visibleRows: Int) -> [DisplayedCPURow] {
@@ -448,11 +451,10 @@ struct ProcessCPUSummaryCard: View {
                 Image(nsImage: icon)
                     .resizable()
                     .interpolation(.high)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm / 2, style: .continuous))
             } else {
-                Image(systemName: "app.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(.retraceSecondary.opacity(0.75))
+                RetraceSymbol("app.fill", size: 12)
+                    .foregroundColor(.retraceInk2)
             }
         }
         .onAppear {

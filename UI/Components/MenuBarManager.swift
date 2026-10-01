@@ -157,7 +157,8 @@ public class MenuBarManager: ObservableObject {
         Log.debug("[MenuBarLifecycle] status item created", category: .ui)
         Log.info("[GhostAppCheck] MenuBarManager.setup created status item \(ghostAppDebugSummary)", category: .ui)
 
-        if statusItem?.button != nil {
+        if let statusButton = statusItem?.button {
+            statusButton.setAccessibilityLabel("Retrace")
             // Start with icon showing current recording state
             updateIconForCurrentState()
             configureStatusButtonClicks()
@@ -673,9 +674,9 @@ public class MenuBarManager: ObservableObject {
         iconAnimationTimer = timer
     }
 
-    /// Create a custom status icon with two triangles (Retrace logo)
-    /// Left triangle: Points left, supports recording/off/paused visual states, with optional scale
-    /// Right triangle: Points right, always outlined
+    /// Create the template status icon: the Retrace mark (spiral loop plus dot).
+    /// The loop is always drawn; the dot is present while recording and is scaled by the
+    /// press/release animation. Paused and off states show the loop alone.
     private func createStatusIcon(style: RecordingStatusIconStyle, scale: CGFloat = 1.0) -> NSImage {
         createStatusIcon(
             style: style,
@@ -689,59 +690,33 @@ public class MenuBarManager: ObservableObject {
         horizontalScale: CGFloat,
         verticalScale: CGFloat
     ) -> NSImage {
-        let size = NSSize(width: 22, height: 16)
-        let image = NSImage(size: size)
+        let pointSize: CGFloat = 18
+        let dotScaleX = max(0.0, horizontalScale)
+        let dotScaleY = max(0.0, verticalScale)
+        let showsDot = (style == .recording)
 
-        image.lockFocus()
-
-        // Triangle dimensions (matching logo proportions)
-        let baseTriangleHeight: CGFloat = 12
-        let baseTriangleWidth: CGFloat = 8
-        let verticalCenter: CGFloat = size.height / 2
-        let gap: CGFloat = 3.0 // Gap between triangles
-
-        // Apply scale to left triangle dimensions
-        let triangleHeight = baseTriangleHeight * max(0.0, verticalScale)
-        let triangleWidth = baseTriangleWidth * max(0.0, horizontalScale)
-
-        // Left triangle - Points left ◁ (recording indicator)
-        // Center the scaled triangle at the same position
-        let baseCenterX: CGFloat = 2 + (baseTriangleWidth / 2)  // Original center X
-        let leftTip = baseCenterX - (triangleWidth / 2)
-        let leftBase = baseCenterX + (triangleWidth / 2)
-
-        let leftTriangle = NSBezierPath()
-        leftTriangle.move(to: NSPoint(x: leftTip, y: verticalCenter))
-        leftTriangle.line(to: NSPoint(x: leftBase, y: verticalCenter - triangleHeight / 2))
-        leftTriangle.line(to: NSPoint(x: leftBase, y: verticalCenter + triangleHeight / 2))
-        leftTriangle.close()
-
-        switch style {
-        case .recording:
-            // Filled when recording (no border)
-            NSColor.white.setFill()
-            leftTriangle.fill()
-        case .paused, .off:
-            // Outlined when paused or fully off.
-            NSColor.white.setStroke()
-            leftTriangle.lineWidth = 1.2
-            leftTriangle.stroke()
+        let image = NSImage(size: NSSize(width: pointSize, height: pointSize), flipped: true) { rect in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+            let scale = rect.width / 24
+            ctx.scaleBy(x: scale, y: scale)
+            ctx.setLineWidth(max(1.2, 1.7 * scale) / scale)
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
+            // Template image: only alpha matters, the menu bar tints it.
+            ctx.setStrokeColor(NSColor.black.cgColor)
+            ctx.setFillColor(NSColor.black.cgColor)
+            ctx.addPath(RetraceMarkShape.loop)
+            ctx.strokePath()
+            if showsDot {
+                ctx.translateBy(x: 12, y: 12)
+                ctx.scaleBy(x: dotScaleX, y: dotScaleY)
+                ctx.translateBy(x: -12, y: -12)
+                ctx.addPath(RetraceMarkShape.dot)
+                ctx.fillPath()
+            }
+            return true
         }
-
-        // Right triangle - Points right ▷ (always outlined, not scaled)
-        let rightTriangle = NSBezierPath()
-        let rightBase: CGFloat = 2 + baseTriangleWidth + gap
-        let rightTip: CGFloat = rightBase + baseTriangleWidth
-        rightTriangle.move(to: NSPoint(x: rightTip, y: verticalCenter)) // Right tip
-        rightTriangle.line(to: NSPoint(x: rightBase, y: verticalCenter - baseTriangleHeight / 2)) // Top left
-        rightTriangle.line(to: NSPoint(x: rightBase, y: verticalCenter + baseTriangleHeight / 2)) // Bottom left
-        rightTriangle.close()
-
-        NSColor.white.setStroke()
-        rightTriangle.lineWidth = 1.2
-        rightTriangle.stroke()
-
-        image.unlockFocus()
+        image.isTemplate = true
         return image
     }
 
@@ -753,9 +728,8 @@ public class MenuBarManager: ObservableObject {
         // Icon
         let iconSize: CGFloat = 16
         let iconView = NSImageView(frame: NSRect(x: 17, y: 7, width: iconSize, height: iconSize))
-        if let iconImage = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil) {
-            let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
-            iconView.image = iconImage.withSymbolConfiguration(config)
+        if let iconImage = NSImage.retraceSymbol("record.circle", pointSize: 13) {
+            iconView.image = iconImage
             iconView.contentTintColor = .secondaryLabelColor
         }
         containerView.addSubview(iconView)
@@ -784,7 +758,7 @@ public class MenuBarManager: ObservableObject {
         let toggleView = RecordingToggleSwitch(
             frame: NSRect(x: containerWidth - toggleWidth - rightPadding, y: 5, width: toggleWidth, height: 20),
             isOn: isRecording,
-            onColor: NSColor(red: 11/255.0, green: 51/255.0, blue: 108/255.0, alpha: 1.0)
+            onColor: NSColor.retraceAccent
         )
         toggleView.target = self
         toggleView.action = #selector(recordingToggleChanged(_:))
@@ -1056,23 +1030,23 @@ public class MenuBarManager: ObservableObject {
 
         if isRecording {
             let pauseFor5Item = NSMenuItem(title: "Pause for 5 Minutes", action: #selector(pauseFor5Minutes), keyEquivalent: "")
-            pauseFor5Item.image = NSImage(systemSymbolName: "timer", accessibilityDescription: nil)
+            pauseFor5Item.image = NSImage.retraceSymbol("timer", pointSize: 14)
             pauseFor5Item.target = self
             items.append(pauseFor5Item)
 
             let pauseFor30Item = NSMenuItem(title: "Pause for 30 Minutes", action: #selector(pauseFor30Minutes), keyEquivalent: "")
-            pauseFor30Item.image = NSImage(systemSymbolName: "timer", accessibilityDescription: nil)
+            pauseFor30Item.image = NSImage.retraceSymbol("timer", pointSize: 14)
             pauseFor30Item.target = self
             items.append(pauseFor30Item)
 
             let pauseFor60Item = NSMenuItem(title: "Pause for 60 Minutes", action: #selector(pauseFor60Minutes), keyEquivalent: "")
-            pauseFor60Item.image = NSImage(systemSymbolName: "timer", accessibilityDescription: nil)
+            pauseFor60Item.image = NSImage.retraceSymbol("timer", pointSize: 14)
             pauseFor60Item.target = self
             items.append(pauseFor60Item)
         } else if let subtitle = autoResumeSubtitle() {
             let resumeStatusItem = NSMenuItem(title: subtitle, action: nil, keyEquivalent: "")
             resumeStatusItem.isEnabled = false
-            resumeStatusItem.image = NSImage(systemSymbolName: "timer", accessibilityDescription: nil)
+            resumeStatusItem.image = NSImage.retraceSymbol("timer", pointSize: 14)
             autoResumeStatusItem = resumeStatusItem
             items.append(resumeStatusItem)
         }
@@ -1135,7 +1109,7 @@ public class MenuBarManager: ObservableObject {
             keyEquivalent: timelineShortcut.menuKeyEquivalent
         )
         timelineItem.keyEquivalentModifierMask = timelineShortcut.modifiers.nsModifiers
-        timelineItem.image = NSImage(systemSymbolName: primaryActions.timeline.imageSystemName, accessibilityDescription: nil)
+        timelineItem.image = NSImage.retraceSymbol(primaryActions.timeline.imageSystemName, pointSize: 14)
         menu.addItem(timelineItem)
 
         // Search Screen History
@@ -1144,7 +1118,7 @@ public class MenuBarManager: ObservableObject {
             action: #selector(openSearch),
             keyEquivalent: ""
         )
-        searchItem.image = NSImage(systemSymbolName: primaryActions.search.imageSystemName, accessibilityDescription: nil)
+        searchItem.image = NSImage.retraceSymbol(primaryActions.search.imageSystemName, pointSize: 14)
         menu.addItem(searchItem)
 
         // Open Dashboard
@@ -1154,7 +1128,7 @@ public class MenuBarManager: ObservableObject {
             keyEquivalent: dashboardShortcut.menuKeyEquivalent
         )
         dashboardItem.keyEquivalentModifierMask = dashboardShortcut.modifiers.nsModifiers
-        dashboardItem.image = NSImage(systemSymbolName: primaryActions.dashboard.imageSystemName, accessibilityDescription: nil)
+        dashboardItem.image = NSImage.retraceSymbol(primaryActions.dashboard.imageSystemName, pointSize: 14)
         menu.addItem(dashboardItem)
 
         // System Monitor
@@ -1166,7 +1140,7 @@ public class MenuBarManager: ObservableObject {
         if !systemMonitorShortcut.key.isEmpty {
             monitorItem.keyEquivalentModifierMask = systemMonitorShortcut.modifiers.nsModifiers
         }
-        monitorItem.image = NSImage(systemSymbolName: primaryActions.monitor.imageSystemName, accessibilityDescription: nil)
+        monitorItem.image = NSImage.retraceSymbol(primaryActions.monitor.imageSystemName, pointSize: 14)
         menu.addItem(monitorItem)
 
         menu.addItem(NSMenuItem.separator())
@@ -1183,7 +1157,7 @@ public class MenuBarManager: ObservableObject {
             keyEquivalent: ","
         )
         settingsItem.keyEquivalentModifierMask = .command
-        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+        settingsItem.image = NSImage.retraceSymbol("gearshape", pointSize: 14)
         menu.addItem(settingsItem)
 
         // Check for updates
@@ -1192,7 +1166,7 @@ public class MenuBarManager: ObservableObject {
             action: #selector(checkForUpdatesFromMenu),
             keyEquivalent: ""
         )
-        checkForUpdatesItem.image = NSImage(systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+        checkForUpdatesItem.image = NSImage.retraceSymbol("arrow.down.circle", pointSize: 14)
         checkForUpdatesItem.isEnabled = !UpdaterManager.shared.isCheckingForUpdates && UpdaterManager.shared.canCheckForUpdates
         menu.addItem(checkForUpdatesItem)
 
@@ -1202,7 +1176,7 @@ public class MenuBarManager: ObservableObject {
             action: #selector(openChangelog),
             keyEquivalent: ""
         )
-        changelogItem.image = NSImage(systemSymbolName: "text.book.closed", accessibilityDescription: nil)
+        changelogItem.image = NSImage.retraceSymbol("text.book.closed", pointSize: 14)
         menu.addItem(changelogItem)
 
         // Get Help
@@ -1211,7 +1185,7 @@ public class MenuBarManager: ObservableObject {
             action: #selector(openFeedback),
             keyEquivalent: ""
         )
-        feedbackItem.image = NSImage(systemSymbolName: "exclamationmark.bubble", accessibilityDescription: nil)
+        feedbackItem.image = NSImage.retraceSymbol("exclamationmark.bubble", pointSize: 14)
         menu.addItem(feedbackItem)
 
         menu.addItem(NSMenuItem.separator())
@@ -1719,7 +1693,7 @@ private class RecordingToggleSwitch: NSView {
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
 
-        guard let context = NSGraphicsContext.current?.cgContext else { return }
+        guard NSGraphicsContext.current != nil else { return }
 
         // Draw track (pill shape)
         let trackRect = NSRect(
@@ -1731,19 +1705,16 @@ private class RecordingToggleSwitch: NSView {
 
         let trackPath = NSBezierPath(roundedRect: trackRect, xRadius: trackHeight / 2, yRadius: trackHeight / 2)
 
-        // Interpolate color based on colorProgress
-        let offColor = NSColor.systemGray.withAlphaComponent(0.4)
-        let blendedColor = NSColor(
-            red: offColor.redComponent + (onColor.redComponent - offColor.redComponent) * colorProgress,
-            green: offColor.greenComponent + (onColor.greenComponent - offColor.greenComponent) * colorProgress,
-            blue: offColor.blueComponent + (onColor.blueComponent - offColor.blueComponent) * colorProgress,
-            alpha: offColor.alphaComponent + (onColor.alphaComponent - offColor.alphaComponent) * colorProgress
-        )
-        blendedColor.setFill()
+        // Interpolate colors based on colorProgress (Linen switch: surface/border-strong -> accent/on-accent)
+        let onTrackColor = resolvedRGB(onColor)
+        let offTrackColor = resolvedRGB(NSColor.retrace(RetraceTokens.surface))
+        let offEdgeColor = resolvedRGB(NSColor.retrace(RetraceTokens.borderStrong))
+        let onKnobColor = resolvedRGB(NSColor.retrace(RetraceTokens.onAccent))
+        blend(offTrackColor, onTrackColor, colorProgress).setFill()
         trackPath.fill()
 
-        // Draw white border around track
-        NSColor.white.withAlphaComponent(0.5).setStroke()
+        // Draw 1px edge around track (border-strong when off, accent when on)
+        blend(offEdgeColor, onTrackColor, colorProgress).setStroke()
         trackPath.lineWidth = 1.0
         trackPath.stroke()
 
@@ -1756,12 +1727,23 @@ private class RecordingToggleSwitch: NSView {
         let knobRect = NSRect(x: knobX, y: knobY, width: knobDiameter, height: knobDiameter)
         let knobPath = NSBezierPath(ovalIn: knobRect)
 
-        // Add subtle shadow to knob
-        context.saveGState()
-        context.setShadow(offset: CGSize(width: 0, height: -1), blur: 2, color: NSColor.black.withAlphaComponent(0.2).cgColor)
-        NSColor.white.setFill()
+        // Flat knob: border-strong when off, on-accent when on (no shadow)
+        blend(offEdgeColor, onKnobColor, colorProgress).setFill()
         knobPath.fill()
-        context.restoreGState()
+    }
+
+    /// Resolves a (possibly dynamic) color to sRGB for the current drawing appearance.
+    private func resolvedRGB(_ color: NSColor) -> NSColor {
+        color.usingColorSpace(.sRGB) ?? color
+    }
+
+    private func blend(_ from: NSColor, _ to: NSColor, _ progress: CGFloat) -> NSColor {
+        NSColor(
+            red: from.redComponent + (to.redComponent - from.redComponent) * progress,
+            green: from.greenComponent + (to.greenComponent - from.greenComponent) * progress,
+            blue: from.blueComponent + (to.blueComponent - from.blueComponent) * progress,
+            alpha: from.alphaComponent + (to.alphaComponent - from.alphaComponent) * progress
+        )
     }
 
     override func mouseDown(with event: NSEvent) {

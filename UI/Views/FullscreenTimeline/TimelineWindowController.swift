@@ -2578,6 +2578,9 @@ public class TimelineWindowController: NSObject {
         )
         window.delegate = self
 
+        // The timeline stays Dusk regardless of the app-wide Auto/Light/Dark preference.
+        window.appearance = RetraceAppearance.dusk
+
         // Configure window properties
         window.level = .screenSaver
         window.animationBehavior = .none
@@ -3821,13 +3824,13 @@ extension TimelineWindowController {
 
     /// Estimate the runtime width of the datetime control so click hit-testing matches localized labels.
     private func estimatedDatetimeControlWidth(for viewModel: SimpleTimelineViewModel, scale: CGFloat) -> CGFloat {
-        let dateFont = NSFont.systemFont(ofSize: TimelineScaleFactor.fontCaption, weight: .medium)
-        let timeFont = NSFont.monospacedSystemFont(ofSize: TimelineScaleFactor.fontMono, weight: .regular)
-        let chevronFont = NSFont.systemFont(ofSize: TimelineScaleFactor.fontTiny, weight: .bold)
+        let dateFont = NSFont.retraceTimelineSerif(size: TimelineScaleFactor.fontCaption)
+        let timeFont = NSFont.retraceTimelineMono(size: TimelineScaleFactor.fontMono)
 
         let dateWidth = (viewModel.currentDateString as NSString).size(withAttributes: [.font: dateFont]).width
         let timeWidth = (viewModel.currentTimeString as NSString).size(withAttributes: [.font: timeFont]).width
-        let chevronWidth = ("▾" as NSString).size(withAttributes: [.font: chevronFont]).width
+        // DatetimeButton draws the chevron with RetraceSymbol, whose frame is ceil(pointSize * 1.25).
+        let chevronWidth = ceil(TimelineScaleFactor.fontTiny * 1.25)
 
         // Match DatetimeButton horizontal spacing/padding.
         let contentWidth = dateWidth +
