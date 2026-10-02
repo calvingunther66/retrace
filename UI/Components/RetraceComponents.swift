@@ -227,6 +227,8 @@ public struct RetraceTile: View {
                 .font(.retraceLargeNumber)
                 .monospacedDigit()
                 .foregroundColor(.retraceInk)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
                 .padding(.top, 2)
             if let hint {
                 Text(hint)
