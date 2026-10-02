@@ -33,7 +33,6 @@ UI/
 │   │   ├── ChangelogView.swift          # Appcast-powered release notes view
 │   │   ├── AnalyticsCard.swift          # Stats widgets
 │   │   ├── MigrationPanel.swift         # Import UI
-│   │   └── SupportLink.swift            # Twitter/support
 │   ├── Feedback/
 │   │   ├── FeedbackFormView.swift       # Feedback sheet with form, sending, and success states
 │   │   ├── FeedbackDiagnosticsPresentation.swift # Feedback diagnostics section building + readable formatting helpers
@@ -414,8 +413,6 @@ struct BoundingBoxOverlay: View {
 │  │                                              │  │
 │  │ Status: Ready to import                      │  │
 │  └─────────────────────────────────────────────┘  │
-│                                                     │
-│  Made with ♥ by @haseab • x.com/haseab_            │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -488,10 +485,7 @@ struct BoundingBoxOverlay: View {
 - Error handling (show failed videos)
 - "Import Complete" notification
 
-**Support Link**:
-- Small footer: "Made with ♥ by @haseab"
-- Links to: `https://x.com/haseab_`
-- Opens in default browser
+**Footer**: none. The credits/support/help/version bar was removed; feedback stays reachable from the menu bar, the app context menu and the Dashboard banners. A debug-only tools menu remains under `#if DEBUG`.
 
 ### 5. Settings View
 
