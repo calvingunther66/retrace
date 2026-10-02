@@ -145,6 +145,8 @@ public actor WALManager {
             fileHandle = newHandle
         }
 
+        var frameStartOffset: UInt64 = 0
+        var frameByteCount: UInt64 = 0
         do {
             // Seek to end
             if #available(macOS 10.15.4, *) {
@@ -152,6 +154,7 @@ public actor WALManager {
             } else {
                 fileHandle.seekToEndOfFile()
             }
+            frameStartOffset = fileHandle.offsetInFile
 
             // Write frame header + pixel data
             let header = WALFrameHeader(
@@ -222,6 +225,12 @@ public actor WALManager {
             } else {
                 fileHandle.write(frame.imageData)
             }
+
+            let metadataByteCount = Int(header.appBundleIDLength)
+                + Int(header.appNameLength)
+                + Int(header.windowNameLength)
+                + Int(header.browserURLLength)
+            frameByteCount = UInt64(headerData.count + metadataByteCount) + UInt64(header.dataSize)
         } catch {
             throw makeStorageWriteError(
                 path: session.framesURL.path,
@@ -246,9 +255,23 @@ public actor WALManager {
             )
         }
 
-        // Invalidate frame offset index cache so the next random-access read
-        // can rebuild with the newly appended frame.
-        frameOffsetIndexCache.removeValue(forKey: session.videoID.value)
+        // Keep the frame offset index in sync incrementally rather than invalidating
+        // it on every append: the write handle is already positioned at the prior
+        // end-of-file, so the new frame's start offset and the new file size are
+        // known without rescanning frames.bin. Invalidating unconditionally here
+        // forced the next `registerFrameID` call to rebuild the whole index from
+        // byte 0 on every single frame, making a segment of N frames O(N^2) I/O.
+        // Only fall back to invalidating (forcing a rebuild-from-scratch on next
+        // access) when the cache is missing or its recorded file size doesn't
+        // match this frame's start offset (e.g. after quarantine/recovery).
+        if var cached = frameOffsetIndexCache[session.videoID.value],
+           cached.fileSize == Int64(frameStartOffset) {
+            cached.offsets.append(frameStartOffset)
+            cached.fileSize = Int64(frameStartOffset + frameByteCount)
+            frameOffsetIndexCache[session.videoID.value] = cached
+        } else {
+            frameOffsetIndexCache.removeValue(forKey: session.videoID.value)
+        }
     }
 
     /// Persist the readable frontier of the fragmented MP4 so recovery can
@@ -1573,8 +1596,8 @@ private struct WALFrameHeader {
 }
 
 private struct WALFrameOffsetIndex {
-    let fileSize: Int64
-    let offsets: [UInt64]
+    var fileSize: Int64
+    var offsets: [UInt64]
 }
 
 struct WALRecoveryIndex: Sendable {

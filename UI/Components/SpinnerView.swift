@@ -36,11 +36,10 @@ struct SpinnerView_Previews: PreviewProvider {
         VStack(spacing: 32) {
             SpinnerView()
             SpinnerView(size: 16, lineWidth: 2)
-            SpinnerView(size: 32, lineWidth: 4, color: .white)
+            SpinnerView(size: 32, lineWidth: 4, color: .retraceInk)
         }
         .padding(40)
-        .background(Color.retraceBackground)
-        .preferredColorScheme(.dark)
+        .background(Color.retracePage)
     }
 }
 #endif

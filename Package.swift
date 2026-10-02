@@ -330,7 +330,8 @@ let package = Package(
                 "Retrace.entitlements"
             ],
             resources: [
-                .process("Assets.xcassets")
+                .process("Assets.xcassets"),
+                .copy("Fonts")
             ],
             linkerSettings: [
                 .unsafeFlags([

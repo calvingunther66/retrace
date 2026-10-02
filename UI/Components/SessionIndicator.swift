@@ -49,7 +49,7 @@ public struct SessionIndicator: View {
                         if width > 60 {
                             Text(segment.bundleID)
                                 .font(.retraceCaption2)
-                                .foregroundColor(.white)
+                                .foregroundColor(.retraceInk)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
@@ -58,19 +58,13 @@ public struct SessionIndicator: View {
                     }
                     .padding(.horizontal, 4)
                 )
-                .cornerRadius(4)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                         .stroke(
                             borderColor,
                             lineWidth: isSelected ? 2 : (isHovered ? 1.5 : 0)
                         )
-                )
-                .shadow(
-                    color: isSelected ? segmentColor.opacity(0.5) : .clear,
-                    radius: 4,
-                    x: 0,
-                    y: 2
                 )
         }
         .onHover { hovering in
@@ -99,16 +93,16 @@ public struct SessionIndicator: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(segment.bundleID)
                         .font(.retraceHeadline)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
 
                     Text(segment.bundleID)
-                        .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMonoSmall)
+                        .foregroundColor(.retraceInk2)
                         .lineLimit(1)
                 }
             }
 
-            Divider()
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
             // Session details
             DetailRow(label: "Start", value: formatTime(segment.startDate))
@@ -117,7 +111,7 @@ public struct SessionIndicator: View {
 
             // Window title (if available)
             if let windowName = segment.windowName, !windowName.isEmpty {
-                Divider()
+                Rectangle().fill(Color.retraceBorder).frame(height: 1)
                 DetailRow(label: "Window", value: windowName)
             }
 
@@ -140,7 +134,7 @@ public struct SessionIndicator: View {
         if isSelected {
             return .retraceAccent
         } else if isHovered {
-            return .white.opacity(0.5)
+            return .retraceBorderStrong
         } else {
             return .clear
         }
@@ -185,12 +179,12 @@ private struct DetailRow: View {
         HStack(alignment: .top) {
             Text(label + ":")
                 .font(.retraceCaption)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .frame(width: 70, alignment: .leading)
 
             Text(value)
                 .font(.retraceCaption)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
                 .lineLimit(2)
 
             Spacer(minLength: 0)
@@ -249,7 +243,6 @@ struct SessionIndicator_Previews: PreviewProvider {
         .padding()
         .frame(width: 400, height: 300)
         .background(Color.retraceBackground)
-        .preferredColorScheme(.dark)
     }
 }
 #endif

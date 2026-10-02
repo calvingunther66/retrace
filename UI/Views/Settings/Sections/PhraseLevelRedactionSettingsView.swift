@@ -33,12 +33,12 @@ extension SettingsView {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.025))
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurfaceSunken)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 
@@ -47,8 +47,8 @@ extension SettingsView {
         ModernSettingsCard(title: "Phrase Level Redaction", icon: "text.viewfinder") {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Redact matching OCR text with reversible scrambling from manual keywords.")
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
 
                 redactionSettingsSubcard {
                     ModernToggleRow(
@@ -60,8 +60,7 @@ extension SettingsView {
                     )
 
                     if phraseLevelRedactionEnabled {
-                        Divider()
-                            .background(Color.white.opacity(0.08))
+                        Divider().overlay(Color.retraceBorder)
 
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Keywords and phrases")
@@ -72,15 +71,16 @@ extension SettingsView {
                                 TextField("Type a phrase and press Return", text: $phraseLevelRedactionInput)
                                     .textFieldStyle(.plain)
                                     .font(.retraceCallout)
+                                    .foregroundColor(.retraceInk)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 9)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .fill(Color.white.opacity(0.05))
+                                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                            .fill(Color.retraceSurface)
                                     )
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                            .stroke(Color.retraceBorderStrong, lineWidth: 1)
                                     )
                                     .onSubmit {
                                         addPhraseLevelRedactionPhrase()
@@ -89,16 +89,15 @@ extension SettingsView {
                                 Button("Add") {
                                     addPhraseLevelRedactionPhrase()
                                 }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
+                                .buttonStyle(RetraceButtonStyle(.primary, size: .sm))
                                 .disabled(phraseLevelRedactionInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             }
                         }
 
                         if phraseLevelRedactionPhrases.isEmpty {
                             Text("No keywords configured yet.")
-                                .font(.retraceCaption)
-                                .foregroundColor(.retraceSecondary.opacity(0.8))
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceInk2)
                         } else {
                             LazyVGrid(
                                 columns: [GridItem(.adaptive(minimum: 170), spacing: 8)],
@@ -118,21 +117,20 @@ extension SettingsView {
                                         Button {
                                             removePhraseLevelRedactionPhrase(phrase)
                                         } label: {
-                                            Image(systemName: "xmark")
-                                                .font(.system(size: 10, weight: .bold))
-                                                .foregroundColor(.white.opacity(0.75))
+                                            RetraceSymbol("xmark", size: 10, weight: .bold)
+                                                .foregroundColor(.retraceInk2)
                                         }
                                         .buttonStyle(.plain)
                                     }
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 7)
                                     .background(
-                                        Capsule()
-                                            .fill(Color.white.opacity(0.08))
+                                        Capsule(style: .continuous)
+                                            .fill(Color.retraceSurface)
                                     )
                                     .overlay(
-                                        Capsule()
-                                            .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                                        Capsule(style: .continuous)
+                                            .stroke(Color.retraceBorder, lineWidth: 1)
                                     )
                                 }
                             }
@@ -210,7 +208,7 @@ extension SettingsView {
             if text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(placeholder)
                     .font(.retraceCaption)
-                    .foregroundColor(.white.opacity(0.32))
+                    .foregroundColor(.retraceMuted)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .allowsHitTesting(false)
@@ -218,18 +216,19 @@ extension SettingsView {
 
             TextEditor(text: text)
                 .font(.retraceCaption)
+                .foregroundColor(.retraceInk)
                 .scrollContentBackground(.hidden)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
         }
         .frame(minHeight: 90)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.04))
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .fill(Color.retraceSurface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.09), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceBorderStrong, lineWidth: 1)
         )
     }
 }

@@ -56,6 +56,25 @@ actor DirectoryManager {
         return dir.appendingPathComponent("\(id.stringValue)")
     }
 
+    /// Derive the day-bucketed candidate URL for a segment ID/date pair, matching the
+    /// `chunks/{yyyymm}/{dd}/{id}` layout `segmentURL` writes to, WITHOUT creating any
+    /// directories. Used as a fast lookup probe before falling back to a full tree scan.
+    func candidateSegmentURL(for id: VideoSegmentID, date: Date) -> URL {
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: date)
+        let month = calendar.component(.month, from: date)
+        let day = calendar.component(.day, from: date)
+
+        let yearMonth = String(format: "%04d%02d", year, month)
+        let dayStr = String(format: "%02d", day)
+
+        return storageRoot
+            .appendingPathComponent("chunks", isDirectory: true)
+            .appendingPathComponent(yearMonth, isDirectory: true)
+            .appendingPathComponent(dayStr, isDirectory: true)
+            .appendingPathComponent("\(id.stringValue)")
+    }
+
     func relativePath(from url: URL) -> String {
         let rootPath = storageRoot.path
         let fullPath = url.path

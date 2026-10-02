@@ -29,8 +29,8 @@ extension SettingsView {
 
             if privateModeAXCompatibleTargets.isEmpty {
                 Text("No compatible browsers detected.")
-                    .font(.retraceCaption2)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(privateModeAXCompatibleTargets.enumerated()), id: \.element.bundleID) { index, target in
@@ -39,15 +39,13 @@ extension SettingsView {
                             accessibilityState: accessibilityState
                         )
                         if index < privateModeAXCompatibleTargets.count - 1 {
-                            Divider()
-                                .background(Color.white.opacity(0.08))
+                            Divider().overlay(Color.retraceBorder)
                         }
                     }
                 }
             }
 
-            Divider()
-                .background(Color.white.opacity(0.08))
+            Divider().overlay(Color.retraceBorder)
 
             Text("Step 2: Grant Additional Permissions for these browsers")
                 .font(.retraceCaption2Bold)
@@ -59,21 +57,20 @@ extension SettingsView {
                         ProgressView()
                             .controlSize(.small)
                         Text("Scanning for browsers that require mode-based private detection...")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                     }
                 } else {
                     Text("No installed browsers currently require `mode`-based private detection.")
-                        .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 }
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(privateModeAutomationTargets.enumerated()), id: \.element.bundleID) { index, target in
                         privateModeAutomationPermissionRow(target: target)
                         if index < privateModeAutomationTargets.count - 1 {
-                            Divider()
-                                .background(Color.white.opacity(0.08))
+                            Divider().overlay(Color.retraceBorder)
                         }
                     }
                 }
@@ -89,13 +86,12 @@ extension SettingsView {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 10))
+                            RetraceSymbol("arrow.clockwise", size: 10)
                         }
                         Text(isRefreshingPrivateModeAutomationTargets ? "Refreshing..." : "Refresh Browser List")
                             .font(.retraceCaption2)
                     }
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundColor(.retraceInk2)
                 }
                 .buttonStyle(.plain)
                 .disabled(isRefreshingPrivateModeAutomationTargets)
@@ -121,8 +117,7 @@ extension SettingsView {
                         .resizable()
                         .frame(width: 20, height: 20)
                 } else {
-                    Image(systemName: "globe")
-                        .font(.system(size: 12))
+                    RetraceSymbol("globe", size: 12)
                         .foregroundColor(.retraceSecondary)
                         .frame(width: 20, height: 20)
                 }
@@ -158,8 +153,7 @@ extension SettingsView {
                         .resizable()
                         .frame(width: 20, height: 20)
                 } else {
-                    Image(systemName: "globe")
-                        .font(.system(size: 12))
+                    RetraceSymbol("globe", size: 12)
                         .foregroundColor(.retraceSecondary)
                         .frame(width: 20, height: 20)
                 }
@@ -204,13 +198,7 @@ extension SettingsView {
                     Text(buttonTitle)
                 }
             }
-            .font(.retraceCaption2Bold)
-            .foregroundColor(.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.retraceAccent.opacity(0.75))
-            .cornerRadius(8)
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary, size: .sm))
             .disabled(privateModeAutomationBusyBundleIDs.contains(target.bundleID))
         }
         .padding(.horizontal, 12)

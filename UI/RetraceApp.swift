@@ -465,7 +465,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.target = overrideTarget
             item.keyEquivalentModifierMask = modifiers
             if let systemImageName,
-               let symbol = NSImage(systemSymbolName: systemImageName, accessibilityDescription: nil) {
+               let symbol = NSImage.retraceSymbol(systemImageName, pointSize: 14) {
                 symbol.isTemplate = true
                 item.image = symbol
             }
@@ -740,7 +740,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if timedPauseIsActive, let subtitle = timedPauseSubtitle() {
             let subtitleItem = NSMenuItem(title: subtitle, action: nil, keyEquivalent: "")
             subtitleItem.isEnabled = false
-            subtitleItem.image = NSImage(systemSymbolName: "timer", accessibilityDescription: nil)
+            subtitleItem.image = NSImage.retraceSymbol("timer", pointSize: 14)
             menu.addItem(subtitleItem)
             menu.addItem(
                 makeMainMenuItem(
@@ -784,7 +784,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.target = self
         item.keyEquivalentModifierMask = resolvedModifiers
         if let systemImageName,
-           let symbol = NSImage(systemSymbolName: systemImageName, accessibilityDescription: nil) {
+           let symbol = NSImage.retraceSymbol(systemImageName, pointSize: 14) {
             symbol.isTemplate = true
             item.image = symbol
         }
@@ -1167,27 +1167,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func styleQuitAlertPrimaryButton(_ alert: NSAlert, context: String) {
         guard let quitButton = alert.buttons.first else { return }
 
-        let retraceQuitBlue = NSColor(
-            calibratedRed: 11.0 / 255.0,
-            green: 51.0 / 255.0,
-            blue: 108.0 / 255.0,
-            alpha: 1.0
-        )
+        let retraceQuitAccent = NSColor.retraceAccent
+        let retraceQuitOnAccent = NSColor.retrace(RetraceTokens.onAccent)
 
-        quitButton.appearance = NSAppearance(named: .darkAqua)
-        quitButton.bezelColor = retraceQuitBlue
-        quitButton.contentTintColor = .white
+        quitButton.bezelColor = retraceQuitAccent
+        quitButton.contentTintColor = retraceQuitOnAccent
         quitButton.attributedTitle = NSAttributedString(
             string: quitButton.title,
             attributes: [
-                .foregroundColor: NSColor.white,
+                .foregroundColor: retraceQuitOnAccent,
                 .font: NSFont.systemFont(ofSize: quitButton.font?.pointSize ?? 15, weight: .semibold)
             ]
         )
         quitButton.needsDisplay = true
 
         if let appliedColor = quitButton.attributedTitle.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor {
-            Log.debug("[QUIT_ALERT] Applied style context=\(context) fg=\(appliedColor) bezel=\(retraceQuitBlue)", category: .ui)
+            Log.debug("[QUIT_ALERT] Applied style context=\(context) fg=\(appliedColor) bezel=\(retraceQuitAccent)", category: .ui)
         } else {
             Log.warning("[QUIT_ALERT] Failed to read attributed foreground color context=\(context)", category: .ui)
         }
@@ -2094,7 +2089,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
         item.target = self
         if let systemImageName,
-           let symbol = NSImage(systemSymbolName: systemImageName, accessibilityDescription: nil) {
+           let symbol = NSImage.retraceSymbol(systemImageName, pointSize: 14) {
             symbol.isTemplate = true
             item.image = symbol
         }
@@ -2760,8 +2755,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Appearance
 
     private func configureAppearance() {
-        // Force dark mode - the app UI is designed for dark theme
-        NSApp.appearance = NSAppearance(named: .darkAqua)
+        // Linen (light) or Dusk (dark): follow the stored Auto / Light / Dark preference.
+        RetraceFontRegistry.ensureRegistered()
+        RetraceAppearance.applyStoredPreference()
     }
 }
 

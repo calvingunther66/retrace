@@ -589,9 +589,21 @@ public final class AppMetadataCache: ObservableObject {
         }
     }
 
+    /// Coalesces `publishCacheMutation()` calls so that many icon/name resolutions completing in
+    /// quick succession (e.g. resolving a whole list of uncached apps) trigger at most one
+    /// `objectWillChange`/memory-ledger update per run-loop tick, instead of one full re-render of
+    /// every observing `AppIconView` per individual resolution.
+    private var isCacheMutationFlushScheduled = false
+
     private func publishCacheMutation() {
-        objectWillChange.send()
-        updateMemoryLedger()
+        guard !isCacheMutationFlushScheduled else { return }
+        isCacheMutationFlushScheduled = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.isCacheMutationFlushScheduled = false
+            self.objectWillChange.send()
+            self.updateMemoryLedger()
+        }
     }
 
     private func updateMemoryLedger() {
@@ -692,10 +704,10 @@ public struct AppIconView: View {
         let color = Color.segmentColor(for: bundleID)
 
         return ZStack {
-            RoundedRectangle(cornerRadius: size * 0.22)
+            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
                 .fill(color.opacity(0.2))
 
-            RoundedRectangle(cornerRadius: size * 0.22)
+            RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
                 .stroke(color.opacity(0.3), lineWidth: 1)
 
             Text(firstLetter)

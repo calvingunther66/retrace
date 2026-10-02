@@ -141,12 +141,12 @@ struct FocusableTextInput: NSViewRepresentable {
         textField.placeholderAttributedString = NSAttributedString(
             string: placeholder,
             attributes: [
-                .foregroundColor: NSColor.white.withAlphaComponent(0.35),
+                .foregroundColor: NSColor.retraceMuted,
                 .font: font
             ]
         )
         textField.font = font
-        textField.textColor = .white
+        textField.textColor = .retraceInk
         textField.backgroundColor = .clear
         textField.isBordered = false
         textField.focusRingType = .none

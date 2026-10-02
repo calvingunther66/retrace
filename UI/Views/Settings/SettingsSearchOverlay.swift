@@ -52,7 +52,7 @@ extension SettingsView {
         if shellViewModel.showSettingsSearch {
             ZStack {
                 // Backdrop
-                Color.black.opacity(0.5)
+                Color.retraceScrim
                     .ignoresSafeArea()
                     .onTapGesture { dismissSettingsSearch() }
 
@@ -60,9 +60,8 @@ extension SettingsView {
                 VStack(spacing: 0) {
                     // Search bar
                     HStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white.opacity(0.5))
+                        RetraceSymbol("magnifyingglass", size: 18, label: "")
+                            .foregroundColor(.retraceMuted)
 
                         SettingsSearchField(
                             text: $shellViewModel.settingsSearchQuery,
@@ -71,18 +70,17 @@ extension SettingsView {
                         .frame(height: 24)
 
                         Text("esc")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.white.opacity(0.3))
+                            .font(RetraceFont.mono(size: 10, weight: .medium))
+                            .foregroundColor(.retraceInk2)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(4)
+                            .background(Color.retraceSurfaceSunken)
+                            .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)
 
-                    Divider()
-                        .background(Color.white.opacity(0.1))
+                    Divider().overlay(Color.retraceBorder)
 
                     // Results
                     let results = SettingsShellViewModel.searchResults(for: shellViewModel.settingsSearchQuery)
@@ -90,22 +88,21 @@ extension SettingsView {
                     if shellViewModel.settingsSearchQuery.isEmpty {
                         VStack(spacing: 8) {
                             Text("Search settings...")
-                                .font(.retraceCalloutMedium)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceCallout)
+                                .foregroundColor(.retraceInk2)
                             Text("Type to find settings like \"OCR\", \"retention\", \"privacy\"")
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary.opacity(0.6))
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
                     } else if results.isEmpty {
                         VStack(spacing: 8) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 32))
-                                .foregroundColor(.retraceSecondary.opacity(0.4))
+                            RetraceSymbol("magnifyingglass", size: 32)
+                                .foregroundColor(.retraceMuted)
                             Text("No settings found for \"\(shellViewModel.settingsSearchQuery)\"")
-                                .font(.retraceCalloutMedium)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceCallout)
+                                .foregroundColor(.retraceInk2)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 40)
@@ -116,12 +113,11 @@ extension SettingsView {
                                     VStack(alignment: .leading, spacing: 8) {
                                         // Breadcrumb
                                         HStack(spacing: 6) {
-                                            Image(systemName: entry.tab.icon)
-                                                .font(.system(size: 10))
-                                                .foregroundStyle(entry.tab.gradient)
+                                            RetraceSymbol(entry.tab.icon, size: 10, label: "")
+                                                .foregroundColor(.retraceAccent)
                                             Text(entry.breadcrumb)
-                                                .font(.retraceCaption2)
-                                                .foregroundColor(.retraceSecondary)
+                                                .font(.retraceMeta)
+                                                .foregroundColor(.retraceMuted)
 
                                             Spacer()
 
@@ -132,9 +128,8 @@ extension SettingsView {
                                             }) {
                                                 HStack(spacing: 4) {
                                                     Text("Go to")
-                                                        .font(.system(size: 10, weight: .medium))
-                                                    Image(systemName: "arrow.right")
-                                                        .font(.system(size: 8, weight: .semibold))
+                                                        .font(.retraceTiny)
+                                                    RetraceSymbol("arrow.right", size: 8, weight: .semibold, label: "")
                                                 }
                                                 .foregroundColor(.retraceAccent)
                                             }
@@ -153,15 +148,15 @@ extension SettingsView {
                 }
                 .frame(width: 600)
                 .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                        .fill(Color.retracePage)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .shadow(color: Color.black.opacity(0.5), radius: 20, y: 10)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+                .retraceElevation(.lg)
             }
             .transition(.opacity)
             .onExitCommand { dismissSettingsSearch() }

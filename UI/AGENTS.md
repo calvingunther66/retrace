@@ -2,6 +2,8 @@
 
 You are the **UI** agent responsible for building the SwiftUI interface for Retrace.
 
+> **Live-testing the real app? Run `./build_and_sign.sh` first.** The installed app in `/Applications` is stale until you do; `swift build`/`swift test` don't update it. See root `AGENTS.md` Critical Rule 9.
+
 **Status**: ✅ Fully implemented with modern SwiftUI design. Timeline, dashboard, search, settings, onboarding, feedback, and bundled crash-recovery helper integration all working. Global hotkeys functional (Cmd+Shift+T for timeline, Cmd+Shift+D for dashboard). Menu bar integration complete. Automatic move-to-Applications prompting has been removed. **Apple Silicon required**. Audio transcription UI not implemented (planned for future release).
 
 ## Your Directory
@@ -33,7 +35,6 @@ UI/
 │   │   ├── ChangelogView.swift          # Appcast-powered release notes view
 │   │   ├── AnalyticsCard.swift          # Stats widgets
 │   │   ├── MigrationPanel.swift         # Import UI
-│   │   └── SupportLink.swift            # Twitter/support
 │   ├── Feedback/
 │   │   ├── FeedbackFormView.swift       # Feedback sheet with form, sending, and success states
 │   │   ├── FeedbackDiagnosticsPresentation.swift # Feedback diagnostics section building + readable formatting helpers
@@ -90,7 +91,12 @@ UI/
 │   └── CrashRecoverySupport.swift       # Shared crash-recovery constants, disconnect suppression, and XPC protocol
 ├── LaunchAgents/
 │   └── io.retrace.app.crash-recovery.plist # SMAppService launch-agent plist for crash recovery
+├── Fonts/                              # Source Serif 4 + IBM Plex Mono (OFL) bundled for the design system; registered by RetraceFontRegistry
 ├── Components/
+│   ├── AppTheme.swift                   # Linen/Dusk design tokens (adaptive Color/NSColor), type scale, spacing/radius, elevation, button/card styles, RetraceAppearance
+│   ├── RetraceIcon.swift                # Stroke icon set drawn in code (24 grid), SF Symbol → icon table, RetraceSymbol/RetraceIconView, RetraceMarkView/RetraceWordmark, NSImage.retraceSymbol/retraceMenuBarMark
+│   ├── RetraceComponents.swift          # RetraceBadge, RetraceMeter, RetraceSwitchStyle, RetraceField, RetraceTile, RetraceSectionHeader
+│   ├── RetraceFontRegistry.swift        # One-time bundled font registration with system serif/mono fallback
 │   ├── MasterKeyRedactionFlowCoordinator.swift # Shared missing-master-key prompt/recovery coordinator
 │   ├── BoundingBoxOverlay.swift         # Text region highlighting
 │   ├── CrashRecoveryManager.swift       # App-side SMAppService/XPC lifecycle manager
@@ -158,7 +164,9 @@ UI/
     ├── Search/                           # Search/deeplink/overlay XCTestCase files
     ├── Settings/                         # Settings-focused XCTestCase files, including shell/view-model coverage
     ├── Support/                          # Shared XCTest helpers and support-only tests
-    │   └── FocusableTextInputSupportTests.swift # Borderless text-input keyboard shortcut, right-click deferral, and menu-filter coverage
+    │   ├── FocusableTextInputSupportTests.swift # Borderless text-input keyboard shortcut, right-click deferral, and menu-filter coverage
+    │   ├── SnapshotRenderer.swift        # Offscreen NSHostingView → PNG renderer (light/dark, 2x) + WCAG contrast helper; output in .build/ui-gallery/
+    │   └── DesignSystemGalleryTests.swift # Renders Linen/Dusk components/real views at several widths + token WCAG contrast assertions
     ├── SystemMonitor/                    # System monitor XCTestCase files
     ├── Timeline/TimelineCoordinatorVisibilityDecisionTests.swift # Timeline coordinator visibility generation/race policy coverage
     ├── Timeline/TimelineCopyFeedbackTests.swift # Timeline copy image/text toast feedback coverage
@@ -409,8 +417,6 @@ struct BoundingBoxOverlay: View {
 │  │                                              │  │
 │  │ Status: Ready to import                      │  │
 │  └─────────────────────────────────────────────┘  │
-│                                                     │
-│  Made with ♥ by @haseab • x.com/haseab_            │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -483,10 +489,7 @@ struct BoundingBoxOverlay: View {
 - Error handling (show failed videos)
 - "Import Complete" notification
 
-**Support Link**:
-- Small footer: "Made with ♥ by @haseab"
-- Links to: `https://x.com/haseab_`
-- Opens in default browser
+**Footer**: none. The credits/support/help/version bar was removed; feedback stays reachable from the menu bar, the app context menu and the Dashboard banners. A debug-only tools menu remains under `#if DEBUG`.
 
 ### 5. Settings View
 
@@ -612,47 +615,20 @@ struct BoundingBoxOverlay: View {
 
 ## Design System
 
-### Colors
+The UI follows the "Calvin Gunther" design system: **Linen** (light) and **Dusk** (dark). Source of truth is `AppTheme.swift`;
+do not use literal colors, system fonts, SF Symbols or ad-hoc radii/shadows in views.
 
-```swift
-extension Color {
-    static let retraceAccent = Color.blue
-    static let retraceDanger = Color.red
-    static let retraceSuccess = Color.green
-    static let retraceWarning = Color.orange
-
-    // Session colors (hashed from bundle ID)
-    static func sessionColor(for bundleID: String) -> Color {
-        let hash = bundleID.hashValue
-        let hue = Double(abs(hash) % 360) / 360.0
-        return Color(hue: hue, saturation: 0.6, brightness: 0.8)
-    }
-}
-```
-
-### Typography
-
-```swift
-extension Font {
-    static let retraceTitle = Font.system(size: 28, weight: .bold)
-    static let retraceHeadline = Font.system(size: 17, weight: .semibold)
-    static let retraceBody = Font.system(size: 15, weight: .regular)
-    static let retraceCaption = Font.system(size: 13, weight: .regular)
-    static let retraceMono = Font.system(size: 13, weight: .regular, design: .monospaced)
-}
-```
-
-### Spacing
-
-```swift
-extension CGFloat {
-    static let spacingXS: CGFloat = 4
-    static let spacingS: CGFloat = 8
-    static let spacingM: CGFloat = 16
-    static let spacingL: CGFloat = 24
-    static let spacingXL: CGFloat = 32
-}
-```
+- **Color**: adaptive tokens only — `.retracePage`, `.retraceSurface`, `.retraceSurfaceSunken`, `.retraceSurfaceHover`, `.retraceInk`, `.retraceInk2`,
+  `.retraceMuted` (page/surface only), `.retraceBorder` (hairlines), `.retraceBorderStrong` (control edges), `.retraceAccent` (clay, the single voice),
+  `.retraceAccentWash`, `.retraceGood/Warning/Critical` + `…Bg`, `.retraceSeries1…3`. Legacy names (`retracePrimary`, `retraceSecondary`, …) map onto them.
+  Data colors (app segment colors, tag colors, search highlights over screenshots) stay functional.
+- **Appearance**: follows Auto/Light/Dark via `RetraceAppearance`; the fullscreen timeline is always Dusk.
+- **Type**: Source Serif 4 (`.retraceTitle`, `.retraceTitle2`, `.retraceBody`, `.retraceCallout`, `.retraceCaption`, `.retraceMeta` italic, `.retraceLabel`) and IBM Plex Mono for numbers/IDs/code (`.retraceMono*`, `.retraceLargeNumber`).
+- **Shape/depth**: 1px hairlines, `.radiusSm/Md/Lg`, `.retraceElevation(.sm/.md/.lg)`; no gradients, glass or glows. Spacing `.space1…space7`.
+- **Components**: `RetraceButtonStyle(.primary/.secondary/.ghost/.danger)` (one primary per view), `.retraceCard()`, `RetraceBadge`, `RetraceMeter`, `RetraceSwitchStyle`, `RetraceField`, `RetraceTile`.
+- **Icons**: `RetraceSymbol("sf.symbol.name", size:)` renders the Retrace stroke icon mapped in `RetraceIcons.table` (falls back to the SF Symbol). Add new glyphs to `RetraceGlyphLibrary` and the table;
+  native menus use `NSImage.retraceSymbol`. Brand: `RetraceMarkView` / `RetraceWordmark`; menu bar `NSImage.retraceMenuBarMark()`.
+- **Fonts** live in `UI/Fonts` (OFL) and are registered once at launch (`RetraceFontRegistry.ensureRegistered()`).
 
 ## Performance Requirements
 

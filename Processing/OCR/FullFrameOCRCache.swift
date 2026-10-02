@@ -103,11 +103,13 @@ public actor FullFrameOCRCache {
         // Create a set of changed tile coordinates for fast lookup
         let changedTileSet = Set(changedTiles.map { "\($0.col)_\($0.row)" })
 
+        // Narrow the cached tile grid down to just the changed tiles once, up front,
+        // instead of re-checking every cached tile's membership for every region.
+        let changedCachedTiles = cachedTileGrid.filter { changedTileSet.contains($0.cacheKey) }
+
         for region in cachedRegions {
             // Check if this region intersects any changed tile
-            let regionIntersectsChanged = cachedTileGrid.contains { tile in
-                // Only check changed tiles
-                guard changedTileSet.contains(tile.cacheKey) else { return false }
+            let regionIntersectsChanged = changedCachedTiles.contains { tile in
                 // Check if region bounds intersect this tile's pixel bounds
                 return region.bounds.intersects(tile.pixelBounds)
             }

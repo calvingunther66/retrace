@@ -57,8 +57,7 @@ struct AppSessionsDetailView: View {
                 .padding(.top, 24)
                 .padding(.bottom, 16)
 
-            Divider()
-                .background(Color.white.opacity(0.08))
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
             // Sessions list
             if isLoading && sessions.isEmpty {
@@ -70,7 +69,7 @@ struct AppSessionsDetailView: View {
             }
         }
         .frame(width: 680, height: 500)
-        .background(Color.retraceBackground)
+        .background(Color.retracePage)
         .task {
             await loadInitialSessions()
         }
@@ -86,16 +85,16 @@ struct AppSessionsDetailView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(app.appName)
-                        .font(.retraceTitle3)
-                        .foregroundColor(.retracePrimary)
+                        .font(.retraceTitle2)
+                        .foregroundColor(.retraceInk)
 
                     if let subtitle = subtitle {
                         Text("·")
-                            .font(.retraceTitle3)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceTitle2)
+                            .foregroundColor(.retraceMuted)
                         Text(subtitle)
-                            .font(.retraceCalloutMedium)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceCallout)
+                            .foregroundColor(.retraceInk2)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
@@ -103,23 +102,30 @@ struct AppSessionsDetailView: View {
 
                 HStack(spacing: 12) {
                     if subtitle == nil {
-                        Label(formatDuration(app.duration), systemImage: "clock")
+                        HStack(spacing: .space2) {
+                            RetraceSymbol("clock", size: 12.5)
+                            Text(formatDuration(app.duration))
+                        }
                     }
-                    Label("\(totalSessionCount) session\(totalSessionCount == 1 ? "" : "s")", systemImage: "rectangle.stack")
+                    HStack(spacing: .space2) {
+                        RetraceSymbol("rectangle.stack", size: 12.5)
+                        Text("\(totalSessionCount) session\(totalSessionCount == 1 ? "" : "s")")
+                    }
                 }
-                .font(.retraceCaptionMedium)
-                .foregroundColor(.retraceSecondary)
+                .font(.retraceCaption)
+                .monospacedDigit()
+                .foregroundColor(.retraceInk2)
             }
 
             Spacer()
 
             Button(action: { dismissView() }) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.retraceMediumNumber)
-                    .foregroundColor(.retraceSecondary.opacity(0.6))
+                RetraceSymbol("xmark.circle.fill", size: 22)
+                    .foregroundColor(.retraceMuted)
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.escape, modifiers: [])
+            .accessibilityLabel("Close")
         }
     }
 
@@ -145,8 +151,8 @@ struct AppSessionsDetailView: View {
                     HStack {
                         SpinnerView(size: 16, lineWidth: 2)
                         Text("Loading more...")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
@@ -155,8 +161,8 @@ struct AppSessionsDetailView: View {
                 // End of list indicator
                 if !hasMoreToLoad && sessions.count > pageSize {
                     Text("All \(sessions.count) sessions loaded")
-                        .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary.opacity(0.6))
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                 }
@@ -173,12 +179,12 @@ struct AppSessionsDetailView: View {
             // Time indicator
             VStack(alignment: .leading, spacing: 2) {
                 Text(formatTime(session.startDate))
-                    .font(.retraceCalloutBold)
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceMono)
+                    .foregroundColor(.retraceInk)
 
                 Text(formatDate(session.startDate))
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
             }
             .frame(width: 80, alignment: .leading)
 
@@ -189,19 +195,19 @@ struct AppSessionsDetailView: View {
                     .frame(width: 6, height: 6)
 
                 Text(formatDuration(session.duration))
-                    .font(.retraceCaption2Bold)
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceMonoSmall)
+                    .monospacedDigit()
+                    .foregroundColor(.retraceInk)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(appColor.opacity(0.15))
-            .cornerRadius(12)
+            .background(Capsule(style: .continuous).fill(appColor.opacity(0.15)))
 
             // Window name (if available)
             if let windowName = session.windowName, !windowName.isEmpty {
                 Text(windowName)
                     .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .foregroundColor(.retraceInk2)
                     .lineLimit(2)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -215,21 +221,20 @@ struct AppSessionsDetailView: View {
                 dismissView()
             }) {
                 HStack(spacing: 6) {
-                    Image(systemName: "play.circle.fill")
-                        .font(.retraceCallout)
+                    RetraceSymbol("play.circle.fill", size: 13.5)
                     Text("View")
-                        .font(.retraceCaption2Medium)
+                        .font(.retraceCaption2)
                 }
-                .foregroundColor(isHovered ? .retraceAccent : .retraceSecondary)
+                .foregroundColor(isHovered ? .retraceInk : .retraceInk2)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(isHovered ? Color.retraceAccent.opacity(0.15) : Color.white.opacity(0.05))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(isHovered ? Color.retraceAccentWash : Color.retraceSurfaceSunken)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isHovered ? Color.retraceAccent.opacity(0.3) : Color.white.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(isHovered ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
                 )
             }
             .buttonStyle(.plain)
@@ -237,12 +242,12 @@ struct AppSessionsDetailView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(isHovered ? Color.white.opacity(0.05) : Color.white.opacity(0.02))
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(isHovered ? Color.retraceSurfaceHover : Color.retraceSurface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(isHovered ? 0.1 : 0.04), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onHover { hovering in
@@ -259,8 +264,8 @@ struct AppSessionsDetailView: View {
             SpinnerView(size: 24, lineWidth: 3)
 
             Text("Loading sessions...")
-                .font(.retraceCalloutMedium)
-                .foregroundColor(.retraceSecondary)
+                .font(.retraceMeta)
+                .foregroundColor(.retraceMuted)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -269,13 +274,12 @@ struct AppSessionsDetailView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            Image(systemName: "clock.badge.questionmark")
-                .font(.retraceDisplay)
-                .foregroundColor(.retraceSecondary.opacity(0.5))
+            RetraceSymbol("clock.badge.questionmark", size: 48)
+                .foregroundColor(.retraceMuted)
 
             Text("No sessions found")
-                .font(.retraceBodyMedium)
-                .foregroundColor(.retraceSecondary)
+                .font(.retraceMeta)
+                .foregroundColor(.retraceMuted)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -387,7 +391,6 @@ struct AppSessionsDetailView_Previews: PreviewProvider {
             onOpenInTimeline: { _ in },
             loadSessions: mockLoadSessions
         )
-        .preferredColorScheme(.dark)
     }
 }
 #endif

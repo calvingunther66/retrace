@@ -1230,9 +1230,13 @@ public enum FrameQueries {
         }
 
         do {
+            // Batched once per chunk instead of once per frame: both already accept/can accept
+            // the whole chunk and build a single `IN (...)` query, so there's no need to issue
+            // one prepare/bind/step round trip per individual frame ID here.
+            try FTSQueries.deleteForFrames(db: db, frameIds: frameIDs)
+            try SemanticIndexQueries.deleteDescriptions(db: db, frameIDs: frameIDs)
+
             for frameID in frameIDs {
-                try FTSQueries.deleteForFrame(db: db, frameId: frameID)
-                try SemanticIndexQueries.deleteDescriptions(db: db, frameIDs: [frameID])
                 try deleteFrameRow(db: db, frameID: frameID)
             }
 

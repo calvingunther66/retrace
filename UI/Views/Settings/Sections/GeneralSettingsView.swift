@@ -35,8 +35,7 @@ extension SettingsView {
                     otherShortcuts: [dashboardShortcut, recordingShortcut, systemMonitorShortcut, commentShortcut]
                 )
 
-                Divider()
-                    .background(Color.retraceBorder)
+                Divider().overlay(Color.retraceBorder)
 
                 settingsShortcutRecorderRow(
                     label: "Open Dashboard",
@@ -46,8 +45,7 @@ extension SettingsView {
                     otherShortcuts: [timelineShortcut, recordingShortcut, systemMonitorShortcut, commentShortcut]
                 )
 
-                Divider()
-                    .background(Color.retraceBorder)
+                Divider().overlay(Color.retraceBorder)
 
                 settingsShortcutRecorderRow(
                     label: "Toggle Recording",
@@ -57,8 +55,7 @@ extension SettingsView {
                     otherShortcuts: [timelineShortcut, dashboardShortcut, systemMonitorShortcut, commentShortcut]
                 )
 
-                Divider()
-                    .background(Color.retraceBorder)
+                Divider().overlay(Color.retraceBorder)
 
                 settingsShortcutRecorderRow(
                     label: "System Monitor",
@@ -68,8 +65,7 @@ extension SettingsView {
                     otherShortcuts: [timelineShortcut, dashboardShortcut, recordingShortcut, commentShortcut]
                 )
 
-                Divider()
-                    .background(Color.retraceBorder)
+                Divider().overlay(Color.retraceBorder)
 
                 settingsShortcutRecorderRow(
                     label: "Quick Comment",
@@ -81,8 +77,7 @@ extension SettingsView {
 
                 if let error = shortcutError {
                     HStack(spacing: 4) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.retraceTiny)
+                        RetraceSymbol("exclamationmark.triangle.fill", size: 11)
                             .foregroundColor(.retraceWarning)
                         Text(error)
                             .font(.retraceCaption2)
@@ -117,8 +112,8 @@ extension SettingsView {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Current Version")
-                        .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                     Group {
                         if let url = BuildInfo.commitURL {
                             Text(BuildInfo.fullVersion)
@@ -134,14 +129,14 @@ extension SettingsView {
                     .foregroundColor(.retracePrimary)
                     if BuildInfo.isDevBuild && BuildInfo.buildDate != "unknown" {
                         Text("Built \(BuildInfo.buildDate)")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                     }
                 }
                 Spacer()
             }
 
-            Divider()
+            Divider().overlay(Color.retraceBorder)
                 .padding(.vertical, 4)
 
             HStack {
@@ -152,12 +147,12 @@ extension SettingsView {
 
                     if let lastCheck = UpdaterManager.shared.lastUpdateCheckDate {
                         Text("Last checked: \(lastCheck.formatted(date: .abbreviated, time: .shortened))")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                     } else {
                         Text("Automatically checks for updates")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                     }
                 }
 
@@ -223,6 +218,41 @@ extension SettingsView {
     var appearanceCard: some View {
         ModernSettingsCard(title: "Appearance", icon: "paintbrush") {
             VStack(alignment: .leading, spacing: 24) {
+                // Theme Section
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Theme")
+                                .font(.retraceCallout)
+                                .foregroundColor(.retraceInk)
+
+                            Text("Auto follows your Mac's appearance")
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
+                        }
+
+                        Spacer()
+                    }
+
+                    ModernSegmentedPicker(
+                        selection: $theme,
+                        options: ThemePreference.allCases
+                    ) { option in
+                        Text(option.rawValue)
+                    }
+                    .onChange(of: theme) { newTheme in
+                        applyTheme(newTheme)
+                        DashboardViewModel.recordDeveloperSettingToggle(
+                            coordinator: coordinatorWrapper.coordinator,
+                            source: "settings.appearance",
+                            settingKey: "theme",
+                            isEnabled: newTheme != .auto
+                        )
+                    }
+                }
+
+                Divider().overlay(Color.retraceBorder)
+
                 // Font Style Section
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
@@ -232,8 +262,8 @@ extension SettingsView {
                                 .foregroundColor(.retracePrimary)
 
                             Text("Choose your preferred font style")
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
                         }
 
                         Spacer()
@@ -245,12 +275,11 @@ extension SettingsView {
                                 RetraceFont.currentStyle = SettingsDefaults.fontStyle
                             }) {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 10))
+                                    RetraceSymbol("arrow.counterclockwise", size: 10)
                                     Text("Reset to Default")
                                         .font(.retraceCaption2)
                                 }
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(.retraceInk2)
                             }
                             .buttonStyle(.plain)
                         }
@@ -262,54 +291,7 @@ extension SettingsView {
                         }
                 }
 
-                Divider()
-                    .background(Color.retraceBorder)
-
-                // Tier Theme Section
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Accent Color")
-                                .font(.retraceCalloutMedium)
-                                .foregroundColor(.retracePrimary)
-
-                            Text("Choose your preferred color theme")
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary)
-                        }
-
-                        Spacer()
-
-                        // Reset to default button
-                        if colorThemePreference != SettingsDefaults.colorTheme {
-                            Button(action: {
-                                colorThemePreference = SettingsDefaults.colorTheme
-                                MilestoneCelebrationManager.setColorThemePreference(.blue)
-                            }) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 10))
-                                    Text("Reset to Default")
-                                        .font(.retraceCaption2)
-                                }
-                                .foregroundColor(.white.opacity(0.7))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    ColorThemePicker(
-                        selection: Binding(
-                            get: {
-                                MilestoneCelebrationManager.ColorTheme(rawValue: colorThemePreference) ?? .blue
-                            },
-                            set: { newValue in
-                                colorThemePreference = newValue.rawValue
-                                MilestoneCelebrationManager.setColorThemePreference(newValue)
-                            }
-                        )
-                    )
-                }
+                Divider().overlay(Color.retraceBorder)
 
                 ModernToggleRow(
                     title: "Timeline colored button borders",
@@ -317,8 +299,7 @@ extension SettingsView {
                     isOn: $timelineColoredBorders
                 )
 
-                Divider()
-                    .background(Color.retraceBorder)
+                Divider().overlay(Color.retraceBorder)
 
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
@@ -326,13 +307,7 @@ extension SettingsView {
                             .font(.retraceCalloutMedium)
                             .foregroundColor(.retracePrimary)
                         Spacer()
-                        Text(dashboardAppUsageViewModeSelection.displayName)
-                            .font(.retraceCalloutBold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.retraceAccent.opacity(0.3))
-                            .cornerRadius(8)
+                        RetraceBadge(dashboardAppUsageViewModeSelection.displayName, tone: .accent)
                     }
 
                     ModernSegmentedPicker(
@@ -344,8 +319,8 @@ extension SettingsView {
 
                     HStack {
                         Text("Choose how App Usage appears in Dashboard.")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
 
                         Spacer()
 
@@ -360,20 +335,18 @@ extension SettingsView {
                                 )
                             }) {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 10))
+                                    RetraceSymbol("arrow.counterclockwise", size: 10)
                                     Text("Reset to Default")
                                         .font(.retraceCaption2)
                                 }
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(.retraceInk2)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
 
-                Divider()
-                    .background(Color.retraceBorder)
+                Divider().overlay(Color.retraceBorder)
 
                 // Scrubbing Animation Section
                 VStack(alignment: .leading, spacing: 16) {
@@ -382,13 +355,7 @@ extension SettingsView {
                             .font(.retraceCalloutMedium)
                             .foregroundColor(.retracePrimary)
                         Spacer()
-                        Text(scrubbingAnimationDisplayText)
-                            .font(.retraceCalloutBold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.retraceAccent.opacity(0.3))
-                            .cornerRadius(8)
+                        RetraceBadge(scrubbingAnimationDisplayText, tone: .accent)
                     }
 
                     ModernSlider(value: $scrubbingAnimationDuration, range: 0...0.20, step: 0.01)
@@ -398,8 +365,8 @@ extension SettingsView {
 
                     HStack {
                         Text(scrubbingAnimationDescriptionText)
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
 
                         Spacer()
 
@@ -409,12 +376,11 @@ extension SettingsView {
                                 showScrubbingAnimationUpdateFeedback()
                             }) {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 10))
+                                    RetraceSymbol("arrow.counterclockwise", size: 10)
                                     Text("Reset to Default")
                                         .font(.retraceCaption2)
                                 }
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(.retraceInk2)
                             }
                             .buttonStyle(.plain)
                         }
@@ -422,8 +388,7 @@ extension SettingsView {
 
                 }
 
-                Divider()
-                    .background(Color.retraceBorder)
+                Divider().overlay(Color.retraceBorder)
 
                 // Scroll Sensitivity Section
                 VStack(alignment: .leading, spacing: 16) {
@@ -432,21 +397,15 @@ extension SettingsView {
                             .font(.retraceCalloutMedium)
                             .foregroundColor(.retracePrimary)
                         Spacer()
-                        Text(scrollSensitivityDisplayText)
-                            .font(.retraceCalloutBold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.retraceAccent.opacity(0.3))
-                            .cornerRadius(8)
+                        RetraceBadge(scrollSensitivityDisplayText, tone: .accent)
                     }
 
                     ModernSlider(value: $scrollSensitivity, range: 0.1...1.0, step: 0.05)
 
                     HStack {
                         Text(scrollSensitivityDescriptionText)
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
 
                         Spacer()
 
@@ -455,20 +414,18 @@ extension SettingsView {
                                 scrollSensitivity = SettingsDefaults.scrollSensitivity
                             }) {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 10))
+                                    RetraceSymbol("arrow.counterclockwise", size: 10)
                                     Text("Reset to Default")
                                         .font(.retraceCaption2)
                                 }
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(.retraceInk2)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
 
-                Divider()
-                    .background(Color.retraceBorder)
+                Divider().overlay(Color.retraceBorder)
 
                 // Scroll Orientation Section
                 VStack(alignment: .leading, spacing: 16) {
@@ -477,13 +434,7 @@ extension SettingsView {
                             .font(.retraceCalloutMedium)
                             .foregroundColor(.retracePrimary)
                         Spacer()
-                        Text(timelineScrollOrientation.displayName)
-                            .font(.retraceCalloutBold)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.retraceAccent.opacity(0.3))
-                            .cornerRadius(8)
+                        RetraceBadge(timelineScrollOrientation.displayName, tone: .accent)
                     }
 
                     ModernSegmentedPicker(
@@ -495,8 +446,8 @@ extension SettingsView {
 
                     HStack {
                         Text(timelineScrollOrientation.description)
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
 
                         Spacer()
 
@@ -505,12 +456,11 @@ extension SettingsView {
                                 timelineScrollOrientation = SettingsDefaults.timelineScrollOrientation
                             }) {
                                 HStack(spacing: 4) {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 10))
+                                    RetraceSymbol("arrow.counterclockwise", size: 10)
                                     Text("Reset to Default")
                                         .font(.retraceCaption2)
                                 }
-                                .foregroundColor(.white.opacity(0.7))
+                                .foregroundColor(.retraceInk2)
                             }
                             .buttonStyle(.plain)
                         }
@@ -519,22 +469,18 @@ extension SettingsView {
                 .id(Self.timelineScrollOrientationAnchorID)
                 .padding(12)
                 .background(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                         .fill(
                             shellViewModel.isTimelineScrollOrientationHighlighted
-                                ? Color.retraceAccent.opacity(0.15)
+                                ? Color.retraceAccentWash
                                 : Color.clear
                         )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                         .stroke(
-                            Color.retraceAccent.opacity(shellViewModel.isTimelineScrollOrientationHighlighted ? 0.94 : 0),
-                            lineWidth: shellViewModel.isTimelineScrollOrientationHighlighted ? 2.8 : 0
-                        )
-                        .shadow(
-                            color: Color.retraceAccent.opacity(shellViewModel.isTimelineScrollOrientationHighlighted ? 0.55 : 0),
-                            radius: 12
+                            Color.retraceAccent.opacity(shellViewModel.isTimelineScrollOrientationHighlighted ? 1 : 0),
+                            lineWidth: shellViewModel.isTimelineScrollOrientationHighlighted ? 2 : 0
                         )
                 )
                 .animation(.easeInOut(duration: 0.2), value: shellViewModel.isTimelineScrollOrientationHighlighted)
@@ -590,48 +536,49 @@ extension SettingsView {
                     if isRecording.wrappedValue {
                         Text("Press keys...")
                             .font(.retraceCaption2)
-                            .foregroundColor(.white)
+                            .foregroundColor(.retraceInk)
                             .frame(minWidth: 100, minHeight: 24)
                     } else if shortcut.wrappedValue.isEmpty {
                         Text("None")
                             .font(.retraceCaption2)
-                            .foregroundColor(.white.opacity(0.5))
+                            .foregroundColor(.retraceInk2)
                             .frame(minWidth: 60, minHeight: 24)
                     } else {
                         HStack(spacing: 4) {
                             ForEach(shortcut.wrappedValue.modifierSymbols, id: \.self) { symbol in
                                 Text(symbol)
-                                    .font(.retraceCaptionMedium)
-                                    .foregroundColor(.white.opacity(0.9))
+                                    .font(.retraceMonoSmall)
+                                    .foregroundColor(.retraceInk)
                                     .frame(width: 22, height: 22)
-                                    .background(Color.white.opacity(0.1))
-                                    .cornerRadius(4)
+                                    .background(Color.retraceSurfaceSunken)
+                                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                             }
 
                             if !shortcut.wrappedValue.modifierSymbols.isEmpty {
                                 Text("+")
-                                    .font(.retraceCaption2)
-                                    .foregroundColor(.white.opacity(0.7))
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceInk2)
                             }
 
                             Text(shortcut.wrappedValue.key)
-                                .font(.retraceCaption2Bold)
-                                .foregroundColor(.white)
+                                .font(RetraceFont.mono(size: 12, weight: .medium))
+                                .foregroundColor(.retraceInk)
                                 .frame(minWidth: 28, minHeight: 22)
                                 .padding(.horizontal, 6)
-                                .background(Color.white.opacity(0.1))
-                                .cornerRadius(4)
+                                .background(Color.retraceSurfaceSunken)
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         }
                     }
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(isRecording.wrappedValue ? Color.white.opacity(0.1) : Color.white.opacity(0.05))
-                .cornerRadius(6)
+                .background(isRecording.wrappedValue ? Color.retraceAccentWash : Color.retraceSurface)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(isRecording.wrappedValue ? Color.white : Color.white.opacity(0.2), lineWidth: isRecording.wrappedValue ? 1.5 : 1)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(isRecording.wrappedValue ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: isRecording.wrappedValue ? 2 : 1)
                 )
+                .retraceFocusRing(cornerRadius: .radiusSm)
             }
             .buttonStyle(.plain)
             .background(
@@ -681,12 +628,12 @@ extension SettingsView {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white.opacity(isEnabled ? 0.5 : 0.22))
+            RetraceSymbol(systemName, size: 10, weight: .semibold)
+                .foregroundColor(isEnabled ? .retraceInk2 : .retraceMuted)
                 .frame(width: 18, height: 18)
-                .background(Color.white.opacity(isEnabled ? 0.1 : 0.04))
-                .cornerRadius(4)
+                .background(isEnabled ? Color.retraceSurfaceSunken : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                .opacity(isEnabled ? 1 : 0.5)
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)

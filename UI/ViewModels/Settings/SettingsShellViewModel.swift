@@ -179,7 +179,7 @@ final class SettingsShellViewModel: ObservableObject {
         SettingsSearchEntry(id: "general.startup", tab: .general, cardTitle: "Startup", cardIcon: "power",
             searchableText: ["startup", "launch at login", "start automatically", "dock icon", "show dock icon", "menu bar icon", "show menu bar"]),
         SettingsSearchEntry(id: "general.appearance", tab: .general, cardTitle: "Appearance", cardIcon: "paintbrush",
-            searchableText: ["appearance", "font style", "accent color", "color theme", "timeline colored borders", "scrubbing animation", "scroll sensitivity", "scroll orientation", "horizontal scroll", "vertical scroll", "dark mode", "light mode", "theme"]),
+            searchableText: ["appearance", "font style", "timeline colored borders", "scrubbing animation", "scroll sensitivity", "scroll orientation", "horizontal scroll", "vertical scroll", "dark mode", "light mode", "theme"]),
         SettingsSearchEntry(id: "capture.rate", tab: .capture, cardTitle: "Capture Rate", cardIcon: "gauge.with.dots.needle.50percent",
             searchableText: ["capture rate", "capture interval", "capture on window change", "frame rate", "screenshot frequency", "mouse position", "capture mouse", "pointer overlay", "timeline cursor"]),
         SettingsSearchEntry(id: "capture.menuBarIcon", tab: .capture, cardTitle: "Menu Bar Icon", cardIcon: "menubar.rectangle",

@@ -55,6 +55,6 @@ final class SystemMonitorOCRBacklogAttributionTests: XCTestCase {
         viewModel.rewriteProcessingCount = 0
 
         XCTAssertEqual(viewModel.rewriteStatusBadgeText, "Idle")
-        XCTAssertEqual(viewModel.rewriteStatusColor, .gray)
+        XCTAssertEqual(viewModel.rewriteStatusColor, .retraceMuted)
     }
 }

@@ -29,48 +29,47 @@ struct RetentionAppsChip<PopoverContent: View>: View {
                     let bundleID = sortedApps[0]
                     appIcon(for: bundleID)
                         .frame(width: iconSize, height: iconSize)
-                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
 
                     Text(appName(for: bundleID))
-                        .font(.retraceCaptionMedium)
+                        .font(.retraceCaption)
                         .lineLimit(1)
                 } else if sortedApps.count > 1 {
                     HStack(spacing: -4) {
                         ForEach(Array(sortedApps.prefix(maxVisibleIcons)), id: \.self) { bundleID in
                             appIcon(for: bundleID)
                                 .frame(width: iconSize, height: iconSize)
-                                .clipShape(RoundedRectangle(cornerRadius: 3))
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         }
                     }
 
                     if sortedApps.count > maxVisibleIcons {
                         Text("+\(sortedApps.count - maxVisibleIcons)")
                             .font(.retraceTinyBold)
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(.retraceInk2)
                     }
                 } else {
-                    Image(systemName: "app.fill")
-                        .font(.system(size: 12))
+                    RetraceSymbol("app.fill", size: 12)
                     Text("None")
-                        .font(.retraceCaptionMedium)
+                        .font(.retraceCaption)
                 }
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                RetraceSymbol("chevron.down", size: 10, weight: .semibold)
                     .rotationEffect(.degrees(isPopoverShown ? 180 : 0))
             }
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: sortedApps)
-            .foregroundColor(isActive ? .white : .retraceSecondary)
+            .foregroundColor(isActive ? .retraceInk : .retraceInk2)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isActive ? Color.retraceAccent.opacity(0.2) : Color.white.opacity(0.05))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isActive ? Color.retraceAccentWash : (isHovered ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(isActive ? Color.retraceAccent.opacity(0.4) : Color.white.opacity(0.1), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .stroke(isActive ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
                     )
             )
+            .retraceFocusRing(cornerRadius: .radiusSm)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -93,10 +92,8 @@ struct RetentionAppsChip<PopoverContent: View>: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
         } else {
-            Image(systemName: "app.fill")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .foregroundColor(.white.opacity(0.6))
+            RetraceSymbol("app.fill", size: 13)
+                .foregroundColor(.retraceInk2)
         }
     }
 

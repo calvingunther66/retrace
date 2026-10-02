@@ -40,8 +40,7 @@ extension SettingsView {
                 }
 
                 if collectInPageURLsExperimental {
-                    Divider()
-                        .background(Color.white.opacity(0.1))
+                    Divider().overlay(Color.retraceBorder)
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Step 1: Grant automation access one app at a time")
@@ -50,12 +49,11 @@ extension SettingsView {
 
                         if !hasAccessibilityPermission {
                             HStack(spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle.fill")
+                                RetraceSymbol("exclamationmark.triangle.fill", size: 12)
                                     .foregroundColor(.retraceWarning)
-                                    .font(.system(size: 12))
                                 Text("Accessibility is required for stable browser/window context.")
-                                    .font(.retraceCaption)
-                                    .foregroundColor(.retraceSecondary)
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceMuted)
                             }
 
                             ModernPermissionRow(
@@ -72,37 +70,35 @@ extension SettingsView {
                                     ProgressView()
                                         .controlSize(.small)
                                     Text("Scanning installed Safari/Chromium browsers...")
-                                        .font(.retraceCaption)
-                                        .foregroundColor(.retraceSecondary)
+                                        .font(.retraceMeta)
+                                        .foregroundColor(.retraceMuted)
                                 }
                             } else {
                                 Text("No supported Safari/Chromium browsers found on this Mac.")
-                                    .font(.retraceCaption)
-                                    .foregroundColor(.retraceSecondary)
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceMuted)
                             }
                         } else {
                             VStack(spacing: 0) {
                                 ForEach(Array(inPageURLTargets.enumerated()), id: \.element.bundleID) { index, target in
                                     inPageURLPermissionRow(target: target)
                                     if index < inPageURLTargets.count - 1 || !unsupportedInPageURLTargets.isEmpty {
-                                        Divider()
-                                            .background(Color.white.opacity(0.08))
+                                        Divider().overlay(Color.retraceBorder)
                                     }
                                 }
                                 ForEach(Array(unsupportedInPageURLTargets.enumerated()), id: \.element.bundleID) { index, target in
                                     unsupportedInPageURLTargetRow(target: target)
                                     if index < unsupportedInPageURLTargets.count - 1 {
-                                        Divider()
-                                            .background(Color.white.opacity(0.08))
+                                        Divider().overlay(Color.retraceBorder)
                                     }
                                 }
                             }
-                            .background(Color.white.opacity(0.03))
+                            .background(Color.retraceSurfaceSunken)
                             .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                                    .stroke(Color.retraceBorder, lineWidth: 1)
                             )
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
                         }
 
                         HStack {
@@ -115,29 +111,27 @@ extension SettingsView {
                                         ProgressView()
                                             .controlSize(.small)
                                     } else {
-                                        Image(systemName: "arrow.clockwise")
-                                            .font(.system(size: 10))
+                                        RetraceSymbol("arrow.clockwise", size: 10)
                                     }
                                     Text(isRefreshingInPageURLTargets ? "Refreshing..." : "Refresh Browser List")
                                         .font(.retraceCaption2)
                                 }
-                                .foregroundColor(.white.opacity(0.8))
+                                .foregroundColor(.retraceInk2)
                             }
                             .buttonStyle(.plain)
                             .disabled(isRefreshingInPageURLTargets)
                         }
                     }
 
-                    Divider()
-                        .background(Color.white.opacity(0.1))
+                    Divider().overlay(Color.retraceBorder)
 
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Step 2: Enable JavaScript from Apple Events")
                             .font(.retraceCalloutMedium)
                             .foregroundColor(.retracePrimary)
                         Text("Expand the browser you want setup instructions for.")
-                            .font(.retraceCaption)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
 
                         VStack(spacing: 10) {
                             InPageURLInstructionsDisclosure(
@@ -171,8 +165,8 @@ extension SettingsView {
                                         logName: "safari in-page URL allow instructions"
                                     )
                                 }
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceInk2)
 
                                 InPageURLSecurityWarning(showSafariSpecificLine: true)
                             }
@@ -184,13 +178,13 @@ extension SettingsView {
                                 VStack(alignment: .leading, spacing: 10) {
                                     if inPageURLTargets.contains(where: { $0.bundleID == "com.vivaldi.Vivaldi" }) {
                                         Text("In Vivaldi, enable Settings > Privacy and Security > Apple Events > Allow JavaScript from Apple Events.")
-                                            .font(.retraceCaption2)
-                                            .foregroundColor(.retraceSecondary)
+                                            .font(.retraceMeta)
+                                            .foregroundColor(.retraceInk2)
                                     }
 
                                     Text("For Chrome, Arc, Edge, Brave, Chromium, Opera, Comet, Dia, and Thorium, open View > Developer > Allow JavaScript from Apple Events.")
-                                        .font(.retraceCaption2)
-                                        .foregroundColor(.retraceSecondary)
+                                        .font(.retraceMeta)
+                                        .foregroundColor(.retraceInk2)
 
                                     InPageURLInstructionAssetView(
                                         assetName: "InPageURLInstructions",
@@ -205,8 +199,7 @@ extension SettingsView {
                         .padding(.top, 4)
                     }
 
-                    Divider()
-                        .background(Color.white.opacity(0.1))
+                    Divider().overlay(Color.retraceBorder)
 
                     VStack(alignment: .leading, spacing: 8) {
                         let grantedTargets = inPageURLTargets.filter {
@@ -219,16 +212,16 @@ extension SettingsView {
                             .font(.retraceCalloutMedium)
                             .foregroundColor(.retracePrimary)
                         Text("Test URL: \(Self.inPageURLTestURLString)")
-                            .font(.retraceCaption)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                         Text("Standard browsers open the test page. PWAs stay on their current page and only verify that a URL can be scraped.")
-                            .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
 
                         if grantedTargets.isEmpty {
                             Text("No granted automation permissions found yet. Complete Step 1 first.")
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
                         } else {
                             VStack(alignment: .leading, spacing: 10) {
                                 if !browserTargets.isEmpty {
@@ -251,8 +244,8 @@ extension SettingsView {
 
                         if let summary = inPageURLVerificationSummary {
                             Text(summary)
-                                .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
                         }
                     }
                 }
@@ -278,8 +271,8 @@ extension SettingsView {
 
             if let subtitle {
                 Text(subtitle)
-                    .font(.retraceCaption2)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
 
             VStack(alignment: .leading, spacing: 10) {
@@ -303,8 +296,7 @@ extension SettingsView {
                             .resizable()
                             .frame(width: 16, height: 16)
                     } else {
-                        Image(systemName: "globe")
-                            .font(.system(size: 12))
+                        RetraceSymbol("globe", size: 12)
                             .foregroundColor(.retraceSecondary)
                             .frame(width: 16, height: 16)
                     }
@@ -328,19 +320,12 @@ extension SettingsView {
                             ProgressView()
                                 .controlSize(.small)
                         } else {
-                            Image(systemName: "checkmark.circle")
-                                .font(.system(size: 12))
+                            RetraceSymbol("checkmark.circle", size: 12)
                         }
                         Text(isTesting ? "Testing..." : "Test")
-                            .font(.retraceCaption2Bold)
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.retraceAccent.opacity(0.85))
-                    .cornerRadius(8)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RetraceButtonStyle(.primary, size: .sm))
                 .disabled(isTesting)
             }
 
@@ -351,28 +336,25 @@ extension SettingsView {
                         ProgressView()
                             .controlSize(.small)
                     case .success:
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 12))
+                        RetraceSymbol("checkmark.circle.fill", size: 12)
                             .foregroundColor(.retraceSuccess)
                     case .warning:
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12))
+                        RetraceSymbol("exclamationmark.triangle.fill", size: 12)
                             .foregroundColor(.retraceWarning)
                     case .failed:
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 12))
+                        RetraceSymbol("xmark.circle.fill", size: 12)
                             .foregroundColor(.retraceDanger)
                     }
                     Text(inPageURLVerificationDescription(verificationState))
-                        .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceInk2)
                 }
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.white.opacity(0.04))
-        .cornerRadius(8)
+        .background(Color.retraceSurfaceSunken)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
         .onAppear {
             scheduleInPageURLIconLoad(bundleID: target.bundleID, appURL: target.appURL)
         }
@@ -393,8 +375,7 @@ extension SettingsView {
                         .resizable()
                         .frame(width: 20, height: 20)
                 } else {
-                    Image(systemName: "globe")
-                        .font(.system(size: 12))
+                    RetraceSymbol("globe", size: 12)
                         .foregroundColor(.retraceSecondary)
                         .frame(width: 20, height: 20)
                 }
@@ -439,13 +420,7 @@ extension SettingsView {
                     Text(buttonTitle)
                 }
             }
-            .font(.retraceCaption2Bold)
-            .foregroundColor(.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Color.retraceAccent.opacity(0.75))
-            .cornerRadius(8)
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary, size: .sm))
             .disabled(
                 inPageURLBusyBundleIDs.contains(target.bundleID) ||
                 (!isGranted && !hasAccessibilityPermission)
@@ -467,8 +442,7 @@ extension SettingsView {
                         .resizable()
                         .frame(width: 20, height: 20)
                 } else {
-                    Image(systemName: "globe")
-                        .font(.system(size: 12))
+                    RetraceSymbol("globe", size: 12)
                         .foregroundColor(.retraceSecondary)
                         .frame(width: 20, height: 20)
                 }
@@ -477,21 +451,21 @@ extension SettingsView {
             VStack(alignment: .leading, spacing: 2) {
                 Text(target.displayName)
                     .font(.retraceCalloutMedium)
-                    .foregroundColor(.retracePrimary.opacity(0.7))
+                    .foregroundColor(.retraceInk2)
                 Text(target.reason)
-                    .font(.retraceCaption2)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
 
             Spacer()
 
             Text("Does Not Support")
                 .font(.retraceCaption2Bold)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(8)
+                .background(Color.retraceSurfaceSunken)
+                .clipShape(Capsule(style: .continuous))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -504,13 +478,14 @@ extension SettingsView {
     @ViewBuilder
     func inPageURLPermissionBadge(for state: InPageURLPermissionState?) -> some View {
         let text = inPageURLPermissionDescription(for: state)
-        let color = inPageURLPermissionColor(for: state)
-        Text(text)
-            .font(.retraceCaption2Bold)
-            .foregroundColor(color)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(color.opacity(0.14))
-            .cornerRadius(8)
+        let tone: RetraceBadgeTone = {
+            switch state {
+            case .granted?: return .good
+            case .denied?: return .critical
+            case .needsConsent?: return .warning
+            case .unavailable(_)?, nil: return .neutral
+            }
+        }()
+        RetraceBadge(text, tone: tone)
     }
 }

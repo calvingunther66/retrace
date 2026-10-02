@@ -82,11 +82,11 @@ public struct FullscreenFrameView: View {
 
     private var loadingView: some View {
         VStack(spacing: .spacingL) {
-            SpinnerView(size: 32, lineWidth: 3, color: .white)
+            SpinnerView(size: 32, lineWidth: 3, color: .retraceInk)
 
             Text("Loading frame...")
                 .font(.retraceBody)
-                .foregroundColor(.white.opacity(0.6))
+                .foregroundColor(.retraceInk2)
         }
     }
 
@@ -94,18 +94,17 @@ public struct FullscreenFrameView: View {
 
     private var emptyStateView: some View {
         VStack(spacing: .spacingL) {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.retraceDisplay)
-                .foregroundColor(.white.opacity(0.3))
+            RetraceSymbol("photo.on.rectangle.angled", size: 48, label: "")
+                .foregroundColor(.retraceMuted)
 
             VStack(spacing: .spacingS) {
                 Text("No frames recorded yet")
                     .font(.retraceTitle3)
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundColor(.retraceInk)
 
                 Text("Start recording to capture your screen")
-                    .font(.retraceBody)
-                    .foregroundColor(.white.opacity(0.5))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
         }
     }

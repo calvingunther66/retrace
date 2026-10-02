@@ -97,31 +97,7 @@ public struct SystemMonitorView: View {
 
     private var backgroundView: some View {
         ZStack {
-            Color.retraceBackground
-
-            // Top-right ambient glow (stronger)
-            RadialGradient(
-                colors: [
-                    Color.retraceAccent.opacity(0.12),
-                    Color.retraceAccent.opacity(0.04),
-                    Color.clear
-                ],
-                center: .topTrailing,
-                startRadius: 50,
-                endRadius: 500
-            )
-
-            // Bottom-left ambient glow
-            RadialGradient(
-                colors: [
-                    Color.retraceAccent.opacity(0.08),
-                    Color.retraceAccent.opacity(0.02),
-                    Color.clear
-                ],
-                center: .bottomLeading,
-                startRadius: 30,
-                endRadius: 400
-            )
+            Color.retracePage
         }
     }
 
@@ -139,16 +115,19 @@ public struct SystemMonitorView: View {
                 NotificationCenter.default.post(name: .openDashboard, object: nil)
             }) {
                 HStack(spacing: 6) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 12, weight: .semibold))
+                    RetraceSymbol("chevron.left", size: 12, weight: .semibold)
                     Text("Dashboard")
                         .font(.retraceCaptionMedium)
                 }
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(Color.white.opacity(isHoveringBack ? 0.08 : 0.05))
-                .cornerRadius(8)
+                .background(isHoveringBack ? Color.retraceSurfaceHover : Color.retraceSurface)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceBorderStrong, lineWidth: 1)
+                )
             }
             .buttonStyle(.plain)
             .onHover { hovering in
@@ -164,13 +143,12 @@ public struct SystemMonitorView: View {
 
             // Title
             HStack(spacing: 8) {
-                Image(systemName: "waveform.path.ecg")
-                    .font(.retraceTitle3)
-                    .foregroundColor(.white)
+                RetraceSymbol("waveform.path.ecg", size: 20, weight: .semibold)
+                    .foregroundColor(.retraceAccent)
 
                 Text("System Monitor")
-                    .font(.retraceTitle3)
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceTitle)
+                    .foregroundColor(.retraceInk)
             }
 
             Spacer()
@@ -180,18 +158,18 @@ public struct SystemMonitorView: View {
                 // Live indicator
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(Color.green)
+                        .fill(Color.retraceGood)
                         .frame(width: 8, height: 8)
                         .overlay(
                             Circle()
-                                .stroke(Color.green.opacity(0.5), lineWidth: 2)
+                                .stroke(Color.retraceGood.opacity(0.5), lineWidth: 2)
                                 .scaleEffect(viewModel.pulseScale)
                                 .opacity(viewModel.pulseOpacity)
                         )
 
                     Text("Live")
                         .font(.retraceCaption2Medium)
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                 }
 
                 Button(action: {
@@ -201,20 +179,20 @@ public struct SystemMonitorView: View {
                     )
                     NotificationCenter.default.post(name: .openFeedback, object: nil)
                 }) {
-                    Image(systemName: "questionmark.circle")
-                        .font(.retraceCalloutMedium)
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("questionmark.circle", size: 13.5)
+                        .foregroundColor(.retraceInk2)
                         .padding(10)
-                        .background(Color.white.opacity(0.05))
-                        .cornerRadius(8)
+                        .background(Color.retraceSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .stroke(Color.retraceBorderStrong, lineWidth: 1)
                         )
                 }
                 .buttonStyle(.plain)
                 .contentShape(Rectangle())
                 .keyboardShortcut("h", modifiers: [.command, .shift])
+                .accessibilityLabel("Help")
                 .help("Help")
                 .scaleEffect(isHoveringHelp ? 1.03 : 1.0)
                 .animation(.easeOut(duration: 0.12), value: isHoveringHelp)
@@ -238,21 +216,21 @@ public struct SystemMonitorView: View {
                     )
                     NotificationCenter.default.post(name: .openSettingsPower, object: nil)
                 }) {
-                    Image(systemName: "gearshape")
-                        .font(.retraceCalloutMedium)
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("gearshape", size: 13.5)
+                        .foregroundColor(.retraceInk2)
                         .rotationEffect(.degrees(settingsRotation + (isHoveringSettings ? 30 : 0)))
                         .animation(.easeInOut(duration: 0.2), value: isHoveringSettings)
                         .padding(10)
-                        .background(Color.white.opacity(0.05))
-                        .cornerRadius(8)
+                        .background(Color.retraceSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .stroke(Color.retraceBorderStrong, lineWidth: 1)
                         )
                 }
                 .buttonStyle(.plain)
                 .contentShape(Rectangle())
+                .accessibilityLabel("Settings")
                 .help("Settings")
                 .onHover { hovering in
                     isHoveringSettings = hovering
@@ -274,19 +252,18 @@ public struct SystemMonitorView: View {
             hoveredIndex: $viewModel.hoveredOCRBarIndex
         ) {
             if viewModel.isPausedForBattery {
-                Divider()
-                    .background(Color.white.opacity(0.06))
+                Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
                 HStack(spacing: 8) {
-                    Image(systemName: "bolt.slash.fill")
-                        .font(.retraceCaption)
-                        .foregroundColor(.orange)
+                    RetraceSymbol("bolt.slash.fill", size: 12.5)
+                        .foregroundColor(.retraceWarningText)
                     Text("Processing paused by power settings — adjust them in ")
                         .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                     + Text("Settings")
                         .font(.retraceCaption2)
-                        .foregroundColor(.retraceAccent)
+                        .foregroundColor(.retraceInk)
+                        .underline()
                     Spacer()
                 }
                 .contentShape(Rectangle())
@@ -298,49 +275,42 @@ public struct SystemMonitorView: View {
                     NotificationCenter.default.post(name: .openSettingsPowerOCRCard, object: nil)
                 }
                 .padding(12)
-                .background(Color.orange.opacity(0.05))
+                .background(Color.retraceWarningBg)
             }
 
             if !viewModel.ocrEnabled {
-                Divider()
-                    .background(Color.white.opacity(0.06))
+                Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
                 HStack(alignment: .center, spacing: 12) {
                     ZStack {
                         Circle()
-                            .fill(Color.retraceAccent.opacity(0.28))
+                            .fill(Color.retraceAccent)
                             .frame(width: 28, height: 28)
-                        Image(systemName: "eye.slash.fill")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white)
+                        RetraceSymbol("eye.slash.fill", size: 12, weight: .semibold)
+                            .foregroundColor(.retraceOnAccent)
                     }
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text("OCR is paused")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.95))
+                            .font(RetraceFont.font(size: 12, weight: .semibold))
+                            .foregroundColor(.retraceInk)
                         Text("New frames are still captured, but text won’t be searchable until OCR resumes.")
                             .font(.retraceCaption2)
-                            .foregroundColor(.white.opacity(0.78))
+                            .foregroundColor(.retraceInk2)
                     }
 
                     Spacer()
 
                     HStack(spacing: 4) {
                         Text("Open Power Settings")
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 9, weight: .semibold))
+                        RetraceSymbol("arrow.up.right", size: 9, weight: .semibold)
                     }
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.95))
+                    .font(RetraceFont.font(size: 11, weight: .semibold))
+                    .foregroundColor(.retraceOnAccent)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.retraceAccent.opacity(0.30))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.retraceAccent.opacity(0.55), lineWidth: 1)
-                    )
-                    .cornerRadius(8)
+                    .background(Color.retraceAccent)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -352,20 +322,11 @@ public struct SystemMonitorView: View {
                 }
                 .padding(14)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.retraceAccent.opacity(0.22),
-                                    Color.retraceAccent.opacity(0.10)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceAccentWash)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.retraceAccent.opacity(0.35), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                                .stroke(Color.retraceBorder, lineWidth: 1)
                         )
                 )
                 .padding(.horizontal, 8)
@@ -373,45 +334,42 @@ public struct SystemMonitorView: View {
             }
 
             if viewModel.shouldShowPerformanceNudge {
-                Divider()
-                    .background(Color.white.opacity(0.06))
+                Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
                 HStack(alignment: .center, spacing: 12) {
                     ZStack {
                         Circle()
-                            .fill(Color.orange.opacity(0.25))
+                            .fill(Color.retraceSurface)
                             .frame(width: 30, height: 30)
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.orange)
+                        RetraceSymbol("exclamationmark.triangle.fill", size: 12, weight: .semibold)
+                            .foregroundColor(.retraceWarningText)
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Large OCR Backlog Detected")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.96))
+                            .font(RetraceFont.font(size: 13, weight: .semibold))
+                            .foregroundColor(.retraceInk)
                         Text("\(viewModel.ocrQueueDepth) frames queued. Go to System Settings to increase your OCR Priority.")
                             .font(.retraceCaption2)
-                            .foregroundColor(.white.opacity(0.82))
+                            .foregroundColor(.retraceInk2)
                     }
 
                     Spacer()
 
                     HStack(spacing: 4) {
                         Text("Go to System Settings")
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 9, weight: .semibold))
+                        RetraceSymbol("arrow.up.right", size: 9, weight: .semibold)
                     }
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.95))
+                    .font(RetraceFont.font(size: 11, weight: .semibold))
+                    .foregroundColor(.retraceInk)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.retraceAccent.opacity(0.3))
+                    .background(Color.retraceSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.retraceAccent.opacity(0.6), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .stroke(Color.retraceBorderStrong, lineWidth: 1)
                     )
-                    .cornerRadius(8)
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -423,20 +381,11 @@ public struct SystemMonitorView: View {
                 }
                 .padding(14)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.orange.opacity(0.24),
-                                    Color.orange.opacity(0.12)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceWarningBg)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color.orange.opacity(0.42), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                                .stroke(Color.retraceBorder, lineWidth: 1)
                         )
                 )
                 .padding(.horizontal, 8)
@@ -539,12 +488,11 @@ public struct SystemMonitorView: View {
     ) -> some View {
         VStack(spacing: 0) {
             HStack {
-                Image(systemName: model.icon)
-                    .font(.retraceCallout)
-                    .foregroundColor(.retraceSecondary)
+                RetraceSymbol(model.icon, size: 13.5)
+                    .foregroundColor(.retraceInk2)
                 Text(model.title)
                     .font(.retraceCalloutBold)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
                 statusBadge(text: model.statusText, color: model.statusColor)
@@ -552,20 +500,19 @@ public struct SystemMonitorView: View {
             .padding(.horizontal, 20)
                 .padding(.vertical, 8)
 
-            Divider()
-                .background(Color.white.opacity(0.06))
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     Text(model.metricTitle)
                         .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                     Text("·")
                         .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary.opacity(0.5))
+                        .foregroundColor(.retraceInk2)
                     Text("Last \(model.historyWindowMinutes) min")
                         .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary.opacity(0.7))
+                        .foregroundColor(.retraceInk2)
                     Spacer()
                 }
 
@@ -585,22 +532,21 @@ public struct SystemMonitorView: View {
             .padding(.vertical, 8)
             .padding(.horizontal, 20)
 
-            Divider()
-                .background(Color.white.opacity(0.06))
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
             HStack(spacing: 10) {
                 HStack(spacing: 4) {
                     Text("\(model.completedLast30Minutes)")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .font(RetraceFont.mono(size: 14, weight: .semibold))
                         .foregroundColor(model.completedTint)
                     if model.isIdle {
                         Text("\(model.completedLabel) in the last \(model.historyWindowMinutes) minutes")
                             .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .foregroundColor(.retraceInk2)
                     } else {
                         Text(model.completedLabel)
                             .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .foregroundColor(.retraceInk2)
                     }
                 }
 
@@ -608,32 +554,32 @@ public struct SystemMonitorView: View {
                    activeCount > 0,
                    let activeLabel = model.activeLabel {
                     Circle()
-                        .fill(Color.retraceSecondary.opacity(0.3))
+                        .fill(Color.retraceMuted)
                         .frame(width: 3, height: 3)
 
                     HStack(spacing: 4) {
                         Text("\(activeCount)")
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .font(RetraceFont.mono(size: 14, weight: .semibold))
                             .foregroundColor(model.activeTint)
                         Text(activeLabel)
                             .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .foregroundColor(.retraceInk2)
                     }
                 }
 
                 if model.pendingCount > 0 {
                     HStack(spacing: 10) {
                         Circle()
-                            .fill(Color.retraceSecondary.opacity(0.3))
+                            .fill(Color.retraceMuted)
                             .frame(width: 3, height: 3)
 
                         HStack(spacing: 4) {
                             Text("\(model.pendingCount)")
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .font(RetraceFont.mono(size: 14, weight: .semibold))
                                 .foregroundColor(model.pendingTint)
                             Text(model.pendingLabel)
                                 .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary.opacity(0.7))
+                                .foregroundColor(.retraceInk2)
                         }
                     }
                     .transition(.asymmetric(
@@ -649,11 +595,11 @@ public struct SystemMonitorView: View {
                    let etaSuffixText = model.etaSuffixText {
                     HStack(spacing: 4) {
                         Text(etaText)
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundColor(.retracePrimary)
+                            .font(RetraceFont.mono(size: 14, weight: .semibold))
+                            .foregroundColor(.retraceInk)
                         Text(etaSuffixText)
                             .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .foregroundColor(.retraceInk2)
                     }
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
                 }
@@ -666,46 +612,38 @@ public struct SystemMonitorView: View {
             footer()
         }
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white.opacity(0.02))
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurfaceSunken)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 
     private func processResourceSummarySection(isCompactLayout: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "gauge.with.needle")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.retraceSecondary)
+                RetraceSymbol("gauge.with.needle", size: 17, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
 
                 Text("Process Resource Logs (last 12h)")
                     .font(.retraceHeadline)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
                 Button("Restart Baseline") {
                     ProcessCPUMonitor.shared.resetSampler()
                 }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.retraceSecondary.opacity(0.9))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color.white.opacity(0.06))
-                .cornerRadius(6)
+                .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                 .help("Clear CPU/memory sampler history and restart baseline collection")
             }
             .padding(.horizontal, 12)
             .padding(.top, 12)
             .padding(.bottom, 10)
 
-            Divider()
-                .background(Color.white.opacity(0.06))
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
             Group {
                 if isCompactLayout {
@@ -726,24 +664,26 @@ public struct SystemMonitorView: View {
             }
             .padding(12)
         }
-        .background(Color.white.opacity(0.02))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
+        )
+        .retraceElevation(.sm)
     }
 
     private func processingPipelinesSection(isCompactLayout: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "arrow.triangle.branch")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.retraceSecondary)
+                RetraceSymbol("arrow.triangle.branch", size: 17, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
 
                 Text("Processing Pipelines")
                     .font(.retraceHeadline)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
             }
@@ -751,8 +691,7 @@ public struct SystemMonitorView: View {
             .padding(.top, 14)
             .padding(.bottom, 12)
 
-            Divider()
-                .background(Color.white.opacity(0.06))
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
             VStack(alignment: .leading, spacing: 20) {
                 if isCompactLayout {
@@ -771,24 +710,26 @@ public struct SystemMonitorView: View {
             }
             .padding(16)
         }
-        .background(Color.white.opacity(0.02))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
+        )
+        .retraceElevation(.sm)
     }
 
     private var semanticIndexingSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "sparkles")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.retraceSecondary)
+                RetraceSymbol("sparkles", size: 17, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
 
                 Text("AI Visual Indexing")
                     .font(.retraceHeadline)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
@@ -802,19 +743,12 @@ public struct SystemMonitorView: View {
                                     .scaleEffect(0.6)
                                     .frame(width: 12, height: 12)
                             } else {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 10, weight: .semibold))
+                                RetraceSymbol("arrow.clockwise", size: 10, weight: .semibold)
                             }
                             Text(viewModel.isRestartingSemanticIndex ? "Restarting…" : "Force Restart")
-                                .font(.system(size: 11, weight: .semibold))
                         }
-                        .foregroundColor(.retraceSecondary.opacity(0.9))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(6)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                     .disabled(viewModel.isRestartingSemanticIndex)
                     .help("Interrupt any stuck indexing loop, reset failed/stalled frames back to pending, and restart immediately")
                 }
@@ -822,23 +756,23 @@ public struct SystemMonitorView: View {
                 if let stats = viewModel.semanticIndexStats {
                     let (badgeText, badgeColor): (String, Color) = {
                         if viewModel.isRestartingSemanticIndex {
-                            return ("Restarting", .orange)
+                            return ("Restarting", .retraceWarningText)
                         }
                         switch stats.status {
-                        case .running: return ("Running", .green)
-                        case .budgetExhausted: return ("Daily Cap Reached", .orange)
-                        case .rateLimited: return ("Rate Limited", .orange)
-                        case .error: return ("Error", .red)
-                        case .awaitingKey: return ("No Key", .yellow)
-                        case .idle: return ("Idle", .retraceSecondary)
-                        case .disabled: return ("Off", .retraceSecondary)
-                        case .restarting: return ("Restarting", .orange)
-                        case .pausedForPressure: return ("Paused (Memory)", .orange)
+                        case .running: return ("Running", .retraceGood)
+                        case .budgetExhausted: return ("Daily Cap Reached", .retraceWarningText)
+                        case .rateLimited: return ("Rate Limited", .retraceWarningText)
+                        case .error: return ("Error", .retraceCritical)
+                        case .awaitingKey: return ("No Key", .retraceWarningText)
+                        case .idle: return ("Idle", .retraceInk2)
+                        case .disabled: return ("Off", .retraceInk2)
+                        case .restarting: return ("Restarting", .retraceWarningText)
+                        case .pausedForPressure: return ("Paused (Memory)", .retraceWarningText)
                         }
                     }()
                     statusBadge(
                         text: stats.isEnabled ? badgeText : "Off",
-                        color: stats.isEnabled ? badgeColor : .retraceSecondary
+                        color: stats.isEnabled ? badgeColor : .retraceInk2
                     )
                 }
             }
@@ -846,8 +780,7 @@ public struct SystemMonitorView: View {
             .padding(.top, 14)
             .padding(.bottom, 12)
 
-            Divider()
-                .background(Color.white.opacity(0.06))
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
             Group {
                 if let stats = viewModel.semanticIndexStats {
@@ -856,19 +789,20 @@ public struct SystemMonitorView: View {
                             HStack {
                                 Text("\(stats.indexed) / \(stats.eligibleTotal) frames indexed")
                                     .font(.retraceCaption)
-                                    .foregroundColor(.retracePrimary)
+                                    .foregroundColor(.retraceInk)
                                 Spacer()
                                 Text("\(Int(stats.fractionComplete * 100))%")
-                                    .font(.retraceCaption2)
-                                    .foregroundColor(.retraceSecondary)
+                                    .font(.retraceMonoSmall)
+                                    .monospacedDigit()
+                                    .foregroundColor(.retraceInk2)
                             }
 
                             GeometryReader { proxy in
                                 ZStack(alignment: .leading) {
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(Color.white.opacity(0.08))
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(LinearGradient.retraceAccentGradient)
+                                    Capsule(style: .continuous)
+                                        .fill(Color.retraceSurfaceSunken)
+                                    Capsule(style: .continuous)
+                                        .fill(Color.retraceAccent)
                                         .frame(width: proxy.size.width * stats.fractionComplete)
                                 }
                             }
@@ -876,47 +810,48 @@ public struct SystemMonitorView: View {
 
                             if let message = stats.statusMessage, !message.isEmpty {
                                 HStack(alignment: .top, spacing: 8) {
-                                    Image(systemName: stats.status == .error ? "xmark.octagon.fill" : (stats.status == .rateLimited || stats.status == .budgetExhausted ? "exclamationmark.triangle.fill" : "info.circle.fill"))
-                                        .foregroundColor(stats.status == .error ? .red : (stats.status == .rateLimited || stats.status == .budgetExhausted ? .orange : .retraceSecondary))
-                                        .font(.system(size: 11))
+                                    RetraceSymbol(stats.status == .error ? "xmark.octagon.fill" : (stats.status == .rateLimited || stats.status == .budgetExhausted ? "exclamationmark.triangle.fill" : "info.circle.fill"), size: 11)
+                                        .foregroundColor(stats.status == .error ? .retraceCritical : (stats.status == .rateLimited || stats.status == .budgetExhausted ? .retraceWarningText : .retraceInk2))
                                         .padding(.top, 2)
                                     Text(message)
                                         .font(.retraceCaption2)
-                                        .foregroundColor(stats.status == .error ? .red.opacity(0.9) : (stats.status == .rateLimited || stats.status == .budgetExhausted ? .orange.opacity(0.9) : .retraceSecondary))
+                                        .foregroundColor(stats.status == .error ? .retraceCritical : (stats.status == .rateLimited || stats.status == .budgetExhausted ? .retraceWarningText : .retraceInk2))
                                     Spacer()
                                 }
                                 .padding(8)
-                                .background(Color.white.opacity(0.03))
-                                .cornerRadius(6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                        .fill(stats.status == .error ? Color.retraceCriticalBg : (stats.status == .rateLimited || stats.status == .budgetExhausted ? Color.retraceWarningBg : Color.retraceSurfaceSunken))
+                                )
                             }
 
                             VStack(alignment: .leading, spacing: 5) {
                                 HStack {
                                     Text("Stage 1 (On-Device Apple Intelligence):")
                                         .font(.retraceCaption2)
-                                        .foregroundColor(.retraceSecondary)
+                                        .foregroundColor(.retraceInk2)
                                     Spacer()
                                     Text("\(stats.baselineIndexedCount + stats.deepIndexedCount) / \(stats.eligibleTotal) frames")
                                         .font(.retraceCaption2)
-                                        .foregroundColor(.retracePrimary)
+                                        .foregroundColor(.retraceInk)
                                 }
                                 HStack {
                                     Text("Stage 2 (Vision LLM Deep Cross-Ref):")
                                         .font(.retraceCaption2)
-                                        .foregroundColor(.retraceSecondary)
+                                        .foregroundColor(.retraceInk2)
                                     Spacer()
                                     Text("\(stats.deepIndexedCount) deep · \(stats.backfillRequestsToday) / \(stats.dailyBackfillBudget) reqs today")
                                         .font(.retraceCaption2)
-                                        .foregroundColor(.retracePrimary)
+                                        .foregroundColor(.retraceInk)
                                 }
                                 HStack {
                                     Text("Timeline AI Search:")
                                         .font(.retraceCaption2)
-                                        .foregroundColor(.retraceSecondary)
+                                        .foregroundColor(.retraceInk2)
                                     Spacer()
                                     Text("\(stats.searchRequestsToday) / \(stats.dailySearchBudget) reqs today")
                                         .font(.retraceCaption2)
-                                        .foregroundColor(.retracePrimary)
+                                        .foregroundColor(.retraceInk)
                                 }
                             }
                         }
@@ -925,7 +860,7 @@ public struct SystemMonitorView: View {
                         HStack(spacing: 8) {
                             Text("AI Visual Indexing is off — enable it in ")
                                 .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary)
+                                .foregroundColor(.retraceInk2)
                             + Text("Settings")
                                 .font(.retraceCaption2)
                                 .foregroundColor(.retraceAccent)
@@ -940,17 +875,20 @@ public struct SystemMonitorView: View {
                 } else {
                     Text("Loading…")
                         .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                         .padding(16)
                 }
             }
         }
-        .background(Color.white.opacity(0.02))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
+        )
+        .retraceElevation(.sm)
     }
 
     private var processCPUSummarySection: some View {
@@ -987,12 +925,11 @@ public struct SystemMonitorView: View {
                 .frame(width: 6, height: 6)
             Text(text)
                 .font(.retraceCaption2)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color.white.opacity(0.05))
-        .cornerRadius(6)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
+        .background(Capsule(style: .continuous).fill(Color.retraceSurfaceSunken))
     }
 
     private var isOuterScrollDisabled: Bool {
@@ -1050,8 +987,8 @@ private struct ActivityMonitorCardModel {
     let etaText: String?
     let etaSuffixText: String?
     let completedTint: Color = .retraceAccent
-    let activeTint: Color = .green
-    let pendingTint: Color = .orange
+    let activeTint: Color = .retraceSeries2
+    let pendingTint: Color = .retraceSeries3
     let backlogAxisLabel: String
     let historyWindowMinutes: Int
     let maxVisibleBacklogBars: Int
@@ -1242,7 +1179,7 @@ struct ActivityBarChart: View {
                                     y += dashHeight + gapHeight
                                 }
                             }
-                            .stroke(Color.retraceSecondary.opacity(0.3), lineWidth: 1)
+                            .stroke(Color.retraceMuted, lineWidth: 1)
                             .frame(width: separatorWidth, height: chartHeight)
 
                             // Backlog bars (orange) - multiple bars if count exceeds cap
@@ -1269,7 +1206,7 @@ struct ActivityBarChart: View {
 
                 // X-axis line (spans full width including backlog)
                 Rectangle()
-                    .fill(Color.retraceSecondary.opacity(0.2))
+                    .fill(Color.retraceMuted)
                     .frame(height: xAxisHeight)
 
                 // X-axis labels
@@ -1290,7 +1227,7 @@ struct ActivityBarChart: View {
 
                             // Backlog label
                             Text(backlogLabel)
-                                .foregroundColor(pendingTint.opacity(0.7))
+                                .foregroundColor(pendingTint)
                                 .frame(width: backlogWidth)
                         }
                         .transition(.asymmetric(
@@ -1299,8 +1236,8 @@ struct ActivityBarChart: View {
                         ))
                     }
                 }
-                .font(.system(size: 9, weight: .medium))
-                .foregroundColor(.retraceSecondary.opacity(0.5))
+                .font(RetraceFont.mono(size: 9, weight: .medium))
+                .foregroundColor(.retraceInk2)
                 .padding(.top, labelPadding)
                 .frame(height: labelPadding + labelHeight)
                 .animation(backlogTransitionAnimation, value: hasBacklog)
@@ -1420,10 +1357,10 @@ struct ActivityBarChart: View {
 
         return floatingTooltip(pointerOffset: pointerOffset, width: tooltipBubbleWidth) {
             VStack(spacing: 5) {
-                Text(isLive ? "LIVE NOW" : point.minute.formatted(date: .omitted, time: .shortened))
-                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                    .tracking(0.45)
-                    .foregroundColor(.white.opacity(0.72))
+                Text(isLive ? "Live now" : point.minute.formatted(date: .omitted, time: .shortened))
+                    .font(RetraceFont.font(size: 9, weight: .semibold))
+                    .retraceLabelTracking()
+                    .foregroundColor(.retraceInk2)
 
                 VStack(spacing: shouldStackMetrics ? 4 : 0) {
                     tooltipMetricChip(
@@ -1444,8 +1381,8 @@ struct ActivityBarChart: View {
     private func backlogTooltipView(pendingCount: Int) -> some View {
         VStack(spacing: 0) {
             Text("\(pendingCount)")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundColor(pendingTint)
+                .font(RetraceFont.mono(size: 11, weight: .semibold))
+                .foregroundColor(.retraceInk)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 2)
                 .background(
@@ -1460,30 +1397,21 @@ struct ActivityBarChart: View {
                 .padding(.top, 5)
                 .padding(.bottom, 6)
                 .background(
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.15, green: 0.18, blue: 0.24).opacity(0.98),
-                                    Color(red: 0.08, green: 0.10, blue: 0.15).opacity(0.98)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurface)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .stroke(Color.retraceBorder, lineWidth: 1)
                         )
-                        .shadow(color: Color.black.opacity(0.34), radius: 10, x: 0, y: 6)
+                        .retraceElevation(.md)
                 )
 
             TooltipPointer()
-                .fill(Color(red: 0.08, green: 0.10, blue: 0.15).opacity(0.98))
+                .fill(Color.retraceSurface)
                 .frame(width: 10, height: 6)
                 .overlay(
                     TooltipPointer()
-                        .stroke(Color.white.opacity(0.14), lineWidth: 0.8)
+                        .stroke(Color.retraceBorder, lineWidth: 0.8)
                 )
                 .offset(y: -1)
         }
@@ -1502,31 +1430,22 @@ struct ActivityBarChart: View {
                 .padding(.top, 7)
                 .padding(.bottom, 8)
                 .background(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color(red: 0.15, green: 0.18, blue: 0.24).opacity(0.98),
-                                    Color(red: 0.08, green: 0.10, blue: 0.15).opacity(0.98)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceSurface)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                                .stroke(Color.retraceBorder, lineWidth: 1)
                         )
-                        .shadow(color: Color.black.opacity(0.34), radius: 14, x: 0, y: 8)
+                        .retraceElevation(.md)
                 )
                 .frame(width: width)
 
             TooltipPointer()
-                .fill(Color(red: 0.08, green: 0.10, blue: 0.15).opacity(0.98))
+                .fill(Color.retraceSurface)
                 .frame(width: 12, height: 7)
                 .overlay(
                     TooltipPointer()
-                        .stroke(Color.white.opacity(0.14), lineWidth: 0.8)
+                        .stroke(Color.retraceBorder, lineWidth: 0.8)
                 )
                 .offset(x: pointerOffset, y: -1)
         }
@@ -1535,8 +1454,8 @@ struct ActivityBarChart: View {
 
     private func tooltipMetricChip(text: String, tint: Color) -> some View {
         Text(text)
-            .font(.system(size: 11, weight: .bold, design: .rounded))
-            .foregroundColor(tint)
+            .font(RetraceFont.mono(size: 11, weight: .semibold))
+            .foregroundColor(.retraceInk)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background(
@@ -1921,9 +1840,9 @@ class SystemMonitorViewModel: ObservableObject {
 
     var ocrStatusColor: Color {
         if !ocrEnabled {
-            return .gray
+            return .retraceMuted
         } else if isPausedForBattery {
-            return .orange
+            return .retraceWarningText
         } else if ocrQueueDepth > 0 {
             return .retraceAccent
         } else {
@@ -1944,7 +1863,7 @@ class SystemMonitorViewModel: ObservableObject {
     }
 
     var rewriteStatusColor: Color {
-        rewriteProcessingCount > 0 ? .green : .gray
+        rewriteProcessingCount > 0 ? .retraceGood : .retraceMuted
     }
 
     var rewriteStatusBadgeText: String {
@@ -1952,7 +1871,7 @@ class SystemMonitorViewModel: ObservableObject {
     }
 
     var encodingBufferStatusColor: Color {
-        encodedQueueDepth > 0 ? .retraceAccent : .gray
+        encodedQueueDepth > 0 ? .retraceAccent : .retraceMuted
     }
 
     var encodingBufferStatusBadgeText: String {

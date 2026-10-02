@@ -115,8 +115,8 @@ public class SystemMonitorWindowController: NSObject {
 
         window.level = .normal
         window.collectionBehavior = [.managed, .participatesInCycle]
-        window.backgroundColor = NSColor(named: "retraceBackground") ?? NSColor.windowBackgroundColor
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = NSColor.retracePage
+        window.appearance = nil  // inherit Auto/Light/Dark from NSApp.appearance
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
 

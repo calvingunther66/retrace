@@ -181,8 +181,8 @@ public class DashboardWindowController: NSObject {
         // Set window level and appearance
         window.level = .normal
         window.collectionBehavior = [.managed, .participatesInCycle]
-        window.backgroundColor = NSColor(named: "retraceBackground") ?? NSColor.windowBackgroundColor
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.backgroundColor = NSColor.retracePage
+        window.appearance = nil  // inherit Auto/Light/Dark from NSApp.appearance
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
 
@@ -336,7 +336,7 @@ struct DashboardContentView: View {
                 } else {
                     // Main content based on selected view
                     // Persistent background prevents titlebar flash during tab transitions
-                    Color.retraceBackground
+                    Color.retracePage
                         .ignoresSafeArea()
 
                     selectedContent
@@ -345,7 +345,7 @@ struct DashboardContentView: View {
                 }
             } else {
                 // Loading state
-                Color.retraceBackground
+                Color.retracePage
                     .ignoresSafeArea()
             }
         }

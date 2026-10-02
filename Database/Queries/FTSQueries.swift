@@ -264,6 +264,137 @@ enum FTSQueries {
 
     // MARK: - Delete
 
+    /// Delete FTS content and associated doc_segment records for a batch of frames in one pass.
+    /// Semantically equivalent to calling `deleteForFrame` once per ID, but issues a constant
+    /// number of SQL statements (one `IN (...)` delete + one orphan check + one orphan delete)
+    /// instead of one prepare/bind/step round trip per frame and per docid.
+    static func deleteForFrames(db: OpaquePointer, frameIds: [Int64]) throws {
+        guard !frameIds.isEmpty else { return }
+
+        let docids = try getDocidsForFrames(db: db, frameIds: frameIds)
+        guard !docids.isEmpty else {
+            return // Nothing to delete
+        }
+
+        // Delete from doc_segment for all frames in this batch in one statement.
+        let framePlaceholders = frameIds.map { _ in "?" }.joined(separator: ",")
+        let deleteJunctionSQL = "DELETE FROM doc_segment WHERE frameId IN (\(framePlaceholders));"
+        var junctionStatement: OpaquePointer?
+        defer {
+            sqlite3_finalize(junctionStatement)
+        }
+
+        guard sqlite3_prepare_v2(db, deleteJunctionSQL, -1, &junctionStatement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(
+                query: deleteJunctionSQL,
+                underlying: String(cString: sqlite3_errmsg(db))
+            )
+        }
+
+        for (index, frameId) in frameIds.enumerated() {
+            sqlite3_bind_int64(junctionStatement, Int32(index + 1), frameId)
+        }
+
+        guard sqlite3_step(junctionStatement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(
+                query: deleteJunctionSQL,
+                underlying: String(cString: sqlite3_errmsg(db))
+            )
+        }
+
+        // A docid can still be referenced by doc_segment rows belonging to frames outside
+        // this batch, so only delete searchRanking rows that are now fully orphaned.
+        let docidPlaceholders = docids.map { _ in "?" }.joined(separator: ",")
+        let stillReferencedSQL = """
+            SELECT DISTINCT docid FROM doc_segment WHERE docid IN (\(docidPlaceholders));
+            """
+        var referencedStatement: OpaquePointer?
+        defer {
+            sqlite3_finalize(referencedStatement)
+        }
+
+        guard sqlite3_prepare_v2(db, stillReferencedSQL, -1, &referencedStatement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(
+                query: stillReferencedSQL,
+                underlying: String(cString: sqlite3_errmsg(db))
+            )
+        }
+
+        for (index, docid) in docids.enumerated() {
+            sqlite3_bind_int64(referencedStatement, Int32(index + 1), docid)
+        }
+
+        var stillReferenced = Set<Int64>()
+        while sqlite3_step(referencedStatement) == SQLITE_ROW {
+            stillReferenced.insert(sqlite3_column_int64(referencedStatement, 0))
+        }
+
+        let orphanedDocids = docids.filter { !stillReferenced.contains($0) }
+        guard !orphanedDocids.isEmpty else {
+            return
+        }
+
+        let orphanPlaceholders = orphanedDocids.map { _ in "?" }.joined(separator: ",")
+        let deleteContentSQL = "DELETE FROM searchRanking WHERE rowid IN (\(orphanPlaceholders));"
+        var contentStatement: OpaquePointer?
+        defer {
+            sqlite3_finalize(contentStatement)
+        }
+
+        guard sqlite3_prepare_v2(db, deleteContentSQL, -1, &contentStatement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(
+                query: deleteContentSQL,
+                underlying: String(cString: sqlite3_errmsg(db))
+            )
+        }
+
+        for (index, docid) in orphanedDocids.enumerated() {
+            sqlite3_bind_int64(contentStatement, Int32(index + 1), docid)
+        }
+
+        guard sqlite3_step(contentStatement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(
+                query: deleteContentSQL,
+                underlying: String(cString: sqlite3_errmsg(db))
+            )
+        }
+    }
+
+    /// Get all docids currently associated with a batch of frames.
+    private static func getDocidsForFrames(db: OpaquePointer, frameIds: [Int64]) throws -> [Int64] {
+        guard !frameIds.isEmpty else { return [] }
+
+        let placeholders = frameIds.map { _ in "?" }.joined(separator: ",")
+        let sql = """
+            SELECT DISTINCT docid
+            FROM doc_segment
+            WHERE frameId IN (\(placeholders))
+            ORDER BY docid ASC;
+            """
+
+        var statement: OpaquePointer?
+        defer {
+            sqlite3_finalize(statement)
+        }
+
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(
+                query: sql,
+                underlying: String(cString: sqlite3_errmsg(db))
+            )
+        }
+
+        for (index, frameId) in frameIds.enumerated() {
+            sqlite3_bind_int64(statement, Int32(index + 1), frameId)
+        }
+
+        var docids: [Int64] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            docids.append(sqlite3_column_int64(statement, 0))
+        }
+        return docids
+    }
+
     /// Delete FTS content and associated doc_segment records for a frame
     static func deleteForFrame(db: OpaquePointer, frameId: Int64) throws {
         let docids = try getDocidsForFrame(db: db, frameId: frameId)

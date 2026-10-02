@@ -862,6 +862,34 @@ public class SimpleTimelineViewModel: ObservableObject {
     /// Set this when window becomes visible after a metadata refresh
     public var forceVideoReload: Bool = false
 
+    /// Cache of on-disk existence/size checks for *finalized, present* video files, keyed by video path.
+    /// A finalized file that already exists on disk won't change size or disappear, so that result never
+    /// goes stale. A "missing" result is intentionally never cached (even when finalized) since the file
+    /// could still appear moments later (e.g. a storage volume mounting late), and caching a false miss
+    /// would permanently stick the view on "Video file missing" for the rest of the view model's lifetime.
+    /// Non-finalized videos are always stat'd live since their size is still growing.
+    private var finalizedVideoFileStatusCache: [String: (exists: Bool, size: Int64)] = [:]
+
+    /// Returns (fileExists, fileSize) for a video path (checking both `path` and `pathWithExt`).
+    /// For finalized, present videos this is served from an in-memory cache after the first lookup,
+    /// avoiding repeated `FileManager` stat calls on every timeline re-render of the same, unchanged
+    /// video segment. Non-finalized or not-yet-found videos are always stat'd live.
+    public func videoFileStatus(path: String, pathWithExt: String, isVideoFinalized: Bool) -> (exists: Bool, size: Int64) {
+        if isVideoFinalized, let cached = finalizedVideoFileStatusCache[path] {
+            return cached
+        }
+        let exists = FileManager.default.fileExists(atPath: path) || FileManager.default.fileExists(atPath: pathWithExt)
+        var size: Int64 = 0
+        if exists {
+            size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int64) ??
+                   (try? FileManager.default.attributesOfItem(atPath: pathWithExt)[.size] as? Int64) ?? 0
+        }
+        if isVideoFinalized && exists {
+            finalizedVideoFileStatusCache[path] = (exists, size)
+        }
+        return (exists, size)
+    }
+
     // MARK: - Text Selection State
 
     /// All OCR nodes for the current frame (used for text selection)

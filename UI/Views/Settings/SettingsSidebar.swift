@@ -20,20 +20,25 @@ extension SettingsView {
                 Button(action: {
                     NotificationCenter.default.post(name: .openDashboard, object: nil)
                 }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("chevron.left", size: 12, weight: .semibold)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                        .background(Color.retraceSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .stroke(Color.retraceBorderStrong, lineWidth: 1)
+                        )
+                        .retraceFocusRing(cornerRadius: .radiusSm)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Back to dashboard")
                 .contentShape(Rectangle())
                 .keyboardShortcut("[", modifiers: .command)
 
                 Text("Settings")
-                    .font(.retraceTitle3)
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceTitle2)
+                    .foregroundColor(.retraceInk)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20)
@@ -44,33 +49,36 @@ extension SettingsView {
                 openSettingsSearch(source: "sidebar_button")
             }) {
                 HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 12))
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("magnifyingglass", size: 12, label: "")
+                        .foregroundColor(.retraceInk2)
 
                     Text("Search")
-                        .font(.retraceCaptionMedium)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceCaption)
+                        .foregroundColor(.retraceInk2)
                         .lineLimit(1)
 
                     Spacer()
 
                     HStack(spacing: 2) {
                         Text("\u{2318}")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(RetraceFont.mono(size: 10, weight: .medium))
                         Text("K")
-                            .font(.system(size: 10, weight: .medium))
+                            .font(RetraceFont.mono(size: 10, weight: .medium))
                     }
-                    .foregroundColor(.retraceSecondary.opacity(0.5))
+                    .foregroundColor(.retraceInk2)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
-                    .background(Color.white.opacity(0.06))
-                    .cornerRadius(4)
+                    .background(Color.retraceSurfaceSunken)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(Color.white.opacity(0.04))
-                .cornerRadius(8)
+                .background(Color.retraceSurface)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceBorderStrong, lineWidth: 1)
+                )
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 12)
@@ -89,8 +97,8 @@ extension SettingsView {
             // Version info
             VStack(spacing: 2) {
                 Text("Retrace")
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
 
                 Group {
                     if let url = BuildInfo.commitURL {
@@ -103,25 +111,25 @@ extension SettingsView {
                         Text(BuildInfo.displayVersion)
                     }
                 }
-                .font(.retraceCaption2Medium)
-                .foregroundColor(.retraceSecondary.opacity(0.6))
+                .font(.retraceMonoSmall)
+                .foregroundColor(.retraceInk2)
 
                 if let branch = BuildInfo.displayBranch {
                     Text(branch)
-                        .font(.system(size: 9))
-                        .foregroundColor(.retraceSecondary.opacity(0.4))
+                        .font(RetraceFont.mono(size: 9))
+                        .foregroundColor(.retraceInk2)
                 }
 
                 #if DEBUG
                 Text("Debug Build")
-                    .font(.system(size: 9))
-                    .foregroundColor(.orange.opacity(0.7))
+                    .font(RetraceFont.mono(size: 9))
+                    .foregroundColor(.retraceWarningText)
                 #endif
             }
             .frame(maxWidth: .infinity)
             .padding(.bottom, 20)
         }
-        .background(Color.white.opacity(0.02))
+        .background(Color.retraceSurfaceSunken)
     }
 
     func sidebarButton(tab: SettingsTab) -> some View {
@@ -130,35 +138,30 @@ extension SettingsView {
 
         return Button(action: { shellViewModel.selectedTab = tab }) {
             HStack(spacing: 12) {
-                // Icon with gradient for selected
-                ZStack {
-                    if isSelected {
-                        Circle()
-                            .fill(tab.gradient.opacity(0.2))
-                            .frame(width: 32, height: 32)
-                    }
-
-                    Image(systemName: tab.icon)
-                        .font(.retraceCalloutMedium)
-                        .foregroundStyle(isSelected ? tab.gradient : LinearGradient(colors: [.retraceSecondary], startPoint: .top, endPoint: .bottom))
-                }
-                .frame(width: 32, height: 32)
+                // Icon: clay when selected
+                RetraceSymbol(tab.icon, size: 13.5, label: "")
+                    .foregroundColor(isSelected ? .retraceAccent : .retraceInk2)
+                    .frame(width: 32, height: 32)
 
                 Text(tab.rawValue)
-                    .font(isSelected ? .retraceCalloutBold : .retraceCalloutMedium)
-                    .foregroundColor(isSelected ? .retracePrimary : .retraceSecondary)
+                    .font(isSelected ? .retraceCalloutBold : .retraceCallout)
+                    .foregroundColor(isSelected ? .retraceInk : .retraceInk2)
 
                 Spacer()
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? Color.white.opacity(0.08) : (isHovered ? Color.white.opacity(0.04) : Color.clear))
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .fill(isSelected ? Color.retraceAccentWash : (isHovered ? Color.retraceSurfaceHover : Color.clear))
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .stroke(isSelected ? Color.retraceAccent : Color.clear, lineWidth: 1)
+            )
+            .retraceFocusRing(cornerRadius: .radiusMd)
         }
         .buttonStyle(.plain)
-        .scaleEffect(isHovered ? 1.02 : 1.0)
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
                 shellViewModel.hoveredTab = hovering ? tab : nil
@@ -345,22 +348,21 @@ extension SettingsView {
             HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(shellViewModel.selectedTab.gradient.opacity(0.15))
+                        .fill(Color.retraceAccentWash)
                         .frame(width: 44, height: 44)
 
-                    Image(systemName: shellViewModel.selectedTab.icon)
-                        .font(.retraceHeadline)
-                        .foregroundStyle(shellViewModel.selectedTab.gradient)
+                    RetraceSymbol(shellViewModel.selectedTab.icon, size: 17, weight: .semibold, label: "")
+                        .foregroundColor(.retraceAccent)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(shellViewModel.selectedTab.rawValue)
-                        .font(.retraceMediumNumber)
-                        .foregroundColor(.retracePrimary)
+                        .font(.retraceTitle)
+                        .foregroundColor(.retraceInk)
 
                     Text(shellViewModel.selectedTab.description)
-                        .font(.retraceCaptionMedium)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 }
 
                 Spacer()
@@ -371,36 +373,24 @@ extension SettingsView {
                         NotificationCenter.default.post(name: .openSystemMonitor, object: nil)
                     }) {
                         HStack(spacing: 6) {
-                            Image(systemName: "waveform.path.ecg")
-                                .font(.system(size: 12))
+                            RetraceSymbol("waveform.path.ecg", size: 12, label: "")
                             Text("System Monitor")
                                 .font(.retraceCaption2)
                         }
-                        .foregroundColor(.white.opacity(0.7))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.08))
-                        .cornerRadius(8)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                 }
 
                 // Reset section button (only for sections with resettable settings)
                 if shellViewModel.selectedTab.resetAction(for: self) != nil {
                     Button(action: { shellViewModel.showingSectionResetConfirmation = true }) {
                         HStack(spacing: 6) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 12))
+                            RetraceSymbol("arrow.counterclockwise", size: 12, label: "")
                             Text("Reset to Defaults")
                                 .font(.retraceCaption2)
                         }
-                        .foregroundColor(.white.opacity(0.7))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.white.opacity(0.08))
-                        .cornerRadius(8)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                     .alert("Reset \(shellViewModel.selectedTab.rawValue) Settings?", isPresented: $shellViewModel.showingSectionResetConfirmation) {
                         Button("Cancel", role: .cancel) {}
                         Button("Reset", role: .destructive) {

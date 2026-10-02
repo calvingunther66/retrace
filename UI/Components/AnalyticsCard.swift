@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Modern analytics card component with glassmorphism styling
+/// Analytics card in the Linen / Dusk style: surface, hairline border, soft elevation
 public struct AnalyticsCard: View {
 
     // MARK: - Properties
@@ -9,10 +9,11 @@ public struct AnalyticsCard: View {
     let value: String
     let subtitle: String?
     let icon: String
-    let gradient: LinearGradient
+    let tint: Color
 
     // MARK: - Initialization
 
+    /// The gradient parameter is kept for call-site compatibility; the design system is flat, so the accent is a solid color.
     public init(
         title: String,
         value: String,
@@ -24,7 +25,7 @@ public struct AnalyticsCard: View {
         self.value = value
         self.subtitle = subtitle
         self.icon = icon
-        self.gradient = gradient
+        self.tint = .retraceAccent
     }
 
     /// Legacy initializer for backwards compatibility
@@ -39,80 +40,58 @@ public struct AnalyticsCard: View {
         self.value = value
         self.subtitle = subtitle
         self.icon = icon
-        self.gradient = LinearGradient(
-            colors: [accentColor, accentColor.opacity(0.7)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        self.tint = accentColor
     }
 
     // MARK: - Body
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Icon with gradient background
+            // Icon on an accent wash
             ZStack {
                 Circle()
-                    .fill(gradient.opacity(0.2))
+                    .fill(Color.retraceAccentWash)
                     .frame(width: 48, height: 48)
 
-                Image(systemName: icon)
-                    .font(.retraceTitle3)
-                    .foregroundStyle(gradient)
+                RetraceSymbol(icon, size: 17, weight: .semibold, label: "")
+                    .foregroundColor(tint)
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 // Value
                 Text(value)
                     .font(.retraceLargeNumber)
-                    .foregroundColor(.retracePrimary)
+                    .monospacedDigit()
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
                 // Title
                 Text(title)
-                    .font(.retraceCalloutMedium)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceLabel)
+                    .retraceLabelTracking()
+                    .foregroundColor(.retraceInk2)
             }
 
             // Subtitle (optional)
             if let subtitle = subtitle {
                 Text(subtitle)
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.retraceSecondary.opacity(0.7))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
                     .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(24)
         .background(
-            ZStack {
-                // Base background
-                Color.white.opacity(0.03)
-
-                // Subtle gradient overlay
-                LinearGradient(
-                    colors: [Color.white.opacity(0.02), Color.clear],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
         )
-        .cornerRadius(20)
         .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.1),
-                            Color.white.opacity(0.05)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
+        .retraceElevation(.sm)
     }
 }
 
@@ -148,7 +127,6 @@ struct AnalyticsCard_Previews: PreviewProvider {
         }
         .padding(32)
         .background(Color.retraceBackground)
-        .preferredColorScheme(.dark)
     }
 }
 #endif

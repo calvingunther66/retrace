@@ -23,14 +23,14 @@ public struct PauseReminderView: View {
             HStack {
                 Spacer()
                 Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                        .font(.retraceTinyMedium)
-                        .foregroundColor(.white.opacity(0.6))
+                    RetraceSymbol("xmark", size: 10, weight: .medium)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 20, height: 20)
-                        .background(Color.white.opacity(isHovering ? 0.2 : 0.1))
+                        .background(isHovering ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close")
                 .onHover { hovering in
                     isHovering = hovering
                 }
@@ -43,41 +43,27 @@ public struct PauseReminderView: View {
                 // Status text
                 Text(title)
                     .font(.retraceCalloutMedium)
-                    .foregroundColor(.white)
+                    .foregroundColor(.retraceInk)
 
                 // Primary action button
                 Button(action: onResumeCapturing) {
                     Text("Resume Capturing")
-                        .font(.retraceCaptionBold)
-                        .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.retraceAccent)
-                        .cornerRadius(8)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RetraceButtonStyle(.primary))
 
                 // Secondary action button
                 Button(action: onRemindMeLater) {
                     Text("Remind Me Later")
-                        .font(.retraceCaptionMedium)
-                        .foregroundColor(.white.opacity(0.9))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.white.opacity(0.1))
-                        .cornerRadius(8)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RetraceButtonStyle(.secondary))
 
                 // Settings shortcut link
                 Button(action: onEditIntervalInSettings) {
                     Text("Edit interval in Settings")
                         .font(.retraceCaption2)
-                        .foregroundColor(.white.opacity(0.65))
+                        .foregroundColor(.retraceAccent)
                         .underline()
                 }
                 .buttonStyle(.plain)
@@ -87,14 +73,14 @@ public struct PauseReminderView: View {
         }
         .frame(width: 220)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(red: 30/255, green: 30/255, blue: 35/255))
-                .shadow(color: .black.opacity(0.4), radius: 16, x: 0, y: 8)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
+        .retraceElevation(.md)
     }
 }
 
@@ -104,7 +90,7 @@ public struct PauseReminderView: View {
 struct PauseReminderView_Previews: PreviewProvider {
     static var previews: some View {
         ZStack {
-            Color.gray.opacity(0.3)
+            Color.retracePage
                 .ignoresSafeArea()
 
             VStack {
@@ -123,7 +109,6 @@ struct PauseReminderView_Previews: PreviewProvider {
             }
         }
         .frame(width: 400, height: 300)
-        .preferredColorScheme(.dark)
     }
 }
 #endif

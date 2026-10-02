@@ -7,18 +7,19 @@ struct PermissionBanner: View {
     let actionTitle: String
     let action: () -> Void
     let onDismiss: () -> Void
+    /// Only the most urgent banner in a stack should be primary; the rest stay secondary.
+    var isPrimary: Bool = false
 
     var body: some View {
         HStack(spacing: 10) {
             // Warning icon
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
-                .font(.retraceTitle3)
+            RetraceSymbol("exclamationmark.triangle.fill", size: 17)
+                .foregroundColor(.retraceWarningText)
 
             // Message
             Text(message)
                 .font(.retraceCaption)
-                .foregroundColor(.primary)
+                .foregroundColor(.retraceInk)
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
@@ -26,30 +27,26 @@ struct PermissionBanner: View {
             // Action button
             Button(action: action) {
                 Text(actionTitle)
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.accentColor)
-                    .cornerRadius(6)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(isPrimary ? .primary : .secondary, size: .sm))
 
             // Dismiss button
             Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.secondary)
-                    .font(.retraceHeadline)
+                RetraceSymbol("xmark.circle.fill", size: 17)
+                    .foregroundColor(.retraceInk2)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .background(Color.orange.opacity(0.1))
-        .cornerRadius(8)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .fill(Color.retraceWarningBg)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceWarningText.opacity(0.3), lineWidth: 1)
         )
     }
 }

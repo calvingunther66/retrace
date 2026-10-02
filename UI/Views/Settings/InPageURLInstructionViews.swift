@@ -19,8 +19,7 @@ struct InPageURLInstructionsDisclosure<Content: View>: View {
 
                     Spacer()
 
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
+                    RetraceSymbol("chevron.down", size: 10, weight: .semibold)
                         .foregroundColor(.retraceSecondary)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                 }
@@ -39,12 +38,12 @@ struct InPageURLInstructionsDisclosure<Content: View>: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .background(Color.white.opacity(0.04))
+        .background(Color.retraceSurfaceSunken)
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
     }
 }
 
@@ -53,30 +52,32 @@ struct InPageURLSecurityWarning: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 12))
-                .foregroundColor(.retraceWarning)
+            RetraceSymbol("exclamationmark.triangle.fill", size: 12)
+                .foregroundColor(.retraceWarningText)
                 .padding(.top, 1)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Important security warning")
                     .font(.retraceCaption2Bold)
-                    .foregroundColor(.retraceWarning)
+                    .foregroundColor(.retraceWarningText)
 
                 if showSafariSpecificLine {
                     Text("Safari may show a very severe warning when you enable this setting.")
-                        .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceInk2)
                 }
 
                 Text("After turning this on, be very careful which apps you grant Automation permission to. Granting it to untrusted apps can expose you to account takeover or data theft.")
-                    .font(.retraceCaption2)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
 
                 Text("Retrace only uses this access to extract in-page browser URLs, mouse position, and video playback position.")
-                    .font(.retraceCaption2)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
             }
         }
+        .padding(10)
+        .background(Color.retraceWarningBg)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
     }
 }
