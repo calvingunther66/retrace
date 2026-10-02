@@ -614,12 +614,13 @@ public struct DashboardView: View {
             .padding(.horizontal, 32)
             .padding(.bottom, 24)
 
-            // Footer
-            footer
+            #if DEBUG
+            debugToolsBar
                 .frame(maxWidth: dashboardMaxWidth)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 32)
                 .padding(.bottom, 24)
+            #endif
         }
         .sheet(
             isPresented: $showFeedbackSheet,
@@ -990,12 +991,6 @@ public struct DashboardView: View {
     private var settingsTooltipText: String {
         tooltipText(title: "Open Settings", shortcutText: "⌘,")
     }
-
-    // MARK: - Footer Hover States
-
-    @State private var isHoveringHaseab = false
-    @State private var isHoveringSupportMe = false
-    @State private var isHoveringFeedback = false
 
     // MARK: - Timeline Button
 
@@ -1873,220 +1868,112 @@ public struct DashboardView: View {
         .padding(.vertical, 48)
     }
 
-    // MARK: - Footer
+    // MARK: - Debug Tools
 
-    private var footer: some View {
+    #if DEBUG
+    /// Debug-only tools menu. The public footer (credits, support link, help, version) has been removed.
+    private var debugToolsBar: some View {
         HStack {
             Spacer()
-
-            HStack(spacing: 16) {
-                Link(destination: URL(string: "https://retrace.to/l/haseab-twitter")!) {
-                    HStack(spacing: 4) {
-                        Text("Made with")
-                            .foregroundColor(.retraceInk2)
-                        Text("❤️")
-                        Text("by")
-                            .foregroundColor(.retraceInk2)
-                        Text("@haseab")
-                            .foregroundColor(.retraceAccent)
-                            .scaleEffect(isHoveringHaseab ? 1.05 : 1.0)
-                            .animation(.easeInOut(duration: 0.15), value: isHoveringHaseab)
-                    }
-                    .font(.retraceCaption2Medium)
+            Menu {
+                Button("Show 10h Milestone") {
+                    milestoneCelebrationManager.currentMilestone = .tenHours
                 }
-                .buttonStyle(.plain)
-                .onHover { hovering in
-                    isHoveringHaseab = hovering
-                    if hovering {
-                        NSCursor.pointingHand.push()
-                    } else {
-                        NSCursor.pop()
-                    }
+                Button("Show 100h Milestone") {
+                    milestoneCelebrationManager.currentMilestone = .hundredHours
                 }
-
-                Circle()
-                    .fill(Color.retraceMuted)
-                    .frame(width: 3, height: 3)
-
-                Link(destination: URL(string: "https://retrace.to/l/support-haseab")!) {
-                    HStack(spacing: 6) {
-                        RetraceSymbol("cup.and.saucer.fill", size: 12)
-                        Text("Support Me")
-                    }
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.retraceInk2)
-                    .scaleEffect(isHoveringSupportMe ? 1.05 : 1.0)
-                    .animation(.easeInOut(duration: 0.15), value: isHoveringSupportMe)
+                Button("Show 1000h Milestone") {
+                    milestoneCelebrationManager.currentMilestone = .thousandHours
                 }
-                .buttonStyle(.plain)
-                .onHover { hovering in
-                    isHoveringSupportMe = hovering
-                    if hovering {
-                        NSCursor.pointingHand.push()
-                    } else {
-                        NSCursor.pop()
-                    }
+                Button("Show 10000h Milestone 🐐") {
+                    milestoneCelebrationManager.currentMilestone = .tenThousandHours
                 }
-
-                Circle()
-                    .fill(Color.retraceMuted)
-                    .frame(width: 3, height: 3)
-
-                Button(action: {
-                    presentFeedbackSheet()
-                }) {
-                    HStack(spacing: 6) {
-                        RetraceSymbol("questionmark.circle", size: 13.5)
-                        Text("Help")
-                            .font(.retraceCaptionMedium)
-                    }
-                    .foregroundColor(.retraceInk2)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 6)
-                    .background(Color.retraceSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
-                            .stroke(Color.retraceBorderStrong, lineWidth: 1)
+                Divider()
+                Button("Show Launch on Login Banner") {
+                    launchOnLoginReminderManager.shouldShowReminder = true
+                }
+                Button("Show Low Storage Banner") {
+                    viewModel.showDebugStorageHealthBanner(
+                        severity: .warning,
+                        availableGB: 4.25,
+                        shouldStop: false
                     )
-                    .scaleEffect(isHoveringFeedback ? 1.05 : 1.0)
-                    .animation(.easeInOut(duration: 0.15), value: isHoveringFeedback)
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut("h", modifiers: [.command, .shift])
-                .onHover { hovering in
-                    isHoveringFeedback = hovering
-                    if hovering {
-                        NSCursor.pointingHand.push()
-                    } else {
-                        NSCursor.pop()
-                    }
+                Button("Show Critical Storage Banner") {
+                    viewModel.showDebugStorageHealthBanner(
+                        severity: .critical,
+                        availableGB: 1.10,
+                        shouldStop: false
+                    )
                 }
-
-                Circle()
-                    .fill(Color.retraceMuted)
-                    .frame(width: 3, height: 3)
-
-                Group {
-                    if let url = BuildInfo.commitURL {
-                        Text(BuildInfo.displayVersion)
-                            .onTapGesture { NSWorkspace.shared.open(url) }
-                            .onHover { hovering in
-                                if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-                            }
-                    } else {
-                        Text(BuildInfo.displayVersion)
-                    }
+                Button("Show Storage Stop Banner") {
+                    viewModel.showDebugStorageHealthBanner(
+                        severity: .critical,
+                        availableGB: 0.28,
+                        shouldStop: true
+                    )
                 }
-                .font(.retraceCaption2)
-                .foregroundColor(.retraceMuted)
-
-                #if DEBUG
-                Circle()
-                    .fill(Color.retraceMuted)
-                    .frame(width: 3, height: 3)
-
-                Menu {
-                    Button("Show 10h Milestone") {
-                        milestoneCelebrationManager.currentMilestone = .tenHours
-                    }
-                    Button("Show 100h Milestone") {
-                        milestoneCelebrationManager.currentMilestone = .hundredHours
-                    }
-                    Button("Show 1000h Milestone") {
-                        milestoneCelebrationManager.currentMilestone = .thousandHours
-                    }
-                    Button("Show 10000h Milestone 🐐") {
-                        milestoneCelebrationManager.currentMilestone = .tenThousandHours
+                Button("Show OCR Degraded Banner") {
+                    viewModel.showDebugOCRDegradedBanner(requiresRelaunch: false)
+                }
+                Button("Show OCR Degraded Banner (Needs Relaunch)") {
+                    viewModel.showDebugOCRDegradedBanner(requiresRelaunch: true)
+                }
+                Divider()
+                if let debugLaunchOnboarding {
+                    Button("Relaunch Onboarding") {
+                        debugLaunchOnboarding()
                     }
                     Divider()
-                    Button("Show Launch on Login Banner") {
-                        launchOnLoginReminderManager.shouldShowReminder = true
-                    }
-                    Button("Show Low Storage Banner") {
-                        viewModel.showDebugStorageHealthBanner(
-                            severity: .warning,
-                            availableGB: 4.25,
-                            shouldStop: false
-                        )
-                    }
-                    Button("Show Critical Storage Banner") {
-                        viewModel.showDebugStorageHealthBanner(
-                            severity: .critical,
-                            availableGB: 1.10,
-                            shouldStop: false
-                        )
-                    }
-                    Button("Show Storage Stop Banner") {
-                        viewModel.showDebugStorageHealthBanner(
-                            severity: .critical,
-                            availableGB: 0.28,
-                            shouldStop: true
-                        )
-                    }
-                    Button("Show OCR Degraded Banner") {
-                        viewModel.showDebugOCRDegradedBanner(requiresRelaunch: false)
-                    }
-                    Button("Show OCR Degraded Banner (Needs Relaunch)") {
-                        viewModel.showDebugOCRDegradedBanner(requiresRelaunch: true)
-                    }
-                    Divider()
-                    if let debugLaunchOnboarding {
-                        Button("Relaunch Onboarding") {
-                            debugLaunchOnboarding()
-                        }
-                        Divider()
-                    }
-                    Menu("Set Color Theme") {
-                        Button("Blue") {
-                            MilestoneCelebrationManager.setDebugThemeOverride(.blue)
-                        }
-                        Button("Gold") {
-                            MilestoneCelebrationManager.setDebugThemeOverride(.gold)
-                        }
-                        Button("Purple") {
-                            MilestoneCelebrationManager.setDebugThemeOverride(.purple)
-                        }
-                        Divider()
-                        Button("Reset to Saved Theme") {
-                            MilestoneCelebrationManager.setDebugThemeOverride(nil)
-                        }
-                    }
-                    Divider()
-                    Button("Trigger Crash (SIGABRT)") {
-                        triggerDebugCrash()
-                    }
-                    Button("Trigger Forced Termination (SIGKILL)") {
-                        triggerDebugForcedTermination()
-                    }
-                    Button("Trigger Watchdog Hang (15s)") {
-                        triggerDebugWatchdogHang()
-                    }
-                    Button("Interrupt Capture") {
-                        triggerDebugCaptureInterruption()
-                    }
-                    .disabled(!viewModel.isRecording)
-                    Button("Interrupt Encoding") {
-                        triggerDebugEncodingInterruption()
-                    }
-                    .disabled(!viewModel.isRecording)
-                } label: {
-                    HStack(spacing: 6) {
-                        RetraceSymbol("ant.fill", size: 12)
-                        Text("Debug")
-                    }
-                    .font(.retraceCaption2Medium)
-                    .foregroundColor(.retraceWarningText)
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                #endif
+                Menu("Set Color Theme") {
+                    Button("Blue") {
+                        MilestoneCelebrationManager.setDebugThemeOverride(.blue)
+                    }
+                    Button("Gold") {
+                        MilestoneCelebrationManager.setDebugThemeOverride(.gold)
+                    }
+                    Button("Purple") {
+                        MilestoneCelebrationManager.setDebugThemeOverride(.purple)
+                    }
+                    Divider()
+                    Button("Reset to Saved Theme") {
+                        MilestoneCelebrationManager.setDebugThemeOverride(nil)
+                    }
+                }
+                Divider()
+                Button("Trigger Crash (SIGABRT)") {
+                    triggerDebugCrash()
+                }
+                Button("Trigger Forced Termination (SIGKILL)") {
+                    triggerDebugForcedTermination()
+                }
+                Button("Trigger Watchdog Hang (15s)") {
+                    triggerDebugWatchdogHang()
+                }
+                Button("Interrupt Capture") {
+                    triggerDebugCaptureInterruption()
+                }
+                .disabled(!viewModel.isRecording)
+                Button("Interrupt Encoding") {
+                    triggerDebugEncodingInterruption()
+                }
+                .disabled(!viewModel.isRecording)
+            } label: {
+                HStack(spacing: 6) {
+                    RetraceSymbol("ant.fill", size: 12)
+                    Text("Debug")
+                }
+                .font(.retraceCaption2Medium)
+                .foregroundColor(.retraceWarningText)
             }
-
+            .menuStyle(.borderlessButton)
+            .fixedSize()
             Spacer()
         }
         .padding(.vertical, 12)
     }
+    #endif
 
     // MARK: - Formatting Helpers
 

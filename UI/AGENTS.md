@@ -2,6 +2,8 @@
 
 You are the **UI** agent responsible for building the SwiftUI interface for Retrace.
 
+> **Live-testing the real app? Run `./build_and_sign.sh` first.** The installed app in `/Applications` is stale until you do; `swift build`/`swift test` don't update it. See root `AGENTS.md` Critical Rule 9.
+
 **Status**: ✅ Fully implemented with modern SwiftUI design. Timeline, dashboard, search, settings, onboarding, feedback, and bundled crash-recovery helper integration all working. Global hotkeys functional (Cmd+Shift+T for timeline, Cmd+Shift+D for dashboard). Menu bar integration complete. Automatic move-to-Applications prompting has been removed. **Apple Silicon required**. Audio transcription UI not implemented (planned for future release).
 
 ## Your Directory
@@ -33,7 +35,6 @@ UI/
 │   │   ├── ChangelogView.swift          # Appcast-powered release notes view
 │   │   ├── AnalyticsCard.swift          # Stats widgets
 │   │   ├── MigrationPanel.swift         # Import UI
-│   │   └── SupportLink.swift            # Twitter/support
 │   ├── Feedback/
 │   │   ├── FeedbackFormView.swift       # Feedback sheet with form, sending, and success states
 │   │   ├── FeedbackDiagnosticsPresentation.swift # Feedback diagnostics section building + readable formatting helpers
@@ -163,7 +164,9 @@ UI/
     ├── Search/                           # Search/deeplink/overlay XCTestCase files
     ├── Settings/                         # Settings-focused XCTestCase files, including shell/view-model coverage
     ├── Support/                          # Shared XCTest helpers and support-only tests
-    │   └── FocusableTextInputSupportTests.swift # Borderless text-input keyboard shortcut, right-click deferral, and menu-filter coverage
+    │   ├── FocusableTextInputSupportTests.swift # Borderless text-input keyboard shortcut, right-click deferral, and menu-filter coverage
+    │   ├── SnapshotRenderer.swift        # Offscreen NSHostingView → PNG renderer (light/dark, 2x) + WCAG contrast helper; output in .build/ui-gallery/
+    │   └── DesignSystemGalleryTests.swift # Renders Linen/Dusk components/real views at several widths + token WCAG contrast assertions
     ├── SystemMonitor/                    # System monitor XCTestCase files
     ├── Timeline/TimelineCoordinatorVisibilityDecisionTests.swift # Timeline coordinator visibility generation/race policy coverage
     ├── Timeline/TimelineCopyFeedbackTests.swift # Timeline copy image/text toast feedback coverage
@@ -414,8 +417,6 @@ struct BoundingBoxOverlay: View {
 │  │                                              │  │
 │  │ Status: Ready to import                      │  │
 │  └─────────────────────────────────────────────┘  │
-│                                                     │
-│  Made with ♥ by @haseab • x.com/haseab_            │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -488,10 +489,7 @@ struct BoundingBoxOverlay: View {
 - Error handling (show failed videos)
 - "Import Complete" notification
 
-**Support Link**:
-- Small footer: "Made with ♥ by @haseab"
-- Links to: `https://x.com/haseab_`
-- Opens in default browser
+**Footer**: none. The credits/support/help/version bar was removed; feedback stays reachable from the menu bar, the app context menu and the Dashboard banners. A debug-only tools menu remains under `#if DEBUG`.
 
 ### 5. Settings View
 
