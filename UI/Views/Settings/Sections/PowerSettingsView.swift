@@ -50,11 +50,10 @@ extension SettingsView {
         HStack(spacing: 14) {
                 ZStack {
                     Circle()
-                        .fill(Color.orange.opacity(0.2))
+                        .fill(Color.retraceWarningBg)
                         .frame(width: 44, height: 44)
-                    Image(systemName: "bolt.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(.orange)
+                    RetraceSymbol("bolt.circle.fill", size: 24)
+                        .foregroundColor(.retraceWarningText)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -62,19 +61,19 @@ extension SettingsView {
                         .font(.retraceCalloutBold)
                         .foregroundColor(.retracePrimary)
                     Text("Screen recording uses minimal power. Text extraction (OCR) uses most CPU. Adjust settings below to reduce energy consumption.")
-                        .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceInk2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.orange.opacity(0.08))
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .fill(Color.retraceWarningBg)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(Color.orange.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .strokeBorder(Color.retraceWarningText.opacity(0.4), lineWidth: 1)
                     )
             )
     }
@@ -99,14 +98,13 @@ extension SettingsView {
 
                     if !ocrEnabled {
                         HStack(alignment: .top, spacing: 8) {
-                            Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                                .foregroundColor(.orange)
-                                .font(.system(size: 13))
+                            RetraceSymbol("clock.arrow.trianglehead.counterclockwise.rotate.90", size: 13)
+                                .foregroundColor(.retraceWarningText)
 
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("OCR is paused. New frames are still captured and queued, then processed later when you resume.")
-                                    .font(.retraceCaption2)
-                                    .foregroundColor(.retraceSecondary)
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceInk2)
 
                                 Button("Open System Monitor") {
                                     NotificationCenter.default.post(name: .openSystemMonitor, object: nil)
@@ -118,13 +116,12 @@ extension SettingsView {
                         }
                         .padding(10)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.retraceCard)
-                        .cornerRadius(8)
+                        .background(Color.retraceSurfaceSunken)
+                        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                     }
 
                     if ocrEnabled {
-                        Divider()
-                            .background(Color.retraceBorder)
+                        Divider().overlay(Color.retraceBorder)
 
                         ModernToggleRow(
                             title: "Process only when plugged in",
@@ -147,45 +144,39 @@ extension SettingsView {
                         // Show power status when plugged-in mode is enabled
                         if ocrOnlyWhenPluggedIn {
                             HStack(spacing: 8) {
-                                Image(systemName: currentPowerSource == .ac ? "bolt.fill" : "battery.50")
-                                    .foregroundColor(currentPowerSource == .ac ? .green : .orange)
-                                    .font(.system(size: 14))
+                                RetraceSymbol(currentPowerSource == .ac ? "bolt.fill" : "battery.50", size: 14)
+                                    .foregroundColor(currentPowerSource == .ac ? .retraceGood : .retraceWarningText)
                                 Text(currentPowerSource == .ac ? "On AC power - processing OCR" : "On battery - OCR queued")
-                                    .font(.retraceCaption2)
-                                    .foregroundColor(.retraceSecondary)
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceInk2)
                             }
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.retraceCard)
-                            .cornerRadius(8)
+                            .background(Color.retraceSurfaceSunken)
+                            .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         }
 
                         if ocrPauseInLowPowerMode {
                             HStack(spacing: 8) {
-                                Image(systemName: isLowPowerModeEnabled ? "leaf.fill" : "leaf")
-                                    .foregroundColor(isLowPowerModeEnabled ? .orange : .green)
-                                    .font(.system(size: 14))
+                                RetraceSymbol(isLowPowerModeEnabled ? "leaf.fill" : "leaf", size: 14)
+                                    .foregroundColor(isLowPowerModeEnabled ? .retraceWarningText : .retraceGood)
                                 Text(isLowPowerModeEnabled ? "Low Power Mode is on - OCR queued" : "Low Power Mode is off - processing OCR")
-                                    .font(.retraceCaption2)
-                                    .foregroundColor(.retraceSecondary)
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceInk2)
                             }
                             .padding(10)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.retraceCard)
-                            .cornerRadius(8)
+                            .background(Color.retraceSurfaceSunken)
+                            .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         }
                     }
                 }
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                 .stroke(
-                    Color.retraceAccent.opacity(shellViewModel.isOCRCardHighlighted ? 0.92 : 0),
-                    lineWidth: shellViewModel.isOCRCardHighlighted ? 2.5 : 0
-                )
-                .shadow(
-                    color: Color.retraceAccent.opacity(shellViewModel.isOCRCardHighlighted ? 0.45 : 0),
-                    radius: 12
+                    Color.retraceAccent.opacity(shellViewModel.isOCRCardHighlighted ? 1 : 0),
+                    lineWidth: shellViewModel.isOCRCardHighlighted ? 2 : 0
                 )
                 .animation(.easeInOut(duration: 0.2), value: shellViewModel.isOCRCardHighlighted)
         }
@@ -205,13 +196,12 @@ extension SettingsView {
                                     .font(.retraceCalloutMedium)
                                     .foregroundColor(.retracePrimary)
                                 Spacer()
-                                Text(processingLevelDisplayText)
-                                    .font(.retraceCalloutBold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(processingLevelColor.opacity(0.3))
-                                    .cornerRadius(8)
+                                RetraceBadge(
+                                    processingLevelDisplayText,
+                                    tone: effectiveOCRProcessingLevel <= 2
+                                        ? .good
+                                        : (effectiveOCRProcessingLevel == 3 ? .accent : (effectiveOCRProcessingLevel == 4 ? .warning : .critical))
+                                )
                             }
 
                             // 5-level discrete slider: Efficiency (1) to Max (5)
@@ -227,8 +217,8 @@ extension SettingsView {
                                 .opacity(isPluggedInMaxPriorityActive ? 0.45 : 1.0)
                                 .overlay {
                                     if isPluggedInMaxPriorityActive {
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(Color.black.opacity(0.14))
+                                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                            .fill(Color.retraceSurface.opacity(0.4))
                                     }
                                 }
                                 .onChange(of: ocrProcessingLevel) { _ in
@@ -237,22 +227,18 @@ extension SettingsView {
                         }
                         .padding(12)
                         .background(
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                                 .fill(
                                     shellViewModel.isOCRPrioritySliderHighlighted
-                                        ? Color.retraceAccent.opacity(0.15)
-                                        : Color.white.opacity(0.02)
+                                        ? Color.retraceAccentWash
+                                        : Color.retraceSurfaceSunken
                                 )
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 12)
+                            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                                 .stroke(
-                                    Color.retraceAccent.opacity(shellViewModel.isOCRPrioritySliderHighlighted ? 0.94 : 0.10),
-                                    lineWidth: shellViewModel.isOCRPrioritySliderHighlighted ? 2.8 : 1
-                                )
-                                .shadow(
-                                    color: Color.retraceAccent.opacity(shellViewModel.isOCRPrioritySliderHighlighted ? 0.55 : 0),
-                                    radius: 12
+                                    shellViewModel.isOCRPrioritySliderHighlighted ? Color.retraceAccent : Color.retraceBorder,
+                                    lineWidth: shellViewModel.isOCRPrioritySliderHighlighted ? 2 : 1
                                 )
                         )
                         .animation(.easeInOut(duration: 0.2), value: shellViewModel.isOCRPrioritySliderHighlighted)
@@ -261,12 +247,12 @@ extension SettingsView {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack(spacing: 0) {
                                 Text("CPU over time")
-                                    .font(.system(size: 9, weight: .medium))
-                                    .foregroundColor(.retraceSecondary.opacity(0.5))
+                                    .font(RetraceFont.font(size: 9, weight: .medium))
+                                    .foregroundColor(.retraceMuted)
                                 Spacer()
                                 Text(processingLevelSummary)
-                                    .font(.system(size: 9, weight: .medium))
-                                    .foregroundColor(.retraceSecondary.opacity(0.5))
+                                    .font(RetraceFont.font(size: 9, weight: .medium))
+                                    .foregroundColor(.retraceMuted)
                             }
 
                             cpuProfileGraph
@@ -276,11 +262,11 @@ extension SettingsView {
                                 ForEach(processingLevelBullets, id: \.self) { bullet in
                                     HStack(alignment: .top, spacing: 6) {
                                         Text("•")
-                                            .font(.retraceCaption2)
-                                            .foregroundColor(.retraceSecondary.opacity(0.6))
+                                            .font(.retraceMeta)
+                                            .foregroundColor(.retraceMuted)
                                         Text(bullet)
-                                            .font(.retraceCaption2)
-                                            .foregroundColor(.retraceSecondary)
+                                            .font(.retraceMeta)
+                                            .foregroundColor(.retraceMuted)
                                     }
                                 }
                             }
@@ -294,19 +280,17 @@ extension SettingsView {
                                     ocrProcessingLevel = SettingsDefaults.ocrProcessingLevel
                                 }) {
                                     HStack(spacing: 4) {
-                                        Image(systemName: "arrow.counterclockwise")
-                                            .font(.system(size: 10))
+                                        RetraceSymbol("arrow.counterclockwise", size: 10)
                                         Text("Reset to default")
                                             .font(.retraceCaption2)
                                     }
-                                    .foregroundColor(.white.opacity(0.7))
+                                    .foregroundColor(.retraceInk2)
                                 }
                                 .buttonStyle(.plain)
                             }
                         }
 
-                        Divider()
-                            .background(Color.retraceBorder)
+                        Divider().overlay(Color.retraceBorder)
 
                         ModernToggleRow(
                             title: "Set to Max Priority when Plugged In",
@@ -326,8 +310,8 @@ extension SettingsView {
         ModernSettingsCard(title: "App Filter", icon: "app.badge") {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Skip OCR for specific apps to save power")
-                            .font(.retraceCaption)
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
 
                         // Show selected apps as chips
                         if !ocrFilteredApps.isEmpty {
@@ -340,8 +324,7 @@ extension SettingsView {
                                                 .resizable()
                                                 .frame(width: 16, height: 16)
                                         } else {
-                                            Image(systemName: "app.fill")
-                                                .font(.system(size: 12))
+                                            RetraceSymbol("app.fill", size: 12)
                                                 .foregroundColor(.retraceSecondary)
                                         }
                                         Text(app.name)
@@ -351,21 +334,21 @@ extension SettingsView {
                                             .fixedSize(horizontal: true, vertical: false)
                                         // Include/Exclude indicator
                                         Text(ocrAppFilterMode == .onlyTheseApps ? "only" : "skip")
-                                            .font(.system(size: 9, weight: .medium))
-                                            .foregroundColor(ocrAppFilterMode == .onlyTheseApps ? .green : .orange)
+                                            .font(RetraceFont.font(size: 9, weight: .medium))
+                                            .foregroundColor(ocrAppFilterMode == .onlyTheseApps ? .retraceGood : .retraceWarningText)
                                         Button(action: {
                                             removeOCRFilteredApp(app)
                                         }) {
-                                            Image(systemName: "xmark")
-                                                .font(.system(size: 8, weight: .bold))
+                                            RetraceSymbol("xmark", size: 8, weight: .bold)
                                                 .foregroundColor(.retraceSecondary)
                                         }
                                         .buttonStyle(.plain)
+                                        .accessibilityLabel("Remove \(app.name)")
                                     }
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 6)
-                                    .background(Color.retraceCard)
-                                    .cornerRadius(6)
+                                    .background(Color.retraceSurfaceSunken)
+                                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                                     .fixedSize()
                                 }
                             }
@@ -376,8 +359,7 @@ extension SettingsView {
                             ocrFilteredAppsPopoverShown = true
                         }) {
                             HStack(spacing: 6) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 14))
+                                RetraceSymbol("plus.circle.fill", size: 14)
                                 Text(ocrFilteredApps.isEmpty ? "Add apps to filter" : "Add more apps")
                                     .font(.retraceCaption2Medium)
                             }
@@ -410,14 +392,13 @@ extension SettingsView {
                         // Explanation of current mode
                         if !ocrFilteredApps.isEmpty {
                             HStack(spacing: 6) {
-                                Image(systemName: ocrAppFilterMode == .onlyTheseApps ? "checkmark.circle" : "minus.circle")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(ocrAppFilterMode == .onlyTheseApps ? .green : .orange)
+                                RetraceSymbol(ocrAppFilterMode == .onlyTheseApps ? "checkmark.circle" : "minus.circle", size: 11)
+                                    .foregroundColor(ocrAppFilterMode == .onlyTheseApps ? .retraceGood : .retraceWarningText)
                                 Text(ocrAppFilterMode == .onlyTheseApps
                                      ? "OCR runs only for these apps"
                                      : "OCR skipped for these apps")
-                                    .font(.retraceCaption2)
-                                    .foregroundColor(.retraceSecondary.opacity(0.8))
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceMuted)
                             }
                         }
                     }
@@ -426,31 +407,29 @@ extension SettingsView {
 
     var powerTipsCard: some View {
         HStack(spacing: 12) {
-            Image(systemName: "lightbulb.fill")
-                .foregroundColor(.yellow)
-                .font(.system(size: 16))
+            RetraceSymbol("lightbulb.fill", size: 16)
+                .foregroundColor(.retraceWarningText)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("Tips for reducing energy usage")
                     .font(.retraceCaption2Medium)
                     .foregroundColor(.retracePrimary)
                 Text("• Lower the OCR rate to reduce fan noise\n• Use \"Process only when plugged in\" for laptops\n• Exclude apps where text search isn't needed")
-                    .font(.retraceCaption2)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
             }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.yellow.opacity(0.08))
-        .cornerRadius(10)
+        .background(Color.retraceWarningBg)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
     }
 
     @ViewBuilder
     var pluggedInMaxPriorityStatusCard: some View {
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: isPluggedInMaxPriorityActive ? "bolt.fill" : "bolt")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(isPluggedInMaxPriorityActive ? .orange : .retraceSecondary)
+            RetraceSymbol(isPluggedInMaxPriorityActive ? "bolt.fill" : "bolt", size: 14, weight: .semibold)
+                .foregroundColor(isPluggedInMaxPriorityActive ? .retraceWarningText : .retraceSecondary)
                 .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -462,20 +441,20 @@ extension SettingsView {
                         ? "Your Mac is connected to power, so OCR is temporarily using Max. Your saved unplugged priority is \(savedProcessingLevelDisplayText)."
                         : "This override is enabled, but your Mac is not connected to power. OCR is currently using your saved \(savedProcessingLevelDisplayText) priority."
                 )
-                .font(.retraceCaption2)
-                .foregroundColor(.retraceSecondary)
+                .font(.retraceMeta)
+                .foregroundColor(.retraceInk2)
                 .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(isPluggedInMaxPriorityActive ? Color.orange.opacity(0.12) : Color.retraceCard)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(isPluggedInMaxPriorityActive ? Color.retraceWarningBg : Color.retraceSurfaceSunken)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                         .stroke(
-                            isPluggedInMaxPriorityActive ? Color.orange.opacity(0.35) : Color.retraceBorder,
+                            isPluggedInMaxPriorityActive ? Color.retraceWarningText.opacity(0.35) : Color.retraceBorder,
                             lineWidth: 1
                         )
                 )
@@ -514,11 +493,11 @@ extension SettingsView {
 
     var processingLevelColor: Color {
         switch effectiveOCRProcessingLevel {
-        case 1: return .green
-        case 2: return .green
+        case 1: return .retraceGood
+        case 2: return .retraceGood
         case 3: return .retraceAccent
-        case 4: return .orange
-        case 5: return .red
+        case 4: return .retraceWarningText
+        case 5: return .retraceCritical
         default: return .retraceAccent
         }
     }
@@ -569,33 +548,33 @@ extension SettingsView {
                 Spacer()
                 Text("0")
             }
-            .font(.system(size: 7, weight: .medium, design: .monospaced))
-            .foregroundColor(.retraceSecondary.opacity(0.45))
+            .font(RetraceFont.mono(size: 7, weight: .medium))
+            .foregroundColor(.retraceMuted)
             .padding(.vertical, 3)
 
             GeometryReader { geo in
                 ZStack(alignment: .bottomLeading) {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.white.opacity(0.04))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
 
                     VStack(spacing: 0) {
                         Rectangle()
-                            .fill(Color.white.opacity(0.10))
+                            .fill(Color.retraceBorder)
                             .frame(height: 1)
                         Spacer()
                         Rectangle()
-                            .fill(Color.white.opacity(0.08))
+                            .fill(Color.retraceBorder)
                             .frame(height: 1)
                         Spacer()
                         Rectangle()
-                            .fill(Color.white.opacity(0.10))
+                            .fill(Color.retraceBorder)
                             .frame(height: 1)
                     }
                     .padding(.vertical, 3)
 
                     HStack(alignment: .bottom, spacing: 1.5) {
                         ForEach(0..<pattern.count, id: \.self) { i in
-                            RoundedRectangle(cornerRadius: 1)
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                                 .fill(color.opacity(pattern[i] > 0.1 ? 0.72 : 0.18))
                                 .frame(height: max(2, (geo.size.height - 6) * pattern[i]))
                         }
@@ -605,7 +584,7 @@ extension SettingsView {
                 }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
     }
 
     var processingLevelBullets: [String] {

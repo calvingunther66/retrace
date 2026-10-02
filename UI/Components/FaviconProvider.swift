@@ -380,7 +380,7 @@ public struct FaviconView: View {
                     .resizable()
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: size * 0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: size * 0.15, style: .continuous))
                     .frame(width: size * 0.85, height: size * 0.85)
             } else {
                 Circle()

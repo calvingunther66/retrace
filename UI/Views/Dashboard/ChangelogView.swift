@@ -48,20 +48,8 @@ struct ChangelogView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(
-            ZStack {
-                Color.retraceBackground
-
-                LinearGradient(
-                    colors: [
-                        Color.retraceAccent.opacity(0.13),
-                        Color.clear
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .blur(radius: 44)
-            }
-            .ignoresSafeArea()
+            Color.retracePage
+                .ignoresSafeArea()
         )
         .onAppear {
             openStartTime = CFAbsoluteTimeGetCurrent()
@@ -86,43 +74,47 @@ struct ChangelogView: View {
                         Button(action: {
                             NotificationCenter.default.post(name: .openDashboard, object: nil)
                         }) {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.retraceSecondary)
+                            RetraceSymbol("chevron.left", size: 12, weight: .semibold)
+                                .foregroundColor(.retraceInk2)
                                 .frame(width: 28, height: 28)
-                                .background(Color.white.opacity(0.06))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .background(Color.retraceSurfaceSunken)
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                        .stroke(Color.retraceBorderStrong, lineWidth: 1)
+                                )
+                                .retraceFocusRing(cornerRadius: .radiusSm)
                         }
                         .buttonStyle(.plain)
                         .contentShape(Rectangle())
                         .keyboardShortcut("[", modifiers: .command)
+                        .accessibilityLabel("Back to dashboard")
 
                         Text("Changelog")
-                            .font(.retraceTitle3)
-                            .foregroundColor(.retracePrimary)
+                            .font(.retraceTitle)
+                            .foregroundColor(.retraceInk)
                     }
 
                     Text("Release notes synced from appcast.xml, refreshed when a new update is downloaded.")
-                        .font(.retraceCallout)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 }
 
                 Spacer(minLength: 16)
 
                 VStack(alignment: .trailing, spacing: 10) {
                     if let refreshedAt = updaterManager.changelogLastRefreshDate {
-                        Label {
+                        HStack(spacing: .space2) {
+                            RetraceSymbol("clock", size: 12.5)
                             Text(refreshedAt.formatted(date: .abbreviated, time: .shortened))
-                        } icon: {
-                            Image(systemName: "clock")
                         }
-                        .font(.retraceCaptionMedium)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceCaption)
+                        .foregroundColor(.retraceInk2)
                     }
 
                     Text("Updates when a new app version is downloaded")
-                        .font(.retraceCaptionMedium)
-                        .foregroundColor(.retraceSecondary.opacity(0.9))
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 }
             }
         }
@@ -135,29 +127,28 @@ struct ChangelogView: View {
 
     private var emptyState: some View {
         VStack(spacing: 14) {
-            Image(systemName: updaterManager.changelogIsRefreshing ? "arrow.clockwise.circle" : "text.book.closed")
-                .font(.system(size: 30, weight: .medium))
+            RetraceSymbol(updaterManager.changelogIsRefreshing ? "arrow.clockwise.circle" : "text.book.closed", size: 30, weight: .medium)
                 .foregroundColor(.retraceAccent)
 
             Text(updaterManager.changelogIsRefreshing ? "Refreshing changelog..." : "No changelog entries yet")
                 .font(.retraceHeadline)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
 
             Text("Changelog sync runs when a new app update is downloaded.")
-                .font(.retraceCallout)
-                .foregroundColor(.retraceSecondary)
+                .font(.retraceMeta)
+                .foregroundColor(.retraceMuted)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 520)
         }
         .padding(.horizontal, 30)
         .padding(.vertical, 34)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(0.04))
+            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                .fill(Color.retraceSurface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 
@@ -244,7 +235,7 @@ private struct ChangelogEntryCard: View {
                         HStack(spacing: 8) {
                             Text(entry.title)
                                 .font(.retraceHeadline)
-                                .foregroundColor(.retracePrimary)
+                                .foregroundColor(.retraceInk)
                                 .multilineTextAlignment(.leading)
 
                             versionChip
@@ -256,24 +247,23 @@ private struct ChangelogEntryCard: View {
 
                         HStack(spacing: 10) {
                             if let publishedAt = entry.publishedAt {
-                                Label {
+                                HStack(spacing: .space2) {
+                                    RetraceSymbol("calendar", size: 12.5)
                                     Text(publishedAt.formatted(date: .abbreviated, time: .omitted))
-                                } icon: {
-                                    Image(systemName: "calendar")
                                 }
-                                .font(.retraceCaptionMedium)
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceCaption)
+                                .foregroundColor(.retraceInk2)
                             }
 
                             if let buildVersion = entry.buildVersion, !buildVersion.isEmpty {
                                 Text("build \(buildVersion)")
-                                    .font(.retraceCaption2Medium)
-                                    .foregroundColor(.retraceSecondary.opacity(0.9))
+                                    .font(.retraceMonoSmall)
+                                    .foregroundColor(.retraceInk2)
                                     .padding(.horizontal, 7)
                                     .padding(.vertical, 4)
                                     .background(
                                         Capsule(style: .continuous)
-                                            .fill(Color.white.opacity(0.05))
+                                            .fill(Color.retraceSurfaceSunken)
                                     )
                             }
                         }
@@ -281,9 +271,8 @@ private struct ChangelogEntryCard: View {
 
                     Spacer(minLength: 12)
 
-                    Image(systemName: "chevron.down")
-                        .font(.retraceCaptionBold)
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("chevron.down", size: 12.5, weight: .semibold)
+                        .foregroundColor(.retraceInk2)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         .padding(.top, 4)
                 }
@@ -293,11 +282,12 @@ private struct ChangelogEntryCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 14) {
                     Rectangle()
-                        .fill(Color.white.opacity(0.08))
+                        .fill(Color.retraceBorder)
                         .frame(height: 1)
 
                     ChangelogDetailsText(
@@ -308,17 +298,16 @@ private struct ChangelogEntryCard: View {
                     if isInstalledVersion {
                         Button(action: {}) {
                             HStack(spacing: 8) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.retraceCaptionBold)
+                                RetraceSymbol("checkmark.circle.fill", size: 12.5, weight: .semibold)
                                 Text("You are on this version")
                                     .font(.retraceCaptionBold)
                             }
-                            .foregroundColor(.retraceSecondary.opacity(0.9))
+                            .foregroundColor(.retraceInk2)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .background(
                                 Capsule(style: .continuous)
-                                    .fill(Color.white.opacity(0.07))
+                                    .fill(Color.retraceSurfaceSunken)
                             )
                         }
                         .buttonStyle(.plain)
@@ -326,17 +315,16 @@ private struct ChangelogEntryCard: View {
                     } else if let downloadURL = entry.downloadURL {
                         Link(destination: downloadURL) {
                             HStack(spacing: 8) {
-                                Image(systemName: "arrow.down.circle.fill")
-                                    .font(.retraceCaptionBold)
+                                RetraceSymbol("arrow.down.circle.fill", size: 12.5, weight: .semibold)
                                 Text("Download this release")
                                     .font(.retraceCaptionBold)
                             }
-                            .foregroundColor(.white)
+                            .foregroundColor(.retraceOnAccent)
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .background(
                                 Capsule(style: .continuous)
-                                    .fill(Color.retraceAccent.opacity(0.85))
+                                    .fill(Color.retraceAccent)
                             )
                         }
                         .buttonStyle(.plain)
@@ -348,48 +336,36 @@ private struct ChangelogEntryCard: View {
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color.white.opacity(isExpanded ? 0.08 : 0.05))
+            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                .fill(Color.retraceSurface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
                 .stroke(
                     isExpanded
-                        ? Color.retraceAccent.opacity(0.45)
-                        : Color.white.opacity(0.08),
+                        ? Color.retraceAccent
+                        : Color.retraceBorder,
                     lineWidth: 1
                 )
         )
-        .shadow(color: .black.opacity(isExpanded ? 0.22 : 0.12), radius: isExpanded ? 16 : 8, x: 0, y: isExpanded ? 8 : 4)
+        .retraceElevation(isExpanded ? .md : .sm)
         .animation(.easeInOut(duration: 0.2), value: isExpanded)
     }
 
     private var versionChip: some View {
         Text("v\(entry.displayVersion)")
-            .font(.retraceCaptionBold)
-            .foregroundColor(.retracePrimary)
+            .font(.retraceMonoSmall)
+            .foregroundColor(.retraceInk)
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
             .background(
                 Capsule(style: .continuous)
-                    .fill(Color.retraceAccent.opacity(0.2))
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(Color.retraceAccent.opacity(0.35), lineWidth: 1)
+                    .fill(Color.retraceAccentWash)
             )
     }
 
     private var installedChip: some View {
-        Text("Installed")
-            .font(.retraceTinyBold)
-            .foregroundColor(.retraceSuccess)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.retraceSuccess.opacity(0.16))
-            )
+        RetraceBadge("Installed", tone: .good)
     }
 }
 
@@ -412,9 +388,9 @@ private struct ChangelogDetailsText: View {
         switch block {
         case let .heading(level, text):
             Text(text)
-                .font(level <= 2 ? .retraceTitle3 : .retraceHeadline)
+                .font(level <= 2 ? .retraceTitle2 : .retraceHeadline)
                 .fontWeight(.semibold)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
                 .lineSpacing(4)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -422,7 +398,7 @@ private struct ChangelogDetailsText: View {
         case let .paragraph(text):
             Text(text)
                 .font(.retraceBody)
-                .foregroundColor(.retraceSecondary.opacity(0.95))
+                .foregroundColor(.retraceInk2)
                 .lineSpacing(6)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -431,13 +407,13 @@ private struct ChangelogDetailsText: View {
             HStack(alignment: .top, spacing: 12) {
                 Text("•")
                     .font(.retraceBodyBold)
-                    .foregroundColor(.retraceSecondary.opacity(0.95))
+                    .foregroundColor(.retraceInk2)
                     .frame(width: 14, alignment: .leading)
                     .padding(.top, 1)
 
                 Text(text)
                     .font(.retraceBody)
-                    .foregroundColor(.retraceSecondary.opacity(0.95))
+                    .foregroundColor(.retraceInk2)
                     .lineSpacing(6)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)

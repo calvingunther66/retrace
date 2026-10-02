@@ -45,6 +45,7 @@ enum RetraceAboutPanel {
         window.title = "About \(appName)"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
+        window.backgroundColor = NSColor.retracePage
         window.isMovableByWindowBackground = true
         window.isReleasedWhenClosed = false
         window.isExcludedFromWindowsMenu = true
@@ -62,61 +63,67 @@ private struct RetraceAboutPanelView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [
-                    Color(nsColor: .windowBackgroundColor),
-                    Color(nsColor: .underPageBackgroundColor)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            Color.retracePage
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 Spacer(minLength: 28)
 
                 VStack(spacing: 18) {
-                    Image(nsImage: NSApp.applicationIconImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
+                    RetraceMarkView(size: 64)
                         .frame(width: 104, height: 104)
-                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                        .shadow(color: .black.opacity(0.22), radius: 14, y: 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                                .fill(Color.retraceSurface)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                                .stroke(Color.retraceBorder, lineWidth: 1)
+                        )
+                        .retraceElevation(.md)
 
                     VStack(spacing: 8) {
                         Text(content.appName)
-                            .font(.system(size: 30, weight: .semibold))
+                            .font(.retraceTitle)
+                            .foregroundColor(.retraceInk)
 
                         Text("Local-first screen memory for macOS")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
 
                         Text(content.versionText)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .font(.retraceMono)
+                            .monospacedDigit()
+                            .foregroundColor(.retraceInk2)
 
                         if let branchText = content.branchText {
                             Text(branchText)
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                                .font(.retraceMonoSmall)
+                                .foregroundColor(.retraceInk2)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
                                 .background(
                                     Capsule(style: .continuous)
-                                        .fill(Color.white.opacity(0.08))
+                                        .fill(Color.retraceSurfaceSunken)
+                                )
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.retraceBorder, lineWidth: 1)
                                 )
                         }
                     }
                     .multilineTextAlignment(.center)
                 }
 
-                Divider()
+                Rectangle()
+                    .fill(Color.retraceBorder)
+                    .frame(height: 1)
                     .padding(.top, 28)
 
                 VStack(spacing: 22) {
                     Text(content.descriptionText)
-                        .font(.system(size: 15))
-                        .foregroundStyle(.secondary)
+                        .font(.retraceBody)
+                        .foregroundColor(.retraceInk2)
                         .multilineTextAlignment(.center)
                         .lineSpacing(4)
                         .frame(maxWidth: 390)
@@ -148,24 +155,24 @@ private struct RetraceAboutPanelView: View {
     private func aboutLink(title: String, systemImage: String, url: URL) -> some View {
         Link(destination: url) {
             HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 13, weight: .semibold))
+                RetraceSymbol(systemImage, size: 13, weight: .semibold)
                 Text(title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.retraceCalloutBold)
                     .lineLimit(1)
             }
-            .foregroundStyle(.primary)
+            .foregroundColor(.retraceInk)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .fill(Color.retraceSurface)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
             )
+            .retraceElevation(.sm)
         }
         .buttonStyle(.plain)
     }

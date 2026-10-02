@@ -5,17 +5,21 @@ struct SettingsSearchField: NSViewRepresentable {
     @Binding var text: String
     let onEscape: () -> Void
 
+    private static var fieldFont: NSFont {
+        NSFont.retraceFont(size: 17)
+    }
+
     func makeNSView(context: Context) -> NSTextField {
         let textField = NSTextField()
         textField.placeholderAttributedString = NSAttributedString(
             string: "Search settings...",
             attributes: [
-                .foregroundColor: NSColor.white.withAlphaComponent(0.35),
-                .font: NSFont.systemFont(ofSize: 17, weight: .medium)
+                .foregroundColor: NSColor.retraceMuted,
+                .font: Self.fieldFont
             ]
         )
-        textField.font = .systemFont(ofSize: 17, weight: .medium)
-        textField.textColor = .white
+        textField.font = Self.fieldFont
+        textField.textColor = .retraceInk
         textField.backgroundColor = .clear
         textField.isBordered = false
         textField.focusRingType = .none

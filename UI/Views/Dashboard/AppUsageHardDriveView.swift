@@ -79,19 +79,10 @@ struct AppUsageHardDriveView: View {
 
         return ZStack {
             // Block background
-            RoundedRectangle(cornerRadius: 10)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            appColor.opacity(isHovered ? 0.6 : 0.35),
-                            appColor.opacity(isHovered ? 0.4 : 0.2)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(appColor.opacity(isHovered ? 0.5 : 0.3))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                         .stroke(appColor.opacity(isHovered ? 0.9 : 0.5), lineWidth: isHovered ? 2 : 1)
                 )
 
@@ -102,8 +93,8 @@ struct AppUsageHardDriveView: View {
                 // Show app name if block is large enough
                 if item.rect.width > 80 && item.rect.height > 60 {
                     Text(item.app.appName)
-                        .font(.system(size: min(12, item.rect.width / 8), weight: .medium))
-                        .foregroundColor(.retracePrimary.opacity(0.9))
+                        .font(RetraceFont.font(size: min(12, item.rect.width / 8), weight: .medium))
+                        .foregroundColor(.retraceInk)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .frame(maxWidth: item.rect.width - 12)
@@ -113,7 +104,6 @@ struct AppUsageHardDriveView: View {
         .frame(width: item.rect.width, height: item.rect.height)
         .contentShape(Rectangle())
         .scaleEffect(isHovered ? 1.02 : 1.0)
-        .shadow(color: isHovered ? appColor.opacity(0.4) : .clear, radius: 12, x: 0, y: 4)
         .zIndex(isHovered ? 100 : 0)
         .onHover { hovering in
             // Cancel any pending hover-off task
@@ -161,10 +151,10 @@ struct AppUsageHardDriveView: View {
 
                 HStack(spacing: 8) {
                     Text("00h 00m")
-                        .font(.retraceCaptionMedium)
+                        .font(.retraceMonoSmall)
                     Text("•")
                     Text("0.0%")
-                        .font(.retraceCaptionMedium)
+                        .font(.retraceMonoSmall)
                     Text("•")
                     Text("0 tabs")
                         .font(.retraceCaption2)
@@ -183,26 +173,28 @@ struct AppUsageHardDriveView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.appName)
                     .font(.retraceCalloutBold)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 HStack(spacing: 8) {
                     Text(formatDuration(app.duration))
-                        .font(.retraceCaptionMedium)
-                        .foregroundStyle(LinearGradient.retraceAccentGradient)
+                        .font(.retraceMonoSmall)
+                        .monospacedDigit()
+                        .foregroundColor(.retraceAccent)
 
                     Text("•")
-                        .foregroundColor(.retraceSecondary.opacity(0.5))
+                        .foregroundColor(.retraceMuted)
 
                     Text(String(format: "%.1f%%", app.percentage * 100))
-                        .font(.retraceCaptionMedium)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMonoSmall)
+                        .monospacedDigit()
+                        .foregroundColor(.retraceInk2)
 
                     Text("•")
-                        .foregroundColor(.retraceSecondary.opacity(0.5))
+                        .foregroundColor(.retraceMuted)
 
                     Text(app.uniqueItemLabel)
                         .font(.retraceCaption2)
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                 }
             }
 
@@ -210,11 +202,11 @@ struct AppUsageHardDriveView: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.05))
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
         )
     }
@@ -520,8 +512,7 @@ struct AppUsageHardDriveView_Previews: PreviewProvider {
             totalTime: 20000
         )
         .frame(width: 700, height: 400)
-        .background(Color.retraceBackground)
-        .preferredColorScheme(.dark)
+        .background(Color.retracePage)
     }
 }
 #endif

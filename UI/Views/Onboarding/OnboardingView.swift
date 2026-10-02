@@ -6,10 +6,6 @@ import Shared
 import ServiceManagement
 import Carbon
 
-/// Softer button color that blends with the dark blue onboarding background
-/// A muted blue that's visible but not as sharp as the primary accent
-private let onboardingButtonColor = Color(red: 35/255, green: 75/255, blue: 145/255)
-
 private struct AutomationPreflightTarget: Identifiable, Hashable, Sendable {
     let bundleID: String
     let displayName: String
@@ -222,14 +218,9 @@ public struct OnboardingView: View {
 
     public var body: some View {
         ZStack {
-            // Background with gradient orbs (matching dashboard style)
-            ZStack {
-                Color.retraceBackground
-
-                // Dashboard-style ambient glow background
-                onboardingAmbientBackground(animated: currentStep == 1)
-            }
-            .ignoresSafeArea()
+            // Flat page background
+            Color.retracePage
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Progress indicator
@@ -288,17 +279,17 @@ public struct OnboardingView: View {
             if currentStep > 1 {
                 Button(action: goToPreviousOnboardingStep) {
                     HStack(spacing: .spacingS) {
-                        Image(systemName: "chevron.left")
+                        RetraceSymbol("chevron.left", size: 15)
                         Text("Back")
                     }
                     .font(.retraceBody)
-                    .foregroundColor(.retraceSecondary)
+                    .foregroundColor(.retraceInk2)
                 }
                 .buttonStyle(.plain)
             } else {
                 // Invisible placeholder to maintain layout
                 HStack(spacing: .spacingS) {
-                    Image(systemName: "chevron.left")
+                    RetraceSymbol("chevron.left", size: 15)
                     Text("Back")
                 }
                 .font(.retraceBody)
@@ -323,31 +314,15 @@ public struct OnboardingView: View {
             // Creator features
             Button(action: { withAnimation { currentStep = 3 } }) {
                 Text("Continue")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, .spacingL)
-                    .padding(.vertical, .spacingM)
-                    .background(onboardingButtonColor)
-                    .cornerRadius(.cornerRadiusM)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary))
 
         case 3:
             // Core permissions - requires screen recording + accessibility
             Button(action: { withAnimation { currentStep = 4 } }) {
                 Text("Continue")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, .spacingL)
-                    .padding(.vertical, .spacingM)
-                    .background(
-                        hasScreenRecordingPermission && hasAccessibilityPermission
-                            ? onboardingButtonColor
-                            : Color.retraceSecondaryColor
-                    )
-                    .cornerRadius(.cornerRadiusM)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary))
             .disabled(!hasScreenRecordingPermission || !hasAccessibilityPermission)
 
         case 4:
@@ -364,14 +339,8 @@ public struct OnboardingView: View {
                     withAnimation { currentStep = 5 }
                 }) {
                     Text("Continue")
-                        .font(.retraceHeadline)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, .spacingL)
-                        .padding(.vertical, .spacingM)
-                        .background(hasAutomationAccessEnabled ? onboardingButtonColor : Color.retraceSecondaryColor)
-                        .cornerRadius(.cornerRadiusM)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(RetraceButtonStyle(.primary))
                 .disabled(!hasAutomationAccessEnabled)
             }
             .onHover { hovering in
@@ -386,28 +355,16 @@ public struct OnboardingView: View {
             // Menu bar icon info
             Button(action: { withAnimation { currentStep = 6 } }) {
                 Text("Continue")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, .spacingL)
-                    .padding(.vertical, .spacingM)
-                    .background(onboardingButtonColor)
-                    .cornerRadius(.cornerRadiusM)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary))
 
         case 6:
             // Launch at login - save setting and continue
             // Skip Rewind data step (7) if no Rewind data exists
             Button(action: continueFromLaunchAtLoginStep) {
                 Text("Continue")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, .spacingL)
-                    .padding(.vertical, .spacingM)
-                    .background(onboardingButtonColor)
-                    .cornerRadius(.cornerRadiusM)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary))
 
         // case 6: - COMMENTED OUT - Screen Recording Indicator step not needed for now
         // case 7: - COMMENTED OUT - Encryption step removed (no reliable encrypt/decrypt migration)
@@ -416,18 +373,8 @@ public struct OnboardingView: View {
             // Rewind data - requires selection if data exists
             Button(action: continueFromRewindStep) {
                 Text("Continue")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, .spacingL)
-                    .padding(.vertical, .spacingM)
-                    .background(
-                        hasRewindData == false || wantsRewindData != nil
-                            ? onboardingButtonColor
-                            : Color.retraceSecondaryColor
-                    )
-                    .cornerRadius(.cornerRadiusM)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary))
             .disabled(hasRewindData == true && wantsRewindData == nil)
 
         case 8:
@@ -442,27 +389,15 @@ public struct OnboardingView: View {
                 withAnimation { currentStep = 9 }
             }) {
                 Text("Continue")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, .spacingL)
-                    .padding(.vertical, .spacingM)
-                    .background(onboardingButtonColor)
-                    .cornerRadius(.cornerRadiusM)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary))
 
         case 9:
             // Safety info
             Button(action: { withAnimation { currentStep = 10 } }) {
                 Text("Continue")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, .spacingL)
-                    .padding(.vertical, .spacingM)
-                    .background(onboardingButtonColor)
-                    .cornerRadius(.cornerRadiusM)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary))
 
         case 10:
             // Completion - just finish onboarding (recording started on step 4)
@@ -480,14 +415,8 @@ public struct OnboardingView: View {
                 }
             }) {
                 Text("Finish")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, .spacingL)
-                    .padding(.vertical, .spacingM)
-                    .background(onboardingButtonColor)
-                    .cornerRadius(.cornerRadiusM)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary))
 
         default:
             EmptyView()
@@ -499,14 +428,15 @@ public struct OnboardingView: View {
     private var progressIndicator: some View {
         HStack(spacing: .spacingS) {
             Text("\(currentStep)/\(totalSteps)")
-                .font(.retraceCaption)
-                .foregroundColor(.retraceSecondary)
+                .font(.retraceMonoSmall)
+                .monospacedDigit()
+                .foregroundColor(.retraceInk2)
 
             // Progress dots
             HStack(spacing: 6) {
                 ForEach(1...totalSteps, id: \.self) { step in
                     Circle()
-                        .fill(step <= currentStep ? Color.retraceAccent : Color.retraceSecondaryColor)
+                        .fill(step <= currentStep ? Color.retraceAccent : Color.retraceSurfaceSunken)
                         .frame(width: 8, height: 8)
                 }
             }
@@ -560,24 +490,18 @@ public struct OnboardingView: View {
 
             Text("Welcome to Retrace")
                 .font(.retraceDisplay2)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
 
             Text("Remember anything.")
                 .font(.retraceBody)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .multilineTextAlignment(.center)
 
             // Get Started button centered in welcome step - goes to creator features
             Button(action: advanceFromWelcomeStep) {
                 Text("Get Started")
-                    .font(.retraceHeadline)
-                    .foregroundColor(.white)
-                    .padding(.horizontal, .spacingL)
-                    .padding(.vertical, .spacingM)
-                    .background(onboardingButtonColor)
-                    .cornerRadius(.cornerRadiusM)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(RetraceButtonStyle(.primary))
 
             Spacer()
         }
@@ -691,11 +615,11 @@ public struct OnboardingView: View {
         VStack(spacing: .spacingXL) {
             Text("Permission Required")
                 .font(.retraceTitle)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
 
             Text("Step 1 of 2: enable core permissions first.")
                 .font(.retraceBody)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .multilineTextAlignment(.center)
 
             VStack(spacing: .spacingL) {
@@ -720,22 +644,24 @@ public struct OnboardingView: View {
                 )
             }
             .padding(.spacingL)
-            .background(Color.retraceSecondaryBackground)
-            .cornerRadius(.cornerRadiusL)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
+            .retraceElevation(.sm)
 
             if !hasScreenRecordingPermission || !hasAccessibilityPermission {
                 HStack(spacing: .spacingS) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.retraceWarning)
+                    RetraceSymbol("exclamationmark.triangle.fill", size: 14)
+                        .foregroundColor(.retraceWarningText)
                     Text("Screen Recording and Accessibility are required to continue")
                         .font(.retraceCaption)
-                        .foregroundColor(.retraceWarning)
+                        .foregroundColor(.retraceWarningText)
                 }
             }
 
             Text("Next: App URL permissions on the following step.")
                 .font(.retraceCaption)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
 
             Spacer()
         }
@@ -756,11 +682,11 @@ public struct OnboardingView: View {
         VStack(spacing: .spacingXL) {
             Text("App URL Permissions")
                 .font(.retraceTitle)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
 
             Text("Step 2 of 2: allow Retrace to Extract the URL out of the Following websites.")
                 .font(.retraceBody)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .multilineTextAlignment(.center)
 
             appURLPermissionsPanel
@@ -830,55 +756,41 @@ public struct OnboardingView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: .spacingS) {
             HStack(spacing: .spacingM) {
-                Image(systemName: icon)
-                    .font(.retraceTitle)
-                    .foregroundColor(isGranted ? .retraceSuccess : (isDenied ? .retraceWarning : .retraceAccent))
+                RetraceSymbol(icon, size: 28)
+                    .foregroundColor(isGranted ? .retraceGood : (isDenied ? .retraceWarningText : .retraceAccent))
                     .frame(width: 44)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text(title)
                             .font(.retraceHeadline)
-                            .foregroundColor(.retracePrimary)
+                            .foregroundColor(.retraceInk)
 
                         Text("(Required)")
                             .font(.retraceCaption)
-                            .foregroundColor(.retraceWarning)
+                            .foregroundColor(.retraceWarningText)
                     }
 
                     Text(subtitle)
                         .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                 }
 
                 Spacer()
 
                 if isGranted {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.retraceTitle2)
-                        .foregroundColor(.retraceSuccess)
+                    RetraceSymbol("checkmark.circle.fill", size: 20)
+                        .foregroundColor(.retraceGood)
                 } else if isDenied, let openSettings = openSettingsAction {
                     Button(action: openSettings) {
                         Text("Open Settings")
-                            .font(.retraceBody)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, .spacingM)
-                            .padding(.vertical, .spacingS)
-                            .background(Color.retraceWarning)
-                            .cornerRadius(.cornerRadiusM)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.secondary))
                 } else {
                     Button(action: action) {
                         Text("Enable")
-                            .font(.retraceBody)
-                            .foregroundColor(.white)
-                            .padding(.horizontal, .spacingM)
-                            .padding(.vertical, .spacingS)
-                            .background(onboardingButtonColor)
-                            .cornerRadius(.cornerRadiusM)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(RetraceButtonStyle(.secondary))
                     .disabled(isActionDisabled)
                 }
             }
@@ -887,17 +799,16 @@ public struct OnboardingView: View {
             if isDenied && !isGranted {
                 VStack(alignment: .leading, spacing: .spacingXS) {
                     HStack(spacing: .spacingXS) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.retraceWarning)
-                            .font(.retraceCaption2)
+                        RetraceSymbol("exclamationmark.triangle.fill", size: 12)
+                            .foregroundColor(.retraceWarningText)
                         Text("Permission may have been denied in the past")
                             .font(.retraceCaption)
-                            .foregroundColor(.retraceWarning)
+                            .foregroundColor(.retraceWarningText)
                             .fontWeight(.medium)
                     }
                     Text("To enable, open System Settings → Privacy & Security → Screen Recording, then toggle Retrace on.")
                         .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.leading, 44 + .spacingM) // Align with text above
@@ -914,21 +825,21 @@ public struct OnboardingView: View {
                         .controlSize(.small)
                     Text("Scanning apps used for URL extraction...")
                         .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                 }
             } else if automationPreflightTargets.isEmpty && unsupportedAutomationTargets.isEmpty {
                 Text("No eligible apps found on this Mac.")
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             } else {
                 HStack(alignment: .top, spacing: .spacingM) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Apps")
                             .font(.retraceTitle2)
-                            .foregroundColor(.retracePrimary)
+                            .foregroundColor(.retraceInk)
                         Text("Click 'Allow' to grant permission to Retrace. Click 'Skip' to skip this app.")
                             .font(.retraceCaption)
-                            .foregroundColor(.retraceSecondary)
+                            .foregroundColor(.retraceInk2)
                     }
 
                     Spacer()
@@ -943,25 +854,11 @@ public struct OnboardingView: View {
                                         .controlSize(.small)
                                     Text("Launching and Allowing...")
                                 }
-                                .font(.retraceCaption)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, .spacingM)
-                                .padding(.vertical, .spacingXS)
-                                .background(onboardingButtonColor)
-                                .cornerRadius(.cornerRadiusM)
-                                .frame(height: 28)
                             } else {
                                 Text("Launch and Allow All")
-                                    .font(.retraceCaption)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, .spacingM)
-                                    .padding(.vertical, .spacingXS)
-                                    .background(onboardingButtonColor)
-                                    .cornerRadius(.cornerRadiusM)
-                                    .frame(height: 28)
                             }
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                         .disabled(
                             isBulkAllowingAutomationTargets ||
                             isBulkSkippingAutomationTargets ||
@@ -978,25 +875,11 @@ public struct OnboardingView: View {
                                             .controlSize(.small)
                                         Text("Skipping...")
                                     }
-                                    .font(.retraceCaption)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, .spacingM)
-                                    .padding(.vertical, .spacingXS)
-                                    .background(Color.retraceSecondaryColor)
-                                    .cornerRadius(.cornerRadiusM)
-                                    .frame(height: 28)
                                 } else {
                                     Text("Skip All")
-                                        .font(.retraceCaption)
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, .spacingM)
-                                        .padding(.vertical, .spacingXS)
-                                        .background(Color.retraceSecondaryColor)
-                                        .cornerRadius(.cornerRadiusM)
-                                        .frame(height: 28)
                                 }
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                             .disabled(
                                 isBulkAllowingAutomationTargets ||
                                 isBulkSkippingAutomationTargets ||
@@ -1007,15 +890,8 @@ public struct OnboardingView: View {
                                 bulkUnskipAllAutomationTargets()
                             } label: {
                                 Text("Undo All")
-                                    .font(.retraceCaption)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, .spacingM)
-                                    .padding(.vertical, .spacingXS)
-                                    .background(Color.retraceSecondaryColor)
-                                    .cornerRadius(.cornerRadiusM)
-                                    .frame(height: 28)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                             .disabled(
                                 isBulkAllowingAutomationTargets ||
                                 isBulkSkippingAutomationTargets
@@ -1030,25 +906,25 @@ public struct OnboardingView: View {
                             automationPreflightTargetRow(target: target)
                             if index < automationPreflightTargets.count - 1 || !unsupportedAutomationTargets.isEmpty {
                                 Divider()
-                                    .background(Color.white.opacity(0.08))
+                                    .background(Color.retraceBorder)
                             }
                         }
                         ForEach(Array(unsupportedAutomationTargets.enumerated()), id: \.element.id) { index, target in
                             unsupportedAutomationTargetRow(target: target)
                             if index < unsupportedAutomationTargets.count - 1 {
                                 Divider()
-                                    .background(Color.white.opacity(0.08))
+                                    .background(Color.retraceBorder)
                             }
                         }
                     }
                 }
                 .frame(maxHeight: appURLPermissionsListViewportHeight)
-                .background(Color.retraceBackground.opacity(0.24))
+                .background(Color.retraceSurfaceSunken)
                 .overlay(
-                    RoundedRectangle(cornerRadius: .cornerRadiusM)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: .cornerRadiusM))
+                .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
 
                 if showCloseLaunchedAppsAction {
                     HStack {
@@ -1065,23 +941,11 @@ public struct OnboardingView: View {
                                         .controlSize(.small)
                                     Text("Closing...")
                                 }
-                                .font(.retraceCaption)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, .spacingM)
-                                .padding(.vertical, .spacingXS)
-                                .background(Color.retraceSecondaryColor)
-                                .cornerRadius(.cornerRadiusM)
                             } else {
                                 Text("Close Launched Apps (\(launchedAutomationRunningCount))")
-                                    .font(.retraceCaption)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, .spacingM)
-                                    .padding(.vertical, .spacingXS)
-                                    .background(onboardingButtonColor)
-                                    .cornerRadius(.cornerRadiusM)
                             }
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                         .disabled(isClosingLaunchedAutomationApps)
                     }
                 }
@@ -1089,12 +953,13 @@ public struct OnboardingView: View {
             }
         }
         .padding(36)
-        .background(Color.retraceSecondaryBackground)
+        .background(Color.retraceSurface)
         .overlay(
-            RoundedRectangle(cornerRadius: .cornerRadiusL)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
-        .cornerRadius(.cornerRadiusL)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+        .retraceElevation(.sm)
     }
 
     private func unsupportedAutomationTargetRow(target: UnsupportedAutomationTarget) -> some View {
@@ -1105,9 +970,8 @@ public struct OnboardingView: View {
                         .resizable()
                         .frame(width: 30, height: 30)
                 } else {
-                    Image(systemName: "app.fill")
-                        .font(.retraceBody)
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("app.fill", size: 15)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 30)
                 }
             }
@@ -1115,22 +979,22 @@ public struct OnboardingView: View {
             VStack(alignment: .leading, spacing: .spacingS) {
                 Text(target.displayName)
                     .font(.retraceBody)
-                    .foregroundColor(.retracePrimary.opacity(0.7))
+                    .foregroundColor(.retraceInk2)
 
                 Text(target.reason)
                     .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .foregroundColor(.retraceInk2)
             }
 
             Spacer()
 
             Text("Does not support")
                 .font(.retraceCaption2)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .padding(.horizontal, .spacingS)
                 .padding(.vertical, 4)
-                .background(Color.white.opacity(0.08))
-                .clipShape(Capsule())
+                .background(Color.retraceSurfaceSunken)
+                .clipShape(Capsule(style: .continuous))
         }
         .padding(.horizontal, .spacingL)
         .padding(.vertical, .spacingM)
@@ -1151,9 +1015,8 @@ public struct OnboardingView: View {
                         .resizable()
                         .frame(width: 30, height: 30)
                 } else {
-                    Image(systemName: "app.fill")
-                        .font(.retraceBody)
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("app.fill", size: 15)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 30, height: 30)
                 }
             }
@@ -1161,14 +1024,14 @@ public struct OnboardingView: View {
             VStack(alignment: .leading, spacing: .spacingS) {
                 Text(target.displayName)
                     .font(.retraceBody)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 if status != nil {
                     automationInlineStatusBadge(for: target)
                 } else {
                     Text(isRunning ? "Ready to allow" : "Not running")
                         .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                 }
             }
 
@@ -1180,46 +1043,27 @@ public struct OnboardingView: View {
             } else {
                 HStack(spacing: .spacingS) {
                     if status == .granted {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.retraceBody)
-                            .foregroundColor(.retraceSuccess)
+                        RetraceSymbol("checkmark.circle.fill", size: 15)
+                            .foregroundColor(.retraceGood)
                     } else if status == .skipped {
                         Button {
                             unskipAutomationTarget(target)
                         } label: {
                             Text("Undo")
-                                .font(.retraceCaption)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, .spacingM)
-                                .padding(.vertical, .spacingXS)
-                                .background(Color.retraceSecondaryColor)
-                                .cornerRadius(.cornerRadiusM)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                     } else if status == .denied {
                         Button(action: openAutomationSettings) {
                             Text("Open Settings")
-                                .font(.retraceCaption)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, .spacingM)
-                                .padding(.vertical, .spacingXS)
-                                .background(Color.retraceWarning)
-                                .cornerRadius(.cornerRadiusM)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
 
                         Button {
                             skipAutomationTarget(target)
                         } label: {
                             Text("Skip")
-                                .font(.retraceCaption)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, .spacingM)
-                                .padding(.vertical, .spacingXS)
-                                .background(Color.retraceSecondaryColor)
-                                .cornerRadius(.cornerRadiusM)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                     } else {
                         if isRunning {
                             Button {
@@ -1228,14 +1072,8 @@ public struct OnboardingView: View {
                                 }
                             } label: {
                                 Text("Allow")
-                                    .font(.retraceCaption)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, .spacingM)
-                                    .padding(.vertical, .spacingXS)
-                                    .background(onboardingButtonColor)
-                                    .cornerRadius(.cornerRadiusM)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                         } else {
                             Button {
                                 Task {
@@ -1243,28 +1081,16 @@ public struct OnboardingView: View {
                                 }
                             } label: {
                                 Text("Launch")
-                                    .font(.retraceCaption)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, .spacingM)
-                                    .padding(.vertical, .spacingXS)
-                                    .background(onboardingButtonColor)
-                                    .cornerRadius(.cornerRadiusM)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                         }
 
                         Button {
                             skipAutomationTarget(target)
                         } label: {
                             Text("Skip")
-                                .font(.retraceCaption)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, .spacingM)
-                                .padding(.vertical, .spacingXS)
-                                .background(Color.retraceSecondaryColor)
-                                .cornerRadius(.cornerRadiusM)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(RetraceButtonStyle(.secondary, size: .sm))
                     }
                 }
             }
@@ -1283,7 +1109,7 @@ public struct OnboardingView: View {
             .padding(.horizontal, .spacingS)
             .padding(.vertical, 4)
             .background(automationStatusColor(for: target).opacity(0.16))
-            .clipShape(Capsule())
+            .clipShape(Capsule(style: .continuous))
     }
 
     private var actionableAutomationPreflightTargets: [AutomationPreflightTarget] {
@@ -1349,12 +1175,12 @@ public struct OnboardingView: View {
             Spacer()
 
             Text("Screen Capture Indicator...")
-                .font(.retraceDisplay3)
-                .foregroundColor(.retracePrimary)
+                .font(.retraceTitle)
+                .foregroundColor(.retraceInk)
 
             Text("Look for this indicator in your menu bar")
                 .font(.retraceBody)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .multilineTextAlignment(.center)
 
             // Screen recording indicator mockup
@@ -1364,12 +1190,12 @@ public struct OnboardingView: View {
             VStack(spacing: .spacingM) {
                 Text("This purple icon appears whenever your screen is being recorded.")
                     .font(.retraceBody)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
                     .multilineTextAlignment(.center)
 
                 Text("This is Apple's updated Screen Capture UI — it lets you know Retrace is running and capturing your screen in the background.")
                     .font(.retraceBody)
-                    .foregroundColor(.retraceSecondary)
+                    .foregroundColor(.retraceInk2)
                     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, .spacingXL)
@@ -1386,12 +1212,12 @@ public struct OnboardingView: View {
             Spacer()
 
             Text("Menu Bar Icon")
-                .font(.retraceDisplay3)
-                .foregroundColor(.retracePrimary)
+                .font(.retraceTitle)
+                .foregroundColor(.retraceInk)
 
             Text("Look for this icon in your menu bar")
                 .font(.retraceBody)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .multilineTextAlignment(.center)
 
             // Menu bar mockup
@@ -1402,7 +1228,7 @@ public struct OnboardingView: View {
             VStack(spacing: .spacingM) {
                 Text("The Retrace icon lives in your menu bar while the app is running.")
                     .font(.retraceBody)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
                     .multilineTextAlignment(.center)
 
                 HStack(spacing: .spacingM) {
@@ -1412,11 +1238,11 @@ public struct OnboardingView: View {
                             .frame(width: 30, height: 20)
                         Text("Recording")
                             .font(.retraceCaption)
-                            .foregroundColor(.retraceSecondary)
+                            .foregroundColor(.retraceInk2)
                     }
 
                     Text("•")
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
 
                     // Paused state indicator
                     HStack(spacing: .spacingS) {
@@ -1424,14 +1250,14 @@ public struct OnboardingView: View {
                             .frame(width: 30, height: 20)
                         Text("Paused")
                             .font(.retraceCaption)
-                            .foregroundColor(.retraceSecondary)
+                            .foregroundColor(.retraceInk2)
                     }
                 }
                 .padding(.top, .spacingS)
 
                 // Text("The left triangle fills in when recording is active.")
                 //     .font(.retraceCaption)
-                //     .foregroundColor(.retraceSecondary)
+                //     .foregroundColor(.retraceInk2)
                 //     .multilineTextAlignment(.center)
             }
             .padding(.horizontal, .spacingXL)
@@ -1450,8 +1276,8 @@ public struct OnboardingView: View {
 
                 // Retrace icon - highlighted (leftmost in the right-side icons)
                 ZStack {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.retraceAccent.opacity(0.2))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceAccentWash)
                         .frame(width: 36, height: 24)
 
                     menuBarIconView(recording: true)
@@ -1459,30 +1285,27 @@ public struct OnboardingView: View {
                 }
 
                 // Other menu bar icons (mockup)
-                Image(systemName: "wifi")
-                    .font(.system(size: 14))
-                    .foregroundColor(.retracePrimary.opacity(0.5))
+                RetraceSymbol("wifi", size: 14)
+                    .foregroundColor(.retraceMuted)
 
-                Image(systemName: "battery.75")
-                    .font(.system(size: 14))
-                    .foregroundColor(.retracePrimary.opacity(0.5))
+                RetraceSymbol("battery.75", size: 14)
+                    .foregroundColor(.retraceMuted)
 
                 // Clock mockup
                 Text("12:34")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.retracePrimary.opacity(0.5))
+                    .font(RetraceFont.font(size: 13, weight: .medium))
+                    .foregroundColor(.retraceMuted)
 
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 14))
-                    .foregroundColor(.retracePrimary.opacity(0.5))
+                RetraceSymbol("magnifyingglass", size: 14)
+                    .foregroundColor(.retraceMuted)
             }
             .padding(.horizontal, .spacingL)
             .padding(.vertical, .spacingS)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.retraceSecondaryBackground)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(Color.retraceSurface)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                             .strokeBorder(Color.retraceBorder, lineWidth: 1)
                     )
             )
@@ -1490,8 +1313,7 @@ public struct OnboardingView: View {
             // Arrow pointing to the Retrace icon (now leftmost)
             HStack {
                 Spacer()
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 20, weight: .medium))
+                RetraceSymbol("arrow.up", size: 20, weight: .medium)
                     .foregroundColor(.retraceAccent)
                 Spacer()
                     .frame(width: 190) // Offset to align with the Retrace icon position
@@ -1522,7 +1344,7 @@ public struct OnboardingView: View {
                     path.addLine(to: CGPoint(x: leftBase, y: verticalCenter + triangleHeight / 2))
                     path.closeSubpath()
                 }
-                .fill(Color.retracePrimary)
+                .fill(Color.retraceInk)
             } else {
                 Path { path in
                     let leftTip = width * 0.09
@@ -1532,7 +1354,7 @@ public struct OnboardingView: View {
                     path.addLine(to: CGPoint(x: leftBase, y: verticalCenter + triangleHeight / 2))
                     path.closeSubpath()
                 }
-                .stroke(Color.retracePrimary, lineWidth: 1.2)
+                .stroke(Color.retraceInk, lineWidth: 1.2)
             }
 
             // Right triangle - Points right ▷ (always outlined)
@@ -1546,7 +1368,7 @@ public struct OnboardingView: View {
                 path.addLine(to: CGPoint(x: rightBase, y: verticalCenter + triangleHeight / 2))
                 path.closeSubpath()
             }
-            .stroke(Color.retracePrimary, lineWidth: 1.2)
+            .stroke(Color.retraceInk, lineWidth: 1.2)
         }
     }
 
@@ -1559,27 +1381,20 @@ public struct OnboardingView: View {
             // Icon
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.retraceAccent.opacity(0.3), Color.retraceDeepBlue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(Color.retraceAccentWash)
                     .frame(width: 100, height: 100)
 
-                Image(systemName: "power")
-                    .font(.system(size: 40, weight: .medium))
-                    .foregroundColor(.retracePrimary)
+                RetraceSymbol("power", size: 40, weight: .medium)
+                    .foregroundColor(.retraceAccent)
             }
 
             Text("Launch at Login")
-                .font(.retraceDisplay3)
-                .foregroundColor(.retracePrimary)
+                .font(.retraceTitle)
+                .foregroundColor(.retraceInk)
 
             Text("We recommend launching Retrace at login so it's always running in the background, but you can turn this off if you prefer.")
                 .font(.retraceBody)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, .spacingXL)
                 .frame(maxWidth: 500)
@@ -1587,18 +1402,18 @@ public struct OnboardingView: View {
             // Toggle
             HStack(spacing: .spacingM) {
                 Toggle("", isOn: $launchAtLogin)
-                    .toggleStyle(SwitchToggleStyle(tint: Color.retraceAccent))
+                    .retraceSwitch()
                     .labelsHidden()
 
                 Text(launchAtLogin ? "Launch at login enabled" : "Launch at login disabled")
                     .font(.retraceBody)
-                    .foregroundColor(launchAtLogin ? .retracePrimary : .retraceSecondary)
+                    .foregroundColor(launchAtLogin ? .retraceInk : .retraceInk2)
             }
             .padding(.vertical, .spacingM)
 
             Text("You can always change this later in Settings.")
                 .font(.retraceCaption)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .multilineTextAlignment(.center)
 
             Spacer()
@@ -1612,60 +1427,55 @@ public struct OnboardingView: View {
             // Lock icon
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.retraceAccent.opacity(0.3), Color.retraceDeepBlue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(Color.retraceAccentWash)
                     .frame(width: 100, height: 100)
 
-                Image(systemName: encryptionEnabled == true ? "lock.shield.fill" : "lock.open.fill")
-                    .font(.retraceDisplay)
-                    .foregroundColor(encryptionEnabled == true ? .retraceSuccess : .retraceSecondary)
+                RetraceSymbol(encryptionEnabled == true ? "lock.shield.fill" : "lock.open.fill", size: 48)
+                    .foregroundColor(encryptionEnabled == true ? .retraceAccent : .retraceInk2)
             }
 
             Text("Database Encryption")
                 .font(.retraceTitle)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
 
             Text("Would you like to encrypt your database? This protects your searchable text index — window titles, URLs, and OCR'd text — with a key stored in Keychain.")
                 .font(.retraceBody)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, .spacingL)
 
             VStack(alignment: .leading, spacing: .spacingM) {
                 HStack(spacing: .spacingM) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.retraceSuccess)
+                    RetraceSymbol("checkmark.circle.fill", size: 14)
+                        .foregroundColor(.retraceGood)
                     Text("All data is stored locally on your machine")
                         .font(.retraceBody)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                 }
 
 
                 HStack(alignment: .top, spacing: .spacingM) {
-                    Image(systemName: "info.circle.fill")
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("info.circle.fill", size: 14)
+                        .foregroundColor(.retraceInk2)
                     Text("Your recorded screen video isn't covered by this — it relies on macOS FileVault (Settings > Privacy & Security > FileVault) for disk-level protection.")
                         .font(.retraceBody)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                 }
 
                 HStack(alignment: .top, spacing: .spacingM) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.retraceWarning)
+                    RetraceSymbol("exclamationmark.triangle.fill", size: 14)
+                        .foregroundColor(.retraceWarningText)
                     Text("This choice is set now, before your database exists, and can't be changed later without deleting and starting over.")
                         .font(.retraceBody)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                 }
 
             }
             .padding(.spacingL)
-            .background(Color.retraceSecondaryBackground)
-            .cornerRadius(.cornerRadiusL)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
+            .retraceElevation(.sm)
 
             // Yes/No buttons
             HStack(spacing: .spacingM) {
@@ -1675,24 +1485,24 @@ public struct OnboardingView: View {
                     }
                 }) {
                     HStack(spacing: .spacingM) {
-                        Image(systemName: encryptionEnabled == true ? "checkmark.circle.fill" : "circle")
-                            .font(.retraceTitle2)
-                            .foregroundColor(encryptionEnabled == true ? .retraceSuccess : .retraceSecondary)
+                        RetraceSymbol(encryptionEnabled == true ? "checkmark.circle.fill" : "circle", size: 20)
+                            .foregroundColor(encryptionEnabled == true ? .retraceAccent : .retraceInk2)
 
                         Text("Yes")
                             .font(.retraceHeadline)
-                            .foregroundColor(.retracePrimary)
+                            .foregroundColor(.retraceInk)
                     }
                     .padding(.spacingM)
                     .frame(width: 150)
-                    .background(encryptionEnabled == true ? Color.retraceSuccess.opacity(0.1) : Color.retraceSecondaryBackground)
-                    .cornerRadius(.cornerRadiusM)
+                    .background(encryptionEnabled == true ? Color.retraceAccentWash : Color.retraceSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: .cornerRadiusM)
-                            .stroke(encryptionEnabled == true ? Color.retraceSuccess : Color.retraceBorder, lineWidth: 2)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .stroke(encryptionEnabled == true ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(encryptionEnabled == true ? .isSelected : [])
 
                 Button(action: {
                     withAnimation {
@@ -1700,29 +1510,29 @@ public struct OnboardingView: View {
                     }
                 }) {
                     HStack(spacing: .spacingM) {
-                        Image(systemName: encryptionEnabled == false ? "checkmark.circle.fill" : "circle")
-                            .font(.retraceTitle2)
-                            .foregroundColor(encryptionEnabled == false ? .retraceAccent : .retraceSecondary)
+                        RetraceSymbol(encryptionEnabled == false ? "checkmark.circle.fill" : "circle", size: 20)
+                            .foregroundColor(encryptionEnabled == false ? .retraceAccent : .retraceInk2)
 
                         Text("No")
                             .font(.retraceHeadline)
-                            .foregroundColor(.retracePrimary)
+                            .foregroundColor(.retraceInk)
                     }
                     .padding(.spacingM)
                     .frame(width: 150)
-                    .background(encryptionEnabled == false ? Color.retraceAccent.opacity(0.1) : Color.retraceSecondaryBackground)
-                    .cornerRadius(.cornerRadiusM)
+                    .background(encryptionEnabled == false ? Color.retraceAccentWash : Color.retraceSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: .cornerRadiusM)
-                            .stroke(encryptionEnabled == false ? Color.retraceAccent : Color.retraceBorder, lineWidth: 2)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .stroke(encryptionEnabled == false ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
                     )
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(encryptionEnabled == false ? .isSelected : [])
             }
 
             Text("You can change this later in Settings.")
                 .font(.retraceCaption)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
 
             Spacer()
         }
@@ -1737,7 +1547,7 @@ public struct OnboardingView: View {
 
             Text("Hey, thanks for trying Retrace!")
                 .font(.retraceTitle)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
                 .multilineTextAlignment(.center)
         }
         .onAppear {
@@ -1747,11 +1557,11 @@ public struct OnboardingView: View {
 
     private var creatorPlaceholder: some View {
         Circle()
-            .fill(Color.retraceAccent.opacity(0.3))
+            .fill(Color.retraceAccentWash)
             .overlay(
                 Text("H")
                     .font(.retraceDisplay3)
-                    .foregroundColor(.white)
+                    .foregroundColor(.retraceInk)
             )
     }
 
@@ -1774,77 +1584,76 @@ public struct OnboardingView: View {
                     VStack(alignment: .leading, spacing: .spacingM) {
                         Text("What This Version Has")
                             .font(.retraceHeadline)
-                            .foregroundColor(.retraceSuccess)
+                            .foregroundColor(.retraceGood)
 
                         VStack(alignment: .leading, spacing: .spacingS) {
-                            featureItem(icon: "checkmark.circle.fill", text: "Easy Connection to Old Rewind Data", color: .retraceSuccess)
-                            featureItem(icon: "checkmark.circle.fill", text: "Timeline Scrolling", color: .retraceSuccess)
-                            featureItem(icon: "checkmark.circle.fill", text: "Continuous Screen Capture", color: .retraceSuccess)
-                            featureItem(icon: "checkmark.circle.fill", text: "Basic Search", color: .retraceSuccess)
-                            // featureItem(icon: "checkmark.circle.fill", text: "Basic Keyboard Shortcuts", color: .retraceSuccess)
-                            featureItem(icon: "checkmark.circle.fill", text: "Deletion of Data", color: .retraceSuccess)
-                            featureItem(icon: "checkmark.circle.fill", text: "Basic Settings", color: .retraceSuccess)
-                            featureItem(icon: "checkmark.circle.fill", text: "Daily Dashboard", color: .retraceSuccess)
-                            featureItem(icon: "checkmark.circle.fill", text: "Search Highlighting", color: .retraceSuccess)
-                            featureItem(icon: "checkmark.circle.fill", text: "Exclude Apps / Private Windows", color: .retraceSuccess)
+                            featureItem(icon: "checkmark.circle.fill", text: "Easy Connection to Old Rewind Data", color: .retraceGood)
+                            featureItem(icon: "checkmark.circle.fill", text: "Timeline Scrolling", color: .retraceGood)
+                            featureItem(icon: "checkmark.circle.fill", text: "Continuous Screen Capture", color: .retraceGood)
+                            featureItem(icon: "checkmark.circle.fill", text: "Basic Search", color: .retraceGood)
+                            // featureItem(icon: "checkmark.circle.fill", text: "Basic Keyboard Shortcuts", color: .retraceGood)
+                            featureItem(icon: "checkmark.circle.fill", text: "Deletion of Data", color: .retraceGood)
+                            featureItem(icon: "checkmark.circle.fill", text: "Basic Settings", color: .retraceGood)
+                            featureItem(icon: "checkmark.circle.fill", text: "Daily Dashboard", color: .retraceGood)
+                            featureItem(icon: "checkmark.circle.fill", text: "Search Highlighting", color: .retraceGood)
+                            featureItem(icon: "checkmark.circle.fill", text: "Exclude Apps / Private Windows", color: .retraceGood)
                         }
                     }
                     .padding(.spacingL)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.retraceSuccess.opacity(0.05))
-                    .cornerRadius(.cornerRadiusL)
+                    .background(Color.retraceGoodBg)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
 
                     // Coming soon (yellow)
                     VStack(alignment: .leading, spacing: .spacingM) {
                         Text("Coming Soon")
                             .font(.retraceHeadline)
-                            .foregroundColor(.retraceWarning)
+                            .foregroundColor(.retraceWarningText)
 
                         VStack(alignment: .leading, spacing: .spacingS) {
-                            featureItem(icon: "circle.fill", text: "Audio Recording", color: .retraceWarning)
-                            featureItem(icon: "circle.fill", text: "Optimized Power & Storage", color: .retraceWarning)
-                            featureItem(icon: "circle.fill", text: "Decrypt and Backup your Rewind Database", color: .retraceWarning)
-                            featureItem(icon: "circle.fill", text: "More Advanced Shortcuts", color: .retraceWarning)
+                            featureItem(icon: "circle.fill", text: "Audio Recording", color: .retraceWarningText)
+                            featureItem(icon: "circle.fill", text: "Optimized Power & Storage", color: .retraceWarningText)
+                            featureItem(icon: "circle.fill", text: "Decrypt and Backup your Rewind Database", color: .retraceWarningText)
+                            featureItem(icon: "circle.fill", text: "More Advanced Shortcuts", color: .retraceWarningText)
                         }
                     }
                     .padding(.spacingL)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.retraceWarning.opacity(0.05))
-                    .cornerRadius(.cornerRadiusL)
+                    .background(Color.retraceWarningBg)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
 
                     // Not planned yet (red)
                     VStack(alignment: .leading, spacing: .spacingM) {
                         Text("Not Yet Planned")
                             .font(.retraceHeadline)
-                            .foregroundColor(.retraceDanger)
+                            .foregroundColor(.retraceCritical)
 
                         VStack(alignment: .leading, spacing: .spacingS) {
-                            featureItem(icon: "xmark.circle.fill", text: "'Ask Retrace' Chatbot", color: .retraceDanger)
-                            featureItem(icon: "xmark.circle.fill", text: "Embeddings / Vector Search", color: .retraceDanger)
+                            featureItem(icon: "xmark.circle.fill", text: "'Ask Retrace' Chatbot", color: .retraceCritical)
+                            featureItem(icon: "xmark.circle.fill", text: "Embeddings / Vector Search", color: .retraceCritical)
                         }
                     }
                     .padding(.spacingL)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.retraceDanger.opacity(0.05))
-                    .cornerRadius(.cornerRadiusL)
+                    .background(Color.retraceCriticalBg)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
                 }
                 .frame(maxWidth: 600)
                 .padding(.spacingM)
             }
             .frame(minHeight: 350, maxHeight: .infinity)
-            .background(Color.retraceSecondaryBackground.opacity(0.5))
-            .cornerRadius(.cornerRadiusL)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
         }
     }
 
     private func featureItem(icon: String, text: String, color: Color) -> some View {
         HStack(spacing: .spacingS) {
-            Image(systemName: icon)
-                .font(.retraceCaption2)
+            RetraceSymbol(icon, size: 12)
                 .foregroundColor(color)
             Text(text)
                 .font(.retraceBody)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
         }
     }
 
@@ -1852,16 +1661,15 @@ public struct OnboardingView: View {
         VStack(alignment: .leading, spacing: .spacingS) {
             Text(title)
                 .font(.retraceHeadline)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
 
             ForEach(features, id: \.1) { icon, text, color in
                 HStack(spacing: .spacingS) {
-                    Image(systemName: icon)
-                        .font(.retraceCaption2)
+                    RetraceSymbol(icon, size: 12)
                         .foregroundColor(color)
                     Text(text)
                         .font(.retraceBody)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                 }
             }
         }
@@ -1880,43 +1688,46 @@ public struct OnboardingView: View {
 
                     Text("Use Rewind Data?")
                         .font(.retraceTitle)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                     // File info card
                     VStack(alignment: .center, spacing: .spacingM) {
                         HStack(spacing: .spacingM) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.retraceSuccess)
+                            RetraceSymbol("checkmark.circle.fill", size: 14)
+                                .foregroundColor(.retraceGood)
                             Text("Rewind database detected")
                                 .font(.retraceBody)
-                                .foregroundColor(.retracePrimary)
+                                .foregroundColor(.retraceInk)
                         }
 
                         VStack(alignment: .center, spacing: .spacingS) {
                             HStack(spacing: .spacingS) {
-                                Image(systemName: "externaldrive.fill")
-                                    .foregroundStyle(LinearGradient.retraceAccentGradient)
+                                RetraceSymbol("externaldrive.fill", size: 14)
+                                    .foregroundColor(.retraceAccent)
                                 Text("Location")
                                     .font(.retraceCaption)
-                                    .foregroundColor(.retraceSecondary)
+                                    .foregroundColor(.retraceInk2)
                             }
 
                             Text(AppPaths.rewindStorageRoot)
                                 .font(.retraceMonoSmall)
-                                .foregroundColor(.retracePrimary)
+                                .foregroundColor(.retraceInk)
                                 .multilineTextAlignment(.center)
 
                             if let sizeGB = rewindDataSizeGB {
                                 Text(String(format: "%.1f GB", sizeGB))
-                                    .font(.retraceCaption)
+                                    .font(.retraceMonoSmall)
                                     .fontWeight(.semibold)
-                                    .foregroundStyle(LinearGradient.retraceAccentGradient)
+                                    .monospacedDigit()
+                                    .foregroundColor(.retraceAccent)
                             }
                         }
                     }
                     .padding(.spacingL)
                     .frame(maxWidth: 500)
-                    .background(Color.retraceSecondaryBackground)
-                    .cornerRadius(.cornerRadiusL)
+                    .background(Color.retraceSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
+                    .retraceElevation(.sm)
 
                     // Yes/No buttons
                     HStack(spacing: .spacingM) {
@@ -1926,24 +1737,24 @@ public struct OnboardingView: View {
                             }
                         }) {
                             HStack(spacing: .spacingM) {
-                                Image(systemName: wantsRewindData == true ? "checkmark.circle.fill" : "circle")
-                                    .font(.retraceTitle2)
-                                    .foregroundColor(wantsRewindData == true ? .retraceSuccess : .retraceSecondary)
+                                RetraceSymbol(wantsRewindData == true ? "checkmark.circle.fill" : "circle", size: 20)
+                                    .foregroundColor(wantsRewindData == true ? .retraceAccent : .retraceInk2)
 
                                 Text("Yes, Use")
                                     .font(.retraceHeadline)
-                                    .foregroundColor(.retracePrimary)
+                                    .foregroundColor(.retraceInk)
                             }
                             .padding(.spacingM)
                             .frame(width: 180)
-                            .background(wantsRewindData == true ? Color.retraceSuccess.opacity(0.1) : Color.retraceSecondaryBackground)
-                            .cornerRadius(.cornerRadiusM)
+                            .background(wantsRewindData == true ? Color.retraceAccentWash : Color.retraceSurface)
+                            .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: .cornerRadiusM)
-                                    .stroke(wantsRewindData == true ? Color.retraceSuccess : Color.retraceBorder, lineWidth: 2)
+                                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                                    .stroke(wantsRewindData == true ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
                             )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityAddTraits(wantsRewindData == true ? .isSelected : [])
 
                         Button(action: {
                             withAnimation {
@@ -1951,33 +1762,33 @@ public struct OnboardingView: View {
                             }
                         }) {
                             HStack(spacing: .spacingM) {
-                                Image(systemName: wantsRewindData == false ? "checkmark.circle.fill" : "circle")
-                                    .font(.retraceTitle2)
-                                    .foregroundColor(wantsRewindData == false ? .retraceAccent : .retraceSecondary)
+                                RetraceSymbol(wantsRewindData == false ? "checkmark.circle.fill" : "circle", size: 20)
+                                    .foregroundColor(wantsRewindData == false ? .retraceAccent : .retraceInk2)
 
                                 Text("No, Don't Use")
                                     .font(.retraceHeadline)
-                                    .foregroundColor(.retracePrimary)
+                                    .foregroundColor(.retraceInk)
                             }
                             .padding(.spacingM)
                             .frame(width: 200)
-                            .background(wantsRewindData == false ? Color.retraceAccent.opacity(0.1) : Color.retraceSecondaryBackground)
-                            .cornerRadius(.cornerRadiusM)
+                            .background(wantsRewindData == false ? Color.retraceAccentWash : Color.retraceSurface)
+                            .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: .cornerRadiusM)
-                                    .stroke(wantsRewindData == false ? Color.retraceAccent : Color.retraceBorder, lineWidth: 2)
+                                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                                    .stroke(wantsRewindData == false ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
                             )
                         }
                         .buttonStyle(.plain)
+                        .accessibilityAddTraits(wantsRewindData == false ? .isSelected : [])
                     }
 
                     Text("You can import Rewind data later from Settings.")
                         .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary)
+                        .foregroundColor(.retraceInk2)
                 }
                 .padding(.spacingXL)
                 .background(Color.clear)
-                .cornerRadius(.cornerRadiusL)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
 
             } else if hasRewindData == false {
                 // No Rewind data found - show embellished view
@@ -1988,30 +1799,31 @@ public struct OnboardingView: View {
 
                     Text("Import Rewind Data")
                         .font(.retraceTitle)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
 
                     VStack(spacing: .spacingM) {
                         HStack(spacing: .spacingM) {
-                            Image(systemName: "info.circle.fill")
-                                .font(.retraceTitle3)
-                                .foregroundColor(.retraceSecondary)
+                            RetraceSymbol("info.circle.fill", size: 17)
+                                .foregroundColor(.retraceInk2)
                             Text("No Rewind data found on this machine")
                                 .font(.retraceBody)
-                                .foregroundColor(.retraceSecondary)
+                                .foregroundColor(.retraceInk2)
                         }
 
                         Text("If you have Rewind data you'd like to import later, you can do so from Settings.")
                             .font(.retraceCaption)
-                            .foregroundColor(.retraceSecondary)
+                            .foregroundColor(.retraceInk2)
                             .multilineTextAlignment(.center)
                     }
                     .padding(.spacingL)
-                    .background(Color.retraceSecondaryBackground)
-                    .cornerRadius(.cornerRadiusL)
+                    .background(Color.retraceSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
+                    .retraceElevation(.sm)
                 }
                 .padding(.spacingXL)
                 .background(Color.clear)
-                .cornerRadius(.cornerRadiusL)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
             }
 
             Spacer()
@@ -2026,11 +1838,11 @@ public struct OnboardingView: View {
         VStack(spacing: .spacingL) {
             Text("Customize Keyboard Shortcuts")
                 .font(.retraceTitle)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
 
             Text("Click on a shortcut to record a new key. Press Escape or click elsewhere to cancel.")
                 .font(.retraceBody)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
 
             VStack(spacing: .spacingL) {
                 shortcutRecorderRow(
@@ -2067,23 +1879,25 @@ public struct OnboardingView: View {
                 )
             }
             .padding(.spacingXL)
-            .background(Color.retraceSecondaryBackground)
-            .cornerRadius(.cornerRadiusL)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
+            .retraceElevation(.sm)
             .frame(maxWidth: 600)
 
             if let error = shortcutError {
                 HStack(spacing: .spacingS) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.retraceWarning)
+                    RetraceSymbol("exclamationmark.triangle.fill", size: 14)
+                        .foregroundColor(.retraceWarningText)
                     Text(error)
                         .font(.retraceCaption)
-                        .foregroundColor(.retraceWarning)
+                        .foregroundColor(.retraceWarningText)
                 }
             }
 
             Text("You can change these later in Settings.")
                 .font(.retraceCaption)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
 
             Spacer()
         }
@@ -2109,7 +1923,7 @@ public struct OnboardingView: View {
             VStack(alignment: .leading, spacing: .spacingS) {
                 Text(label)
                     .font(.retraceHeadline)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
             }
 
             Spacer()
@@ -2140,7 +1954,7 @@ public struct OnboardingView: View {
                         // Show "Press key combo..." when recording
                         Text("Press key combo...")
                             .font(.retraceBody)
-                            .foregroundStyle(LinearGradient.retraceAccentGradient)
+                            .foregroundColor(.retraceInk)
                             .frame(minWidth: 150, minHeight: 32)
                     } else {
                         // Show actual shortcut when not recording
@@ -2149,35 +1963,37 @@ public struct OnboardingView: View {
                             ForEach(shortcut.wrappedValue.modifierSymbols, id: \.self) { symbol in
                                 Text(symbol)
                                     .font(.retraceHeadline)
-                                    .foregroundColor(.retraceSecondary)
+                                    .foregroundColor(.retraceInk2)
                                     .frame(width: 32, height: 32)
-                                    .background(Color.retraceCard)
-                                    .cornerRadius(.cornerRadiusS)
+                                    .background(Color.retraceSurfaceSunken)
+                                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
                             }
 
                             if !shortcut.wrappedValue.modifierSymbols.isEmpty {
                                 Text("+")
                                     .font(.retraceBody)
-                                    .foregroundColor(.retraceSecondary)
+                                    .foregroundColor(.retraceInk2)
                             }
 
                             // Key
                             Text(shortcut.wrappedValue.key)
                                 .font(.retraceHeadline)
-                                .foregroundColor(.retracePrimary)
+                                .foregroundColor(.retraceInk)
                                 .frame(minWidth: 50, minHeight: 32)
                                 .padding(.horizontal, .spacingM)
-                                .background(Color.retraceCard)
-                                .cornerRadius(.cornerRadiusS)
+                                .background(Color.retraceSurfaceSunken)
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
                         }
                     }
                 }
                 .padding(.spacingS)
-                .background(isRecording.wrappedValue ? Color.retraceAccent.opacity(0.1) : Color.retraceSecondaryBackground)
-                .cornerRadius(.cornerRadiusM)
+                .background(isRecording.wrappedValue ? Color.retraceAccentWash : Color.retraceSurface)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: .cornerRadiusM)
-                        .stroke(isRecording.wrappedValue ? Color.retraceAccent : Color.retraceBorder, lineWidth: isRecording.wrappedValue ? 2 : 1)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .stroke(isRecording.wrappedValue ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: isRecording.wrappedValue ? 2 : 1)
                 )
             }
             .buttonStyle(.plain)
@@ -2205,36 +2021,26 @@ public struct OnboardingView: View {
 
             // Alpha warning badge
             VStack(spacing: .spacingM) {
-                ZStack {
-                    // Outer glow
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.retraceWarning.opacity(0.15))
-                        .frame(width: 180, height: 50)
-                        .blur(radius: 10)
-
-                    // Badge
-                    HStack(spacing: .spacingS) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.retraceHeadline)
-                        Text("EARLY ALPHA")
-                            .font(.retraceHeadline)
-                    }
-                    .foregroundColor(.retraceWarning)
-                    .padding(.horizontal, .spacingL)
-                    .padding(.vertical, .spacingM)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.retraceWarning.opacity(0.15))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.retraceWarning.opacity(0.5), lineWidth: 2)
-                            )
-                    )
+                HStack(spacing: .spacingS) {
+                    RetraceSymbol("exclamationmark.triangle.fill", size: 17)
+                    Text("EARLY ALPHA")
+                        .font(.retraceHeadline)
                 }
+                .foregroundColor(.retraceWarningText)
+                .padding(.horizontal, .spacingL)
+                .padding(.vertical, .spacingM)
+                .background(
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceWarningBg)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                                .stroke(Color.retraceWarningText.opacity(0.4), lineWidth: 1)
+                        )
+                )
 
                 Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
-                    .font(.retraceCaption)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMonoSmall)
+                    .foregroundColor(.retraceInk2)
             }
 
             // Creator section
@@ -2242,13 +2048,13 @@ public struct OnboardingView: View {
                 // Profile picture - bundled locally
                 creatorProfileImageView(
                     size: 70,
-                    ringColor: Color.retraceAccent.opacity(0.3),
-                    ringWidth: 2
+                    ringColor: Color.retraceBorderStrong,
+                    ringWidth: 1
                 )
 
                 Text("Thanks for being an early user!")
                     .font(.retraceHeadline)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
             }
             .onAppear {
                 ensureCreatorProfileImageLoaded(reason: "safety-step-onAppear")
@@ -2257,36 +2063,35 @@ public struct OnboardingView: View {
             // Info card
             VStack(alignment: .leading, spacing: .spacingM) {
                 HStack(spacing: .spacingM) {
-                    Image(systemName: "ant.fill")
-                        .font(.retraceTitle3)
-                        .foregroundColor(.retraceWarning)
+                    RetraceSymbol("ant.fill", size: 17)
+                        .foregroundColor(.retraceWarningText)
                     Text("Expect bugs - things will break")
                         .font(.retraceBody)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                 }
 
                 HStack(spacing: .spacingM) {
-                    Image(systemName: "message.fill")
-                        .font(.retraceTitle3)
-                        .foregroundStyle(LinearGradient.retraceAccentGradient)
+                    RetraceSymbol("message.fill", size: 17)
+                        .foregroundColor(.retraceAccent)
                     Text("Please report issues often")
                         .font(.retraceBody)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                 }
 
                 HStack(spacing: .spacingM) {
-                    Image(systemName: "wrench.and.screwdriver.fill")
-                        .font(.retraceTitle3)
-                        .foregroundColor(.retraceSuccess)
+                    RetraceSymbol("wrench.and.screwdriver.fill", size: 17)
+                        .foregroundColor(.retraceGood)
                     Text("Fixes ship fast")
                         .font(.retraceBody)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                 }
             }
             .padding(.spacingL)
             .frame(maxWidth: 400)
-            .background(Color.retraceSecondaryBackground)
-            .cornerRadius(.cornerRadiusL)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
+            .retraceElevation(.sm)
 
             Spacer()
         }
@@ -2304,11 +2109,11 @@ public struct OnboardingView: View {
 
             Text("You're All Set!")
                 .font(.retraceDisplay2)
-                .foregroundColor(.retracePrimary)
+                .foregroundColor(.retraceInk)
 
             Text("Retrace is now capturing your screen in the background.")
                 .font(.retraceBody)
-                .foregroundColor(.retraceSecondary)
+                .foregroundColor(.retraceInk2)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, .spacingXL)
 
@@ -2316,11 +2121,11 @@ public struct OnboardingView: View {
             VStack(spacing: .spacingM) {
                 Text("Test it out!")
                     .font(.retraceHeadline)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 Text("Press your timeline shortcut to see what you've recorded:")
                     .font(.retraceBody)
-                    .foregroundColor(.retraceSecondary)
+                    .foregroundColor(.retraceInk2)
                     .multilineTextAlignment(.center)
 
                 // Display the timeline shortcut
@@ -2329,31 +2134,35 @@ public struct OnboardingView: View {
                     ForEach(timelineShortcut.modifierSymbols, id: \.self) { symbol in
                         Text(symbol)
                             .font(.retraceTitle3)
-                            .foregroundColor(.retraceSecondary)
+                            .foregroundColor(.retraceInk2)
                             .frame(width: 40, height: 40)
-                            .background(Color.retraceCard)
-                            .cornerRadius(.cornerRadiusS)
+                            .background(Color.retraceSurfaceSunken)
+                            .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
                     }
 
                     if !timelineShortcut.modifierSymbols.isEmpty {
                         Text("+")
                             .font(.retraceBody)
-                            .foregroundColor(.retraceSecondary)
+                            .foregroundColor(.retraceInk2)
                     }
 
                     // Key
                     Text(timelineShortcut.key)
                         .font(.retraceHeadline)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                         .frame(minWidth: 60, minHeight: 40)
                         .padding(.horizontal, .spacingM)
-                        .background(onboardingButtonColor)
-                        .cornerRadius(.cornerRadiusS)
+                        .background(Color.retraceAccentWash)
+                        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceAccent, lineWidth: 1))
                 }
             }
             .padding(.spacingL)
-            .background(Color.retraceSecondaryBackground)
-            .cornerRadius(.cornerRadiusL)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: .radiusLg, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
+            .retraceElevation(.sm)
             .frame(maxWidth: 500)
 
             Spacer()
@@ -2444,20 +2253,13 @@ public struct OnboardingView: View {
 
     private var screenRecordingIndicator: some View {
         ZStack {
-            // Purple rounded rectangle background (matching Apple's indicator)
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(red: 0.6, green: 0.4, blue: 0.9), Color(red: 0.5, green: 0.3, blue: 0.8)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+            // Flat purple tile (matching Apple's indicator)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color(red: 0.55, green: 0.35, blue: 0.85))
 
             // Person with screen icon
-            Image(systemName: "rectangle.inset.filled.and.person.filled")
-                .font(.retraceDisplay2)
-                .foregroundColor(.white)
+            RetraceSymbol("rectangle.inset.filled.and.person.filled", size: 36)
+                .foregroundColor(.retraceOnAccent)
         }
     }
 
@@ -2484,385 +2286,8 @@ public struct OnboardingView: View {
 
     // MARK: - Helper Views
 
-    /// Dashboard-style ambient background with blue glow orbs
-    @ViewBuilder
-    private func onboardingAmbientBackground(animated: Bool) -> some View {
-        // Blue theme colors (matching dashboard)
-        let ambientGlowColor = Color(red: 14/255, green: 42/255, blue: 104/255)  // Deeper blue orb: #0e2a68
-
-        GeometryReader { geometry in
-            if animated {
-                TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
-                    onboardingAmbientBackgroundLayer(
-                        in: geometry.size,
-                        ambientGlowColor: ambientGlowColor,
-                        time: timeline.date.timeIntervalSinceReferenceDate,
-                        animated: true
-                    )
-                }
-            } else {
-                onboardingAmbientBackgroundLayer(
-                    in: geometry.size,
-                    ambientGlowColor: ambientGlowColor,
-                    time: 0,
-                    animated: false
-                )
-            }
-        }
-    }
-
-    private func onboardingAmbientBackgroundLayer(
-        in size: CGSize,
-        ambientGlowColor: Color,
-        time: TimeInterval,
-        animated: Bool
-    ) -> some View {
-        let orbSurfaceOpacity = 0.74
-        let orbDiameter: CGFloat = 820
-        let orbEndRadius: CGFloat = 390
-        let orbBlurRadius: CGFloat = 56
-        let horizontalOvershoot = max(size.width * 0.85, 560)
-        let upperLowerOvershoot = max(size.height * 0.18, 110)
-        let midlineJitter = max(size.height * 0.12, 84)
-
-        let primaryCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: -horizontalOvershoot, y: size.height * 0.12),
-            end: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.38),
-            duration: 18.0,
-            phase: 0.02,
-            seed: 11,
-            jitterX: 140,
-            jitterY: upperLowerOvershoot
-        )
-        let secondaryCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.82),
-            end: CGPoint(x: -horizontalOvershoot, y: size.height * 0.50),
-            duration: 22.0,
-            phase: 0.38,
-            seed: 23,
-            jitterX: 130,
-            jitterY: midlineJitter
-        )
-        let highlightCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: -horizontalOvershoot, y: size.height * 0.88),
-            end: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.14),
-            duration: 15.25,
-            phase: 0.61,
-            seed: 37,
-            jitterX: 120,
-            jitterY: upperLowerOvershoot
-        )
-        let upperRightCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.08),
-            end: CGPoint(x: -horizontalOvershoot, y: size.height * 0.26),
-            duration: 19.5,
-            phase: 0.24,
-            seed: 41,
-            jitterX: 125,
-            jitterY: upperLowerOvershoot
-        )
-        let lowerBandCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: -horizontalOvershoot, y: size.height * 0.66),
-            end: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.86),
-            duration: 17.2,
-            phase: 0.79,
-            seed: 53,
-            jitterX: 135,
-            jitterY: midlineJitter
-        )
-        let middleBandCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.44),
-            end: CGPoint(x: -horizontalOvershoot, y: size.height * 0.58),
-            duration: 20.8,
-            phase: 0.14,
-            seed: 67,
-            jitterX: 110,
-            jitterY: midlineJitter
-        )
-        let upperSweepCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: -horizontalOvershoot, y: size.height * 0.04),
-            end: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.24),
-            duration: 24.0,
-            phase: 0.47,
-            seed: 71,
-            jitterX: 120,
-            jitterY: upperLowerOvershoot
-        )
-        let lowerReverseCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.94),
-            end: CGPoint(x: -horizontalOvershoot, y: size.height * 0.72),
-            duration: 16.4,
-            phase: 0.89,
-            seed: 83,
-            jitterX: 125,
-            jitterY: midlineJitter
-        )
-        let upperLeadCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: -horizontalOvershoot, y: size.height * 0.20),
-            end: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.30),
-            duration: 20.2,
-            phase: 0.08,
-            seed: 97,
-            jitterX: 110,
-            jitterY: upperLowerOvershoot
-        )
-        let centerSweepCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: -horizontalOvershoot, y: size.height * 0.36),
-            end: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.60),
-            duration: 21.6,
-            phase: 0.31,
-            seed: 107,
-            jitterX: 120,
-            jitterY: midlineJitter
-        )
-        let midReverseCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.32),
-            end: CGPoint(x: -horizontalOvershoot, y: size.height * 0.16),
-            duration: 18.9,
-            phase: 0.55,
-            seed: 113,
-            jitterX: 115,
-            jitterY: upperLowerOvershoot
-        )
-        let lowerLiftCenter = linearOrbCenter(
-            time: time,
-            animated: animated,
-            start: CGPoint(x: -horizontalOvershoot, y: size.height * 0.78),
-            end: CGPoint(x: size.width + horizontalOvershoot, y: size.height * 0.58),
-            duration: 23.0,
-            phase: 0.72,
-            seed: 131,
-            jitterX: 125,
-            jitterY: midlineJitter
-        )
-
-        return ZStack {
-            // Static wash so the background never feels empty between passes.
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [ambientGlowColor.opacity(0.15), Color.clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(height: 180)
-                .frame(maxWidth: .infinity)
-                .position(x: size.width / 2, y: 0)
-                .blur(radius: 36)
-
-            // Large accent orb crossing left-to-right.
-            Circle()
-                .fill(onboardingOrbGradient(color: .retraceAccent, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(primaryCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-
-            // Blue orb crossing right-to-left on a separate line.
-            Circle()
-                .fill(onboardingOrbGradient(color: ambientGlowColor, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(secondaryCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-
-            Circle()
-                .fill(onboardingOrbGradient(color: ambientGlowColor, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(midReverseCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-
-            // Additional orbs sweep through the field at the same visual weight.
-            Circle()
-                .fill(onboardingOrbGradient(color: .retraceAccent, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(highlightCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-
-            Circle()
-                .fill(onboardingOrbGradient(color: .retraceAccent, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(upperLeadCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-
-            Circle()
-                .fill(onboardingOrbGradient(color: ambientGlowColor, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(upperRightCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-
-            Circle()
-                .fill(onboardingOrbGradient(color: .retraceAccent, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(lowerBandCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-
-            Circle()
-                .fill(onboardingOrbGradient(color: ambientGlowColor, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(middleBandCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-
-            Circle()
-                .fill(onboardingOrbGradient(color: ambientGlowColor, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(centerSweepCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-
-            Circle()
-                .fill(onboardingOrbGradient(color: .retraceAccent, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(upperSweepCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-
-            Circle()
-                .fill(onboardingOrbGradient(color: ambientGlowColor, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(lowerReverseCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-
-            Circle()
-                .fill(onboardingOrbGradient(color: .retraceAccent, endRadius: orbEndRadius))
-                .frame(width: orbDiameter, height: orbDiameter)
-                .position(lowerLiftCenter)
-                .blur(radius: orbBlurRadius)
-                .blendMode(.screen)
-                .opacity(orbSurfaceOpacity)
-        }
-    }
-
-    private func onboardingOrbGradient(color: Color, endRadius: CGFloat) -> RadialGradient {
-        RadialGradient(
-            gradient: Gradient(stops: [
-                .init(color: Color.white.opacity(0.12), location: 0.0),
-                .init(color: color.opacity(0.11), location: 0.18),
-                .init(color: color.opacity(0.06), location: 0.58),
-                .init(color: Color.clear, location: 1.0),
-            ]),
-            center: .center,
-            startRadius: 0,
-            endRadius: endRadius
-        )
-    }
-
-    private func linearOrbCenter(
-        time: TimeInterval,
-        animated: Bool,
-        start: CGPoint,
-        end: CGPoint,
-        duration: Double,
-        phase: Double,
-        seed: Double,
-        jitterX: CGFloat,
-        jitterY: CGFloat
-    ) -> CGPoint {
-        guard animated else { return start }
-
-        let cycleProgress = (time / duration) + phase
-        let cycle = floor(cycleProgress)
-        let progress = cycleProgress - cycle
-
-        let adjustedStart = jitteredOrbPoint(
-            base: start,
-            seed: seed + (cycle * 11),
-            maxXOffset: jitterX,
-            maxYOffset: jitterY
-        )
-        let adjustedEnd = jitteredOrbPoint(
-            base: end,
-            seed: seed + 97 + (cycle * 17),
-            maxXOffset: jitterX,
-            maxYOffset: jitterY
-        )
-
-        return CGPoint(
-            x: adjustedStart.x + ((adjustedEnd.x - adjustedStart.x) * progress),
-            y: adjustedStart.y + ((adjustedEnd.y - adjustedStart.y) * progress)
-        )
-    }
-
-    private func jitteredOrbPoint(
-        base: CGPoint,
-        seed: Double,
-        maxXOffset: CGFloat,
-        maxYOffset: CGFloat
-    ) -> CGPoint {
-        CGPoint(
-            x: base.x + (seededSignedRandom(seed: seed) * maxXOffset),
-            y: base.y + (seededSignedRandom(seed: seed + 1) * maxYOffset)
-        )
-    }
-
-    private func seededSignedRandom(seed: Double) -> CGFloat {
-        let rawValue = sin((seed * 12.9898) + 78.233) * 43_758.5453
-        let normalized = rawValue - floor(rawValue)
-        return CGFloat((normalized * 2) - 1)
-    }
-
     private var retraceLogo: some View {
-        // Recreate the SVG logo in SwiftUI - just the triangles, no background circle
-        ZStack {
-            // Left triangle pointing left
-            Path { path in
-                path.move(to: CGPoint(x: 15, y: 60))
-                path.addLine(to: CGPoint(x: 54, y: 33))
-                path.addLine(to: CGPoint(x: 54, y: 87))
-                path.closeSubpath()
-            }
-            .fill(Color.retracePrimary.opacity(0.9))
-
-            // Right triangle pointing right
-            Path { path in
-                path.move(to: CGPoint(x: 105, y: 60))
-                path.addLine(to: CGPoint(x: 66, y: 33))
-                path.addLine(to: CGPoint(x: 66, y: 87))
-                path.closeSubpath()
-            }
-            .fill(Color.retracePrimary.opacity(0.9))
-        }
+        RetraceMarkView(size: 120)
     }
 
     /// Rewind logo rendered from the original SVG path with onboarding-specific styling.
@@ -2873,22 +2298,15 @@ public struct OnboardingView: View {
 
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.retraceAccent.opacity(0.3), Color.retraceDeepBlue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(Color.retraceSurface)
                     .overlay(
                         Circle()
-                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                            .strokeBorder(Color.retraceBorder, lineWidth: 1)
                     )
 
-                RewindLogoIcon(color: .white)
+                RewindLogoIcon(color: .retraceInk)
                     .frame(width: size * 0.72, height: size * 0.44)
                     .offset(x: logoOffsetX)
-                    .shadow(color: Color.white.opacity(0.14), radius: 10, y: 1)
             }
         }
     }
@@ -2901,19 +2319,13 @@ public struct OnboardingView: View {
 
             ZStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.retraceSecondary.opacity(0.3), Color.retraceDeepBlue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(Color.retraceSurfaceSunken)
                     .overlay(
                         Circle()
-                            .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+                            .strokeBorder(Color.retraceBorder, lineWidth: 1)
                     )
 
-                RewindLogoIcon(color: .white.opacity(0.4))
+                RewindLogoIcon(color: .retraceMuted)
                     .frame(width: size * 0.72, height: size * 0.44)
                     .offset(x: logoOffsetX)
             }
@@ -4156,15 +3568,15 @@ public struct OnboardingView: View {
         if let status = automationStatus(for: target) {
             switch status {
             case .granted:
-                return .retraceSuccess
+                return .retraceGood
             case .skipped:
-                return .retraceSecondary
+                return .retraceInk2
             case .denied, .timedOut, .failed:
-                return .retraceWarning
+                return .retraceWarningText
             }
         }
 
-        return .retraceSecondary
+        return .retraceInk2
     }
 
     private func skipAutomationTarget(_ target: AutomationPreflightTarget) {
@@ -5104,7 +4516,6 @@ struct OnboardingView_Previews: PreviewProvider {
         OnboardingView(coordinator: AppCoordinator()) {
             Log.info("[OnboardingView] Onboarding complete", category: .ui)
         }
-        .preferredColorScheme(.dark)
     }
 }
 #endif

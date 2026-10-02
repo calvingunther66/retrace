@@ -73,6 +73,15 @@ mkdir -p "$APP_BUNDLE/Contents/Library/LaunchAgents"
 # Copy executable
 cp "$BUILD_DIR/Retrace" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
+# Copy the app icon (Info.plist's CFBundleIconFile is "AppIcon"); without it the Dock, Finder and in-app
+# app lists show a generic icon for this bundle.
+cp AppIcon.icns "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+
+# Copy bundled fonts (Source Serif 4 + IBM Plex Mono, OFL). RetraceFontRegistry registers them at launch
+# from Contents/Resources/Fonts.
+mkdir -p "$APP_BUNDLE/Contents/Resources/Fonts"
+cp UI/Fonts/*.ttf UI/Fonts/OFL-* "$APP_BUNDLE/Contents/Resources/Fonts/"
+
 # Copy bundled crash recovery helper assets used by the app's launch agent flow.
 CRASH_RECOVERY_HELPER="$BUILD_DIR/RetraceCrashRecoveryHelper"
 CRASH_RECOVERY_PLIST="UI/LaunchAgents/io.retrace.app.crash-recovery.plist"

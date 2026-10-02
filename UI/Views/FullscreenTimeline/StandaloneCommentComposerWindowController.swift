@@ -12,7 +12,7 @@ final class StandaloneCommentComposerWindowController: NSObject {
     nonisolated private static let legacyCaptureExcludedWindowTitles: Set<String> = ["Add Quick Comment"]
     private static let expandedContentSize = NSSize(width: 482, height: 365)
     private static let collapsedContentSize = NSSize(width: 482, height: 278)
-    static let windowCornerRadius: CGFloat = 16
+    static let windowCornerRadius: CGFloat = .radiusLg
     static let rootHorizontalPadding: CGFloat = 16
     static let rootVerticalPadding: CGFloat = 15
     static let rootContentWidth: CGFloat = expandedContentSize.width - (rootHorizontalPadding * 2)
@@ -242,6 +242,8 @@ final class StandaloneCommentComposerWindowController: NSObject {
         )
 
         window.title = Self.windowTitle
+        // Lives with the fullscreen timeline family, so it stays Dusk regardless of the app-wide theme.
+        window.appearance = RetraceAppearance.dusk
         window.level = .floating
         window.animationBehavior = .none
         window.backgroundColor = .clear

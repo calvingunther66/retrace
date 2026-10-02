@@ -372,6 +372,9 @@ enum MasterKeyPromptUI {
         let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 420, height: 140))
         textView.isRichText = false
         textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.textColor = NSColor.retraceInk
+        textView.backgroundColor = NSColor.retraceSurface
+        textView.insertionPointColor = NSColor.retraceAccent
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false

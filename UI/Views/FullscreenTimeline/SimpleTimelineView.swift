@@ -75,25 +75,25 @@ public struct SimpleTimelineView: View {
                 // Search-result highlights should sit above the frame, but below timeline controls/tape.
                 searchHighlightOverlay(containerSize: geometry.size, actualFrameRect: actualFrameRect)
 
-                // Bottom blur + gradient backdrop (behind timeline controls)
+                // Bottom page scrim with a fading mask (behind timeline controls)
                 VStack {
                     Spacer()
-                    // Blur with built-in tint (NSVisualEffectView needs content to blur)
-                    PureBlurView(radius: 50)
+                    // Flat page scrim (no blur) so controls stay legible over any screenshot
+                    Color.retracePage.opacity(0.78)
                         .frame(height: TimelineScaleFactor.blurBackdropHeight)
                         .mask(
                             LinearGradient(
                                 stops: [
-                                    .init(color: Color.white.opacity(0.0), location: 0.0),
-                                    .init(color: Color.white.opacity(0.03), location: 0.1),
-                                    .init(color: Color.white.opacity(0.08), location: 0.2),
-                                    .init(color: Color.white.opacity(0.15), location: 0.3),
-                                    .init(color: Color.white.opacity(0.35), location: 0.4),
-                                    .init(color: Color.white.opacity(0.6), location: 0.5),
-                                    .init(color: Color.white.opacity(0.85), location: 0.6),
-                                    .init(color: Color.white.opacity(0.95), location: 0.7),
-                                    .init(color: Color.white.opacity(1.0), location: 0.8),
-                                    .init(color: Color.white.opacity(0.85), location: 1.0)
+                                    .init(color: Color.retraceInk.opacity(0.0), location: 0.0),
+                                    .init(color: Color.retraceInk.opacity(0.03), location: 0.1),
+                                    .init(color: Color.retraceInk.opacity(0.08), location: 0.2),
+                                    .init(color: Color.retraceInk.opacity(0.15), location: 0.3),
+                                    .init(color: Color.retraceInk.opacity(0.35), location: 0.4),
+                                    .init(color: Color.retraceInk.opacity(0.6), location: 0.5),
+                                    .init(color: Color.retraceInk.opacity(0.85), location: 0.6),
+                                    .init(color: Color.retraceInk.opacity(0.95), location: 0.7),
+                                    .init(color: Color.retraceInk.opacity(1.0), location: 0.8),
+                                    .init(color: Color.retraceInk.opacity(0.85), location: 1.0)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
@@ -368,25 +368,24 @@ public struct SimpleTimelineView: View {
                 // Toast feedback overlay (centered, larger for errors)
                 if viewModel.toastMessage != nil {
                     let isErrorToast = viewModel.toastTone == .error
-                    let toastAccentColor = isErrorToast ? Color.red : Color.green
+                    let toastAccentColor = isErrorToast ? Color.retraceCritical : Color.retraceGood
 
                     VStack {
                         Spacer()
                         HStack(spacing: 12) {
                             if let icon = viewModel.toastIcon {
-                                Image(systemName: icon)
-                                    .font(.system(size: 22, weight: .semibold))
+                                RetraceSymbol(icon, size: 22, weight: .semibold)
                                     .foregroundColor(toastAccentColor)
                             }
                             if let message = viewModel.toastMessage {
                                 Text(message)
-                                    .font(.system(size: 17, weight: .semibold))
-                                    .foregroundColor(.white)
+                                    .font(.retraceHeadline)
+                                    .foregroundColor(.retraceInk)
                             }
                         }
                         .padding(.horizontal, 28)
                         .padding(.vertical, 18)
-                        .timelineGlassSurface(.banner, cornerRadius: 16, borderColor: toastAccentColor.opacity(0.35))
+                        .timelineGlassSurface(.banner, cornerRadius: .radiusLg, borderColor: toastAccentColor.opacity(0.35))
                         .scaleEffect(viewModel.toastVisible ? 1.0 : 0.85)
                         .opacity(viewModel.toastVisible ? 1.0 : 0.0)
                         Spacer()
@@ -398,45 +397,44 @@ public struct SimpleTimelineView: View {
                 if let undoMessage = viewModel.pendingDeleteUndoMessage {
                     VStack {
                         HStack(spacing: 10) {
-                            Image(systemName: "trash.fill")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.orange.opacity(0.95))
+                            RetraceSymbol("trash.fill", size: 13, weight: .semibold)
+                                .foregroundColor(.retraceWarningText)
 
                             Text(undoMessage)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.92))
+                                .font(RetraceFont.font(size: 13, weight: .semibold))
+                                .foregroundColor(.retraceInk)
                                 .lineLimit(1)
 
                             Button("Undo") {
                                 viewModel.undoPendingDelete()
                             }
                             .buttonStyle(.plain)
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white)
+                            .font(RetraceFont.font(size: 12, weight: .bold))
+                            .foregroundColor(.retraceInk)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(
                                 Capsule()
-                                    .fill(Color.white.opacity(0.18))
+                                    .fill(Color.retraceSurfaceHover)
                             )
                             .overlay(
                                 Capsule()
-                                    .stroke(Color.white.opacity(0.26), lineWidth: 1)
+                                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
                             )
 
                             Button(action: {
                                 viewModel.dismissPendingDeleteUndo()
                             }) {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(.white.opacity(0.7))
+                                RetraceSymbol("xmark", size: 9, weight: .bold)
+                                    .foregroundColor(.retraceInk2)
                                     .padding(6)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Dismiss")
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
-                        .timelineGlassSurface(.banner, cornerRadius: 12)
+                        .timelineGlassSurface(.banner, cornerRadius: .radiusMd)
                         .padding(.top, max(geometry.safeAreaInsets.top + 18, 56))
                         Spacer()
                     }
@@ -824,30 +822,28 @@ public struct SimpleTimelineView: View {
         if viewModel.frameLoadError {
             // Frame failed to load.
             VStack(spacing: .spacingM) {
-                Image(systemName: "clock")
-                    .font(.retraceDisplay)
-                    .foregroundColor(.white.opacity(0.3))
+                RetraceSymbol("clock", size: 48)
+                    .foregroundColor(.retraceMuted)
                 Text("Come back in a few frames")
                     .font(.retraceBody)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.retraceInk2)
                 Text("This frame is still being processed")
-                    .font(.retraceCaption)
-                    .foregroundColor(.white.opacity(0.3))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
         } else if viewModel.frameNotReady,
                   viewModel.displayableCurrentImage == nil,
                   viewModel.waitingVideoFallbackImage == nil {
             // Frame not yet written to video file.
             VStack(spacing: .spacingM) {
-                Image(systemName: "clock")
-                    .font(.retraceDisplay)
-                    .foregroundColor(.white.opacity(0.3))
+                RetraceSymbol("clock", size: 48)
+                    .foregroundColor(.retraceMuted)
                 Text("Frame not ready yet")
                     .font(.retraceBody)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.retraceInk2)
                 Text("Still encoding...")
-                    .font(.retraceCaption)
-                    .foregroundColor(.white.opacity(0.3))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
         } else if let videoInfo = viewModel.currentVideoInfo {
             let isDecodedVideoInteractable =
@@ -874,20 +870,19 @@ public struct SimpleTimelineView: View {
             // Empty state - no video or image available.
             let isFilteredEmptyState = viewModel.frames.isEmpty && viewModel.filterCriteria.hasActiveFilters
             VStack(spacing: .spacingM) {
-                Image(systemName: isFilteredEmptyState ? "line.3.horizontal.decrease.circle" : (viewModel.frames.isEmpty ? "photo.on.rectangle.angled" : "clock"))
-                    .font(.retraceDisplay)
-                    .foregroundColor(.white.opacity(0.3))
+                RetraceSymbol(isFilteredEmptyState ? "line.3.horizontal.decrease.circle" : (viewModel.frames.isEmpty ? "photo.on.rectangle.angled" : "clock"), size: 48)
+                    .foregroundColor(.retraceMuted)
                 Text(isFilteredEmptyState ? "No results for current filters" : (viewModel.frames.isEmpty ? "No frames recorded" : "Frame not ready yet"))
                     .font(.retraceBody)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.retraceInk2)
                 if isFilteredEmptyState {
                     Text("Adjust or clear filters to view timeline frames.")
-                        .font(.retraceCaption)
-                        .foregroundColor(.white.opacity(0.3))
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 } else if !viewModel.frames.isEmpty {
                     Text("Relaunch timeline in a few seconds")
-                        .font(.retraceCaption)
-                        .foregroundColor(.white.opacity(0.3))
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 }
             }
         }
@@ -950,15 +945,14 @@ public struct SimpleTimelineView: View {
 	        if !fileExists {
 	            // Video file is missing - show error message
 	            VStack(spacing: .spacingM) {
-	                Image(systemName: "exclamationmark.triangle")
-	                    .font(.retraceDisplay)
-	                    .foregroundColor(.white.opacity(0.3))
+	                RetraceSymbol("exclamationmark.triangle", size: 48)
+	                    .foregroundColor(.retraceMuted)
 	                Text("Could not find frame")
 	                    .font(.retraceBody)
-	                    .foregroundColor(.white.opacity(0.5))
+	                    .foregroundColor(.retraceInk2)
 	                Text("Video file missing: \(path.suffix(50))")
-	                    .font(.retraceCaption)
-	                    .foregroundColor(.white.opacity(0.3))
+	                    .font(.retraceMeta)
+	                    .foregroundColor(.retraceMuted)
 	            }
 	        } else {
 	            let fileSize = fileStatus.size
@@ -1006,15 +1000,14 @@ public struct SimpleTimelineView: View {
 	                let _ = Log.warning("[FrameDisplay] Video file too small (no fragments yet) and not finalized, showing placeholder. Size=\(fileSize), isFinalized=\(videoInfo.isVideoFinalized)", category: .ui)
 	                // Video file not ready - show friendly message
 	                VStack(spacing: .spacingM) {
-	                    Image(systemName: "clock")
-	                        .font(.retraceDisplay)
-	                        .foregroundColor(.white.opacity(0.3))
+	                    RetraceSymbol("clock", size: 48)
+	                        .foregroundColor(.retraceMuted)
 	                    Text("Frame not ready yet")
 	                        .font(.retraceBody)
-	                        .foregroundColor(.white.opacity(0.5))
+	                        .foregroundColor(.retraceInk2)
 	                    Text("Relaunch timeline in a few seconds")
-	                        .font(.retraceCaption)
-	                        .foregroundColor(.white.opacity(0.3))
+	                        .font(.retraceMeta)
+	                        .foregroundColor(.retraceMuted)
 	                }
 	            }
 	        }
@@ -1083,9 +1076,8 @@ public struct SimpleTimelineView: View {
         let height = 44 * scale
 
         return HStack(spacing: 8 * scale) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 13 * scale, weight: .semibold))
-                .foregroundColor(.white.opacity(0.72))
+            RetraceSymbol("magnifyingglass", size: 13 * scale, weight: .semibold)
+                .foregroundColor(.retraceInk2)
 
             FocusableTextInput(
                 text: inFrameSearchBinding,
@@ -1101,49 +1093,38 @@ public struct SimpleTimelineView: View {
             Button {
                 viewModel.setInFrameSearchQuery("")
             } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 12 * scale, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
+                RetraceSymbol("xmark.circle.fill", size: 12 * scale, weight: .medium)
+                    .foregroundColor(.retraceInk2)
             }
             .buttonStyle(.plain)
             .disabled(viewModel.inFrameSearchQuery.isEmpty)
             .opacity(viewModel.inFrameSearchQuery.isEmpty ? 0 : 1)
             .allowsHitTesting(!viewModel.inFrameSearchQuery.isEmpty)
             .help("Clear search")
+            .accessibilityLabel("Clear search")
 
             Button {
                 viewModel.closeInFrameSearch(clearQuery: true)
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12 * scale, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.78))
+                RetraceSymbol("xmark", size: 12 * scale, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             }
             .buttonStyle(.plain)
             .help("Close in-frame search (Esc)")
+            .accessibilityLabel("Close in-frame search")
         }
         .padding(.leading, 14 * scale)
         .padding(.trailing, 12 * scale)
         .frame(width: 340 * scale, height: height)
-        .timelineGlassSurface(.panel, cornerRadius: 14 * scale)
+        .timelineGlassSurface(.panel, cornerRadius: CGFloat.radiusMd * scale)
         .overlay(
-            RoundedRectangle(cornerRadius: 14 * scale)
+            RoundedRectangle(cornerRadius: CGFloat.radiusMd * scale, style: .continuous)
                 .stroke(
-                    Color.white.opacity(isInFrameSearchGlowActive ? 0.46 : 0.24),
-                    lineWidth: isInFrameSearchGlowActive ? 1.2 : 0.8
+                    isInFrameSearchGlowActive ? Color.retraceAccent : Color.retraceBorderStrong,
+                    lineWidth: isInFrameSearchGlowActive ? 1.2 : 1
                 )
         )
-        .shadow(
-            color: Color.white.opacity(isInFrameSearchGlowActive ? 0.20 : 0.08),
-            radius: (isInFrameSearchGlowActive ? 9 : 5) * scale,
-            x: 0,
-            y: 0
-        )
-        .shadow(
-            color: Color.black.opacity(isInFrameSearchGlowActive ? 0.20 : 0.10),
-            radius: (isInFrameSearchGlowActive ? 15 : 8) * scale,
-            x: 0,
-            y: 0
-        )
+        .retraceElevation(.md)
         .contentShape(Rectangle())
         .onTapGesture {
             isInFrameSearchFieldFocused = true
@@ -1185,14 +1166,13 @@ public struct SimpleTimelineView: View {
                     .frame(width: expandedWidth, height: buttonSize)
 
                 HStack(spacing: 10 * scale) {
-                    Image(systemName: "questionmark.circle")
-                        .font(.system(size: 18 * scale, weight: .semibold))
+                    RetraceSymbol("questionmark.circle", size: 18 * scale, weight: .semibold)
                     if isHelpButtonHovering {
                         Text("Help")
-                            .font(.system(size: 17 * scale, weight: .medium))
+                            .font(RetraceFont.font(size: 17 * scale, weight: .medium))
                     }
                 }
-                .foregroundColor(isHelpButtonHovering ? .white : .white.opacity(0.8))
+                .foregroundColor(isHelpButtonHovering ? .retraceInk : .retraceInk2)
                 .frame(width: isHelpButtonHovering ? nil : buttonSize, height: buttonSize)
                 .padding(.horizontal, isHelpButtonHovering ? 20 * scale : 0)
                 .timelineGlassSurface(.chip, cornerRadius: buttonSize / 2)
@@ -1203,6 +1183,7 @@ public struct SimpleTimelineView: View {
         .contentShape(Rectangle())
         .keyboardShortcut("h", modifiers: [.command, .shift])
         .help("Help")
+        .accessibilityLabel("Help")
         .onHover { hovering in
             isHelpButtonHovering = hovering
         }
@@ -1224,14 +1205,13 @@ public struct SimpleTimelineView: View {
 
                 // Animated button content
                 HStack(spacing: 10 * scale) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 18 * scale, weight: .semibold))
+                    RetraceSymbol("xmark", size: 18 * scale, weight: .semibold)
                     if isCloseButtonHovering {
                         Text("Close")
-                            .font(.system(size: 17 * scale, weight: .medium))
+                            .font(RetraceFont.font(size: 17 * scale, weight: .medium))
                     }
                 }
-                .foregroundColor(isCloseButtonHovering ? .white : .white.opacity(0.8))
+                .foregroundColor(isCloseButtonHovering ? .retraceInk : .retraceInk2)
                 .frame(width: isCloseButtonHovering ? nil : buttonSize, height: buttonSize)
                 .padding(.horizontal, isCloseButtonHovering ? 20 * scale : 0)
                 .timelineGlassSurface(.chip, cornerRadius: buttonSize / 2)
@@ -1240,6 +1220,7 @@ public struct SimpleTimelineView: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
+        .accessibilityLabel("Close")
         .onHover { hovering in
             isCloseButtonHovering = hovering
             if hovering {
@@ -1254,10 +1235,10 @@ public struct SimpleTimelineView: View {
 
     private var loadingOverlay: some View {
         VStack(spacing: .spacingM) {
-            SpinnerView(size: 32, lineWidth: 3, color: .white)
+            SpinnerView(size: 32, lineWidth: 3, color: .retraceInk)
             Text("Loading...")
                 .font(.retraceBody)
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(.retraceInk2)
         }
         .allowsHitTesting(false)
     }
@@ -1313,22 +1294,21 @@ public struct SimpleTimelineView: View {
     // MARK: - Error Overlay
 
     private func errorOverlay(_ message: String) -> some View {
-        let accentColor = Color.orange
+        let accentColor = Color.retraceWarningText
 
         return HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 22, weight: .semibold))
+            RetraceSymbol("exclamationmark.triangle.fill", size: 22, weight: .semibold)
                 .foregroundColor(accentColor)
             Text(message)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(.white)
+                .font(.retraceHeadline)
+                .foregroundColor(.retraceInk)
                 .multilineTextAlignment(.center)
                 .lineLimit(3)
         }
         .padding(.horizontal, 28)
         .padding(.vertical, 18)
         .fixedSize(horizontal: true, vertical: false)
-        .timelineGlassSurface(.banner, cornerRadius: 16, borderColor: accentColor.opacity(0.35))
+        .timelineGlassSurface(.banner, cornerRadius: .radiusLg, borderColor: accentColor.opacity(0.35))
         .padding(.horizontal, 24)
         .allowsHitTesting(false)
     }
@@ -1348,15 +1328,14 @@ struct ResetZoomButton: View {
             viewModel.resetFrameZoom()
         }) {
             HStack(spacing: 10 * scale) {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.system(size: 18 * scale, weight: .semibold))
+                RetraceSymbol("arrow.up.left.and.arrow.down.right", size: 18 * scale, weight: .semibold, label: "")
                 Text("Reset Zoom")
-                    .font(.system(size: 17 * scale, weight: .medium))
+                    .font(RetraceFont.font(size: 17 * scale, weight: .medium))
             }
-            .foregroundColor(isHovering ? .white : .white.opacity(0.8))
+            .foregroundColor(isHovering ? .retraceInk : .retraceInk2)
             .padding(.horizontal, 20 * scale)
             .padding(.vertical, 12 * scale)
-            .timelineGlassSurface(.chip, cornerRadius: 22 * scale)
+            .timelineGlassSurface(.chip, cornerRadius: CGFloat.radiusPill * scale)
         }
         .buttonStyle(.plain)
         .onHover { hovering in
@@ -1384,18 +1363,17 @@ struct PeekModeBanner: View {
     var body: some View {
         HStack(spacing: 12 * scale) {
             // Eye icon to indicate "viewing"
-            Image(systemName: "eye.fill")
-                .font(.system(size: 16 * scale, weight: .medium))
-                .foregroundColor(.white.opacity(0.9))
+            RetraceSymbol("eye.fill", size: 16 * scale, weight: .medium)
+                .foregroundColor(.retraceInk)
 
             // Message
             Text("Viewing full timeline")
-                .font(.system(size: 15 * scale, weight: .medium))
-                .foregroundColor(.white.opacity(0.9))
+                .font(RetraceFont.font(size: 15 * scale, weight: .medium))
+                .foregroundColor(.retraceInk)
 
             // Separator
             Rectangle()
-                .fill(Color.white.opacity(0.3))
+                .fill(Color.retraceBorder)
                 .frame(width: 1, height: 16 * scale)
 
             // Return button
@@ -1403,17 +1381,16 @@ struct PeekModeBanner: View {
                 viewModel.exitPeek()
             }) {
                 HStack(spacing: 6 * scale) {
-                    Image(systemName: "arrow.uturn.backward")
-                        .font(.system(size: 13 * scale, weight: .semibold))
+                    RetraceSymbol("arrow.uturn.backward", size: 13 * scale, weight: .semibold, label: "")
                     Text("Return to filtered view")
-                        .font(.system(size: 14 * scale, weight: .medium))
+                        .font(RetraceFont.font(size: 14 * scale, weight: .medium))
                 }
-                .foregroundColor(isHovering ? .white : .white.opacity(0.85))
+                .foregroundColor(isHovering ? .retraceInk : .retraceInk2)
                 .padding(.horizontal, 12 * scale)
                 .padding(.vertical, 6 * scale)
                 .background(
                     Capsule()
-                        .fill(Color.white.opacity(isHovering ? 0.25 : 0.15))
+                        .fill(isHovering ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
                 )
             }
             .buttonStyle(.plain)
@@ -1428,18 +1405,18 @@ struct PeekModeBanner: View {
 
             // Keyboard hint
             Text("Esc")
-                .font(.system(size: 11 * scale, weight: .medium, design: .monospaced))
-                .foregroundColor(.white.opacity(0.5))
+                .font(RetraceFont.mono(size: 11 * scale, weight: .medium))
+                .foregroundColor(.retraceMuted)
                 .padding(.horizontal, 6 * scale)
                 .padding(.vertical, 3 * scale)
                 .background(
                     RoundedRectangle(cornerRadius: 4 * scale)
-                        .fill(Color.white.opacity(0.1))
+                        .fill(Color.retraceSurfaceHover)
                 )
         }
         .padding(.horizontal, 16 * scale)
         .padding(.vertical, 10 * scale)
-        .timelineGlassSurface(.banner, cornerRadius: 18 * scale)
+        .timelineGlassSurface(.banner, cornerRadius: CGFloat.radiusLg * scale)
     }
 }
 
@@ -2544,7 +2521,7 @@ private struct CapturedMouseCursorOverlay: View {
 
                     Image(systemName: "cursorarrow")
                         .font(.system(size: Self.fallbackInnerCursorFontSize, weight: .black))
-                        .foregroundStyle(Color.retraceBrandBlue) // #0B336C
+                        .foregroundStyle(Color(red: 11 / 255, green: 51 / 255, blue: 108 / 255)) // Fixed navy: data-over-screenshot exception, must stay visible against the white outline in Dusk
                         .offset(x: 0.56, y: 0.56)
                 }
             }
@@ -2602,7 +2579,7 @@ private struct CapturedMouseCursorOverlay: View {
 
         let brandRed = 11.0
         let brandGreen = 51.0
-        let brandBlue = 108.0
+        let brandBlue = 108.0 // matches the fallback cursor navy (11, 51, 108)
 
         for row in 0 ..< pixelHeight {
             for col in 0 ..< pixelWidth {
@@ -2768,17 +2745,20 @@ struct FrameZoomIndicator: View {
 
     var body: some View {
         HStack(spacing: .spacingS) {
-            Image(systemName: zoomScale > 1.0 ? "plus.magnifyingglass" : "minus.magnifyingglass")
-                .font(.retraceCaption)
+            RetraceSymbol(zoomScale > 1.0 ? "plus.magnifyingglass" : "minus.magnifyingglass", size: 12.5)
             Text(TimelineZoomSettings.percentLabel(forScale: zoomScale))
-                .font(.retraceCaption.monospacedDigit())
+                .font(RetraceFont.mono(size: 12.5))
         }
-        .foregroundColor(.white)
+        .foregroundColor(.retraceInk)
         .padding(.horizontal, .spacingM)
         .padding(.vertical, .spacingS)
         .background(
             Capsule()
-                .fill(Color.black.opacity(0.6))
+                .fill(Color.retraceSurface)
+        )
+        .overlay(
+            Capsule()
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
         .transition(.opacity.combined(with: .scale))
     }
@@ -2804,20 +2784,12 @@ private struct DemystifiedRevealPatchView: View {
                 .brightness((1.0 - revealProgress) * 0.08)
                 .scaleEffect(1.03 - (0.03 * revealProgress))
 
-            LinearGradient(
-                colors: [
-                    Color.white.opacity(0.0),
-                    Color.white.opacity(0.55),
-                    Color.white.opacity(0.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(width: max(size.width * 0.28, 18), height: size.height * 1.5)
-            .rotationEffect(.degrees(16))
-            .offset(x: (size.width * 1.35 * revealProgress) - (size.width * 0.7))
-            .opacity(1.0 - min(revealProgress * 1.1, 1.0))
-            .blendMode(.screen)
+            Rectangle()
+                .fill(Color.retraceInk.opacity(0.16))
+                .frame(width: max(size.width * 0.10, 8), height: size.height * 1.5)
+                .rotationEffect(.degrees(16))
+                .offset(x: (size.width * 1.35 * revealProgress) - (size.width * 0.7))
+                .opacity(1.0 - min(revealProgress * 1.1, 1.0))
         }
         .compositingGroup()
         .clipShape(RoundedRectangle(cornerRadius: 4))
@@ -2900,9 +2872,9 @@ struct RedactedNodeRevealOverlay: View {
         case .hidden:
             return .clear
         case .queued:
-            return Color.white.opacity(0.22)
+            return Color.retraceBorderStrong
         case .active:
-            return Color.white.opacity(0.82)
+            return Color.retraceInk
         }
     }
 }
@@ -2994,9 +2966,9 @@ struct ZoomedRedactedNodeRevealOverlay: View {
         case .hidden:
             return .clear
         case .queued:
-            return Color.white.opacity(0.26)
+            return Color.retraceBorderStrong
         case .active:
-            return Color.white.opacity(0.9)
+            return Color.retraceInk
         }
     }
 }
@@ -3140,7 +3112,7 @@ struct RedactionTooltipOverlay: View {
     private func tooltipForegroundColor(
         for state: SimpleTimelineViewModel.PhraseLevelRedactionTooltipState
     ) -> Color {
-        state.isInteractive ? .white : .white.opacity(0.5)
+        state.isInteractive ? .retraceInk : .retraceMuted
     }
 
     private func tooltipBackgroundColor(
@@ -3412,7 +3384,7 @@ struct ZoomTransitionOverlay<Content: View>: View {
 
             // White border around the rectangle
             RoundedRectangle(cornerRadius: lerp(0, 8, progress))
-                .stroke(Color.white.opacity(0.9), lineWidth: lerp(2, 3, progress))
+                .stroke(Color.retraceInk, lineWidth: lerp(2, 3, progress))
                 .frame(width: currentRect.width, height: currentRect.height)
                 .position(x: currentRect.midX, y: currentRect.midY)
         }
@@ -3622,20 +3594,20 @@ struct ZoomUnifiedOverlay<Content: View>: View {
 
             // LAYER 2: Light blur on the background - visual only, no interaction
             Rectangle()
-                .fill(.regularMaterial)
+                .fill(Color.retracePage)
                 .opacity(targetBlur * 0.3)
                 .allowsHitTesting(false)
 
             // LAYER 3: Darken outside the rectangle - visual only, no interaction
             InverseRoundedRectCutout(
                 cutoutRect: targetRect,
-                cornerRadius: 12
+                cornerRadius: .radiusMd
             )
             .fill(Color.black.opacity(0.6), style: FillStyle(eoFill: true))
             .allowsHitTesting(false)
 
             // LAYER 4: The zoomed content - visual only (interaction handled by overlay on top)
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                 .fill(Color.black)
                 .frame(width: targetRect.width, height: targetRect.height)
                 .position(x: targetRect.midX, y: targetRect.midY)
@@ -3648,15 +3620,15 @@ struct ZoomUnifiedOverlay<Content: View>: View {
                 .offset(x: targetOffsetX, y: targetOffsetY)
                 .compositingGroup()
                 .mask {
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                         .frame(width: targetRect.width, height: targetRect.height)
                         .position(x: targetRect.midX, y: targetRect.midY)
                 }
                 .allowsHitTesting(false)
 
             // LAYER 6: White border - visual only, no interaction
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.9), lineWidth: lerp(2, 3, progress))
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceInk, lineWidth: lerp(2, 3, progress))
                 .frame(width: targetRect.width, height: targetRect.height)
                 .position(x: targetRect.midX, y: targetRect.midY)
                 .allowsHitTesting(false)
@@ -3770,7 +3742,7 @@ struct ZoomActionMenu: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(Color.retraceBorder)
                 .padding(.vertical, 4)
 
             // Save Image
@@ -3791,7 +3763,7 @@ struct ZoomActionMenu: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: RetraceMenuStyle.cornerRadius)
-                .stroke(Color.white.opacity(0.9), lineWidth: 2)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 
@@ -3936,8 +3908,7 @@ struct ZoomActionMenuRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: RetraceMenuStyle.iconTextSpacing) {
-                Image(systemName: icon)
-                    .font(.system(size: RetraceMenuStyle.iconSize, weight: RetraceMenuStyle.fontWeight))
+                RetraceSymbol(icon, size: RetraceMenuStyle.iconSize, weight: RetraceMenuStyle.fontWeight, label: "")
                     .foregroundColor(isHovering ? RetraceMenuStyle.textColor : RetraceMenuStyle.textColorMuted)
                     .frame(width: RetraceMenuStyle.iconFrameWidth)
 
@@ -3965,33 +3936,13 @@ struct ZoomActionMenuRow: View {
     }
 }
 
-// MARK: - Pure Blur View
-
-/// A pure blur view that blurs content behind it using behindWindow blending
-struct PureBlurView: NSViewRepresentable {
-    let radius: CGFloat
-
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.blendingMode = .behindWindow
-        view.material = .hudWindow
-        view.state = .active
-        view.wantsLayer = true
-        view.appearance = NSAppearance(named: .darkAqua)
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
-}
-
 // MARK: - Zoom Background Overlay
 
 /// Darkened and blurred overlay for the background when zoom is active
 struct ZoomBackgroundOverlay: View {
     var body: some View {
         Rectangle()
-            .fill(.ultraThinMaterial)
-            .overlay(Color.black.opacity(0.45))
+            .fill(Color.black.opacity(0.55))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -4051,8 +4002,8 @@ struct ZoomFinalStateOverlay<Content: View>: View {
                 .position(x: finalRect.midX, y: finalRect.midY)
 
             // White border around the rectangle (same as transition end state)
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.9), lineWidth: 3)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceInk, lineWidth: 3)
                 .frame(width: finalRect.width, height: finalRect.height)
                 .position(x: finalRect.midX, y: finalRect.midY)
 
@@ -4111,8 +4062,8 @@ struct ZoomedRegionView<Content: View>: View {
                 .clipped()
 
             // White border around the zoomed region
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.9), lineWidth: 3)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceInk, lineWidth: 3)
                 .frame(width: enlargedWidth, height: enlargedHeight)
         }
     }
@@ -4506,7 +4457,7 @@ class ZoomedSelectionView: NSView {
         super.draw(dirtyRect)
 
         // Lighter blue for text selection highlight
-        let selectionColor = NSColor(red: 100/255, green: 160/255, blue: 230/255, alpha: 0.4)
+        let selectionColor = NSColor.retraceAccent.withAlphaComponent(0.4)
 
         // Draw character-level selections
         for node in nodeData {
@@ -4545,7 +4496,7 @@ class ZoomedSelectionView: NSView {
                 height: abs(end.y - start.y)
             )
 
-            let fillColor = NSColor(red: 100/255, green: 160/255, blue: 230/255, alpha: 0.15)
+            let fillColor = NSColor.retraceAccent.withAlphaComponent(0.15)
             fillColor.setFill()
             let fillPath = NSBezierPath(roundedRect: marqueeRect, xRadius: 4, yRadius: 4)
             fillPath.fill()
@@ -4553,7 +4504,7 @@ class ZoomedSelectionView: NSView {
             let borderPath = NSBezierPath(roundedRect: marqueeRect, xRadius: 4, yRadius: 4)
             borderPath.lineWidth = 1.5
             borderPath.setLineDash([6, 4], count: 2, phase: 0)
-            NSColor(red: 100/255, green: 160/255, blue: 230/255, alpha: 0.95).setStroke()
+            NSColor.retraceAccent.withAlphaComponent(0.95).setStroke()
             borderPath.stroke()
         }
     }
@@ -4589,14 +4540,14 @@ struct ZoomRegionDragPreview: View {
             // Darken outside the selection
             Color.black.opacity(0.6)
                 .reverseMask {
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                         .frame(width: rect.width, height: rect.height)
                         .position(x: rect.midX, y: rect.midY)
                 }
 
             // White border around selection
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.9), lineWidth: 2)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceInk, lineWidth: 2)
                 .frame(width: rect.width, height: rect.height)
                 .position(x: rect.midX, y: rect.midY)
         }
@@ -4731,9 +4682,9 @@ class URLOverlayView: NSView {
         let dashPattern: [CGFloat] = [6, 4]
         path.setLineDash(dashPattern, count: 2, phase: 0)
 
-        // Green highlight when hovering
-        NSColor(red: 0.4, green: 0.9, blue: 0.4, alpha: 0.9).setStroke()
-        NSColor(red: 0.4, green: 0.9, blue: 0.4, alpha: 0.15).setFill()
+        // Good-tone highlight when hovering
+        NSColor.retrace(RetraceTokens.good, alpha: 0.9).setStroke()
+        NSColor.retrace(RetraceTokens.good, alpha: 0.15).setFill()
         path.stroke()
         path.fill()
     }
@@ -4873,10 +4824,10 @@ final class OCRHyperlinkOverlayView: NSView {
             path.lineWidth = 2
             path.setLineDash([5, 3], count: 2, phase: 0)
 
-            NSColor.systemBlue.withAlphaComponent(0.20).setFill()
+            NSColor.retraceAccent.withAlphaComponent(0.20).setFill()
             path.fill()
 
-            NSColor.systemBlue.withAlphaComponent(0.95).setStroke()
+            NSColor.retraceAccent.withAlphaComponent(0.95).setStroke()
             path.stroke()
         }
     }
@@ -4910,7 +4861,7 @@ final class OCRHyperlinkOverlayView: NSView {
             yRadius: borderCornerRadius
         )
         borderPath.lineWidth = idleBorderThickness
-        NSColor.systemBlue.withAlphaComponent(0.58).setStroke()
+        NSColor.retraceAccent.withAlphaComponent(0.58).setStroke()
         borderPath.stroke()
     }
 
@@ -5417,7 +5368,7 @@ class TextSelectionView: NSView {
             context.beginTransparencyLayer(auxiliaryInfo: nil)
 
             // Draw all rects with solid color (alpha will be applied to the layer)
-            let selectionColor = NSColor(red: 100/255, green: 160/255, blue: 230/255, alpha: 1.0)
+            let selectionColor = NSColor.retraceAccent
             selectionColor.setFill()
 
             for rect in highlightRects {
@@ -5441,7 +5392,7 @@ class TextSelectionView: NSView {
                 height: abs(end.y - start.y)
             )
 
-            let fillColor = NSColor(red: 100/255, green: 160/255, blue: 230/255, alpha: 0.15)
+            let fillColor = NSColor.retraceAccent.withAlphaComponent(0.15)
             fillColor.setFill()
             let fillPath = NSBezierPath(roundedRect: marqueeRect, xRadius: 4, yRadius: 4)
             fillPath.fill()
@@ -5449,7 +5400,7 @@ class TextSelectionView: NSView {
             let borderPath = NSBezierPath(roundedRect: marqueeRect, xRadius: 4, yRadius: 4)
             borderPath.lineWidth = 1.5
             borderPath.setLineDash([6, 4], count: 2, phase: 0)
-            NSColor(red: 100/255, green: 160/255, blue: 230/255, alpha: 0.95).setStroke()
+            NSColor.retraceAccent.withAlphaComponent(0.95).setStroke()
             borderPath.stroke()
         }
     }
@@ -5480,20 +5431,19 @@ struct DeleteConfirmationDialog: View {
             // Dialog card
             VStack(spacing: 20) {
                 // Icon
-                Image(systemName: "trash.fill")
-                    .font(.retraceDisplay3)
-                    .foregroundColor(.red.opacity(0.8))
+                RetraceSymbol("trash.fill", size: 32, weight: .semibold)
+                    .foregroundColor(.retraceCritical)
 
                 // Title
                 Text("Delete Frame?")
                     .font(.retraceHeadline)
-                    .foregroundColor(.white)
+                    .foregroundColor(.retraceInk)
 
                 // Description
                 VStack(spacing: 8) {
                     Text("Choose to delete this frame or the entire segment.")
                         .font(.retraceCallout)
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundColor(.retraceInk2)
                 }
                 .multilineTextAlignment(.center)
 
@@ -5502,16 +5452,19 @@ struct DeleteConfirmationDialog: View {
                     // Delete Frame button
                     Button(action: onDeleteFrame) {
                         HStack(spacing: 10) {
-                            Image(systemName: "square")
-                                .font(.retraceCallout)
+                            RetraceSymbol("square", size: 13.5, label: "")
                             Text("Delete Frame")
                                 .font(.retraceCalloutMedium)
                         }
-                        .foregroundColor(.white)
+                        .foregroundColor(.retraceCritical)
                         .frame(width: 240, height: 40)
                         .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(isHoveringDeleteFrame ? Color.red.opacity(0.7) : Color.red.opacity(0.5))
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .fill(isHoveringDeleteFrame ? Color.retraceCritical.opacity(0.18) : Color.retraceCriticalBg)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .stroke(Color.retraceCritical.opacity(0.4), lineWidth: 1)
                         )
                     }
                     .buttonStyle(.plain)
@@ -5524,16 +5477,19 @@ struct DeleteConfirmationDialog: View {
                     // Delete Segment button
                     Button(action: onDeleteSegment) {
                         HStack(spacing: 10) {
-                            Image(systemName: "rectangle.stack")
-                                .font(.retraceCallout)
+                            RetraceSymbol("rectangle.stack", size: 13.5, label: "")
                             Text("Delete Segment (\(segmentFrameCount) frames)")
                                 .font(.retraceCalloutBold)
                         }
-                        .foregroundColor(.white)
+                        .foregroundColor(.retraceCritical)
                         .frame(width: 240, height: 44)
                         .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(isHoveringDeleteSegment ? Color.red.opacity(0.9) : Color.red.opacity(0.7))
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .fill(isHoveringDeleteSegment ? Color.retraceCritical.opacity(0.18) : Color.retraceCriticalBg)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .stroke(Color.retraceCritical.opacity(0.4), lineWidth: 1)
                         )
                     }
                     .buttonStyle(.plain)
@@ -5547,15 +5503,15 @@ struct DeleteConfirmationDialog: View {
                     Button(action: onCancel) {
                         Text("Cancel")
                             .font(.retraceCalloutMedium)
-                            .foregroundColor(.white.opacity(0.8))
+                            .foregroundColor(.retraceInk2)
                             .frame(width: 240, height: 40)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(isHoveringCancel ? Color.white.opacity(0.15) : Color.white.opacity(0.08))
+                                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                    .fill(isHoveringCancel ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
                             )
                     }
                     .buttonStyle(.plain)
@@ -5568,7 +5524,7 @@ struct DeleteConfirmationDialog: View {
                 .padding(.top, 8)
             }
             .padding(32)
-            .retraceMattePanel(addPadding: false, cornerRadius: 16)
+            .retraceMattePanel(addPadding: false, cornerRadius: .radiusLg)
         }
         .transition(.opacity.combined(with: .scale(scale: 0.95)))
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: true)
@@ -5614,7 +5570,7 @@ struct SearchHighlightOverlay: View {
             if let tooltipPosition = tooltipPosition {
                 Text("Copy All Highlighted Text")
                     .font(TimelineHoverTooltipStyle.font)
-                    .foregroundColor(.white)
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
                     .fixedSize()
                     .padding(.horizontal, TimelineHoverTooltipStyle.horizontalPadding)
@@ -5623,7 +5579,7 @@ struct SearchHighlightOverlay: View {
                         Capsule()
                             .fill(TimelineHoverTooltipStyle.backgroundColor)
                     )
-                    .shadow(color: .black.opacity(0.28), radius: 8, y: 4)
+                    .retraceElevation(.md)
                     .offset(x: tooltipPosition.x, y: tooltipPosition.y)
                     .allowsHitTesting(false)
             }
@@ -5658,7 +5614,7 @@ struct SearchHighlightOverlay: View {
                     // Cutout holes for highlights - use compositingGroup for blend mode to work
                     ForEach(Array(highlightedRects.enumerated()), id: \.offset) { _, rect in
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(Color.white)
+                            .fill(Color.retraceInk)
                             .frame(width: rect.width, height: rect.height)
                             .scaleEffect(highlightScale)
                             .position(x: rect.midX, y: rect.midY)
@@ -5671,7 +5627,7 @@ struct SearchHighlightOverlay: View {
                     ZStack {
                         ForEach(Array(highlightedRects.enumerated()), id: \.offset) { _, rect in
                             RoundedRectangle(cornerRadius: 3)
-                                .stroke(Color.yellow.opacity(0.9), lineWidth: 2)
+                                .stroke(Color.retraceWarningText.opacity(0.9), lineWidth: 2)
                                 .frame(width: rect.width, height: rect.height)
                                 .scaleEffect(highlightScale)
                                 .position(x: rect.midX, y: rect.midY)
@@ -6019,7 +5975,7 @@ struct OCRDebugOverlay: View {
                 path.move(to: CGPoint(x: screenX, y: actualFrameRect.origin.y))
                 path.addLine(to: CGPoint(x: screenX, y: actualFrameRect.maxY))
 
-                context.stroke(path, with: .color(.cyan.opacity(0.3)), lineWidth: 0.5)
+                context.stroke(path, with: .color(Color.retraceSeries3.opacity(0.3)), lineWidth: 0.5)
             }
 
             // Draw horizontal lines
@@ -6033,7 +5989,7 @@ struct OCRDebugOverlay: View {
                 path.move(to: CGPoint(x: actualFrameRect.origin.x, y: screenY))
                 path.addLine(to: CGPoint(x: actualFrameRect.maxX, y: screenY))
 
-                context.stroke(path, with: .color(.cyan.opacity(0.3)), lineWidth: 0.5)
+                context.stroke(path, with: .color(Color.retraceSeries3.opacity(0.3)), lineWidth: 0.5)
             }
         }
     }
@@ -6045,17 +6001,17 @@ struct OCRDebugOverlay: View {
         return ZStack {
             // Draw removed nodes first (red, dashed) - these are from previous frame
             ForEach(Array(nodes.removed.enumerated()), id: \.offset) { _, node in
-                nodeBox(node: node, color: .red, isDashed: true, label: "−")
+                nodeBox(node: node, color: .retraceCritical, isDashed: true, label: "−")
             }
 
             // Draw unchanged nodes (gray, solid)
             ForEach(Array(nodes.unchanged.enumerated()), id: \.offset) { _, node in
-                nodeBox(node: node, color: .gray, isDashed: false, label: nil)
+                nodeBox(node: node, color: .retraceMuted, isDashed: false, label: nil)
             }
 
             // Draw new nodes on top (green, solid)
             ForEach(Array(nodes.new.enumerated()), id: \.offset) { _, node in
-                nodeBox(node: node, color: .green, isDashed: false, label: "+")
+                nodeBox(node: node, color: .retraceGood, isDashed: false, label: "+")
             }
 
             // Stats badge in top-right of frame area
@@ -6080,8 +6036,8 @@ struct OCRDebugOverlay: View {
         // Label badge for new/removed nodes
         if let label = label {
             Text(label)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .foregroundColor(.white)
+                .font(RetraceFont.mono(size: 10, weight: .bold))
+                .foregroundColor(.retraceOnAccent)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
                 .background(color.opacity(0.9))
@@ -6095,22 +6051,24 @@ struct OCRDebugOverlay: View {
     private func statsBadge(new: Int, removed: Int, unchanged: Int) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 4) {
-                Circle().fill(Color.green).frame(width: 8, height: 8)
-                Text("New: \(new)").font(.system(size: 10, weight: .medium, design: .monospaced))
+                Circle().fill(Color.retraceGood).frame(width: 8, height: 8)
+                Text("New: \(new)").font(RetraceFont.mono(size: 10, weight: .medium))
             }
             HStack(spacing: 4) {
-                Circle().fill(Color.red).frame(width: 8, height: 8)
-                Text("Removed: \(removed)").font(.system(size: 10, weight: .medium, design: .monospaced))
+                Circle().fill(Color.retraceCritical).frame(width: 8, height: 8)
+                Text("Removed: \(removed)").font(RetraceFont.mono(size: 10, weight: .medium))
             }
             HStack(spacing: 4) {
-                Circle().fill(Color.gray).frame(width: 8, height: 8)
-                Text("Unchanged: \(unchanged)").font(.system(size: 10, weight: .medium, design: .monospaced))
+                Circle().fill(Color.retraceMuted).frame(width: 8, height: 8)
+                Text("Unchanged: \(unchanged)").font(RetraceFont.mono(size: 10, weight: .medium))
             }
         }
-        .foregroundColor(.white)
+        .foregroundColor(.retraceInk)
         .padding(8)
-        .background(Color.black.opacity(0.7))
-        .cornerRadius(6)
+        .background(Color.retraceSurface)
+        .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorder, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+        .retraceElevation(.sm)
         .position(x: actualFrameRect.maxX - 70, y: actualFrameRect.origin.y + 50)
     }
 }
@@ -6145,20 +6103,20 @@ struct DebugFrameIDBadge: View {
 
     private var renderedMediaColor: Color {
         if viewModel.currentFrameStillDisplayMode == .waitingFallback {
-            return viewModel.currentFrameStillUsesFreshCaptureSource ? .blue.opacity(0.9) : .orange.opacity(0.85)
+            return viewModel.currentFrameStillUsesFreshCaptureSource ? .retraceSeries3.opacity(0.9) : .retraceWarningText.opacity(0.85)
         }
 
         if viewModel.isInLiveMode {
-            return viewModel.liveScreenshot != nil ? .blue.opacity(0.9) : .white.opacity(0.5)
+            return viewModel.liveScreenshot != nil ? .retraceSeries3.opacity(0.9) : .retraceMuted
         }
 
         switch viewModel.currentFrameMediaDisplayMode {
         case .still:
-            return viewModel.currentFrameStillUsesFreshCaptureSource ? .blue.opacity(0.9) : .green.opacity(0.85)
+            return viewModel.currentFrameStillUsesFreshCaptureSource ? .retraceSeries3.opacity(0.9) : .retraceGood.opacity(0.85)
         case .decodedVideo:
-            return .cyan.opacity(0.9)
+            return .retraceAccent.opacity(0.9)
         case .noContent:
-            return .white.opacity(0.5)
+            return .retraceMuted
         }
     }
 
@@ -6172,10 +6130,10 @@ struct DebugFrameIDBadge: View {
 
     private var videoReencodeColor: Color {
         guard let videoInfo = viewModel.currentVideoInfo else {
-            return .blue.opacity(0.8)
+            return .retraceSeries3.opacity(0.8)
         }
 
-        return videoInfo.isVideoReencoded ? .green.opacity(0.85) : .white.opacity(0.75)
+        return videoInfo.isVideoReencoded ? .retraceGood.opacity(0.85) : .retraceInk2
     }
 
     private var bitrateText: String {
@@ -6215,42 +6173,41 @@ struct DebugFrameIDBadge: View {
             }
         }) {
             HStack(spacing: 6) {
-                Image(systemName: showCopiedFeedback ? "checkmark" : "doc.on.doc")
-                    .font(.retraceTinyMedium)
-                    .foregroundColor(showCopiedFeedback ? .green : .white.opacity(0.7))
+                RetraceSymbol(showCopiedFeedback ? "checkmark" : "doc.on.doc", size: 11, label: "")
+                    .foregroundColor(showCopiedFeedback ? .retraceGood : .retraceInk2)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Frame ID")
                         .font(.retraceTinyMedium)
-                        .foregroundColor(.white.opacity(0.5))
+                        .foregroundColor(.retraceMuted)
 
                     if let frame = viewModel.currentFrame {
                         Text(showCopiedFeedback ? "Copied!" : String(frame.id.value))
                             .font(.retraceMonoSmall)
-                            .foregroundColor(showCopiedFeedback ? .green : .white)
+                            .foregroundColor(showCopiedFeedback ? .retraceGood : .retraceInk)
                     } else {
                         Text("--")
                             .font(.retraceMonoSmall)
-                            .foregroundColor(.white.opacity(0.5))
+                            .foregroundColor(.retraceMuted)
                     }
 
                     Text("Memory JPEG: \(viewModel.currentFrameHasInMemoryJPEGCache ? "yes" : "no")")
                         .font(.retraceMonoSmall)
-                        .foregroundColor(viewModel.currentFrameHasInMemoryJPEGCache ? .green.opacity(0.85) : .white.opacity(0.7))
+                        .foregroundColor(viewModel.currentFrameHasInMemoryJPEGCache ? .retraceGood.opacity(0.85) : .retraceInk2)
 
                     // Debug: Show video frame index being requested
                     if let videoInfo = viewModel.currentVideoInfo {
                         Text("VidIdx: \(videoInfo.frameIndex)")
                             .font(.retraceMonoSmall)
-                            .foregroundColor(.orange.opacity(0.8))
+                            .foregroundColor(.retraceWarningText.opacity(0.8))
 
                         Text("Bitrate: \(bitrateText)")
                             .font(.retraceMonoSmall)
-                            .foregroundColor(.white.opacity(0.85))
+                            .foregroundColor(.retraceInk)
 
                         Text("KiB/f: \(kibPerFrameText)")
                             .font(.retraceMonoSmall)
-                            .foregroundColor(.white.opacity(0.78))
+                            .foregroundColor(.retraceInk2)
                     }
 
                     // Debug: Show processing status
@@ -6272,10 +6229,10 @@ struct DebugFrameIDBadge: View {
                         Text("p=\(status) (\(statusText))")
                             .font(.retraceMonoSmall)
                             .foregroundColor(
-                                status == -1 ? .blue.opacity(0.8)
-                                : (status == 4 || status == 3 || status == 8) ? .red.opacity(0.8)
-                                : (status == 2 || status == 7) ? .green.opacity(0.8)
-                                : .yellow.opacity(0.8)
+                                status == -1 ? .retraceSeries3.opacity(0.8)
+                                : (status == 4 || status == 3 || status == 8) ? .retraceCritical.opacity(0.8)
+                                : (status == 2 || status == 7) ? .retraceGood.opacity(0.8)
+                                : .retraceWarningText.opacity(0.8)
                             )
                     }
 
@@ -6292,8 +6249,8 @@ struct DebugFrameIDBadge: View {
             .padding(.vertical, 6)
             .timelineGlassSurface(
                 .chip,
-                cornerRadius: 8,
-                borderColor: isHovering ? Color.white.opacity(0.3) : Color.white.opacity(0.15)
+                cornerRadius: .radiusSm,
+                borderColor: Color.retraceBorderStrong
             )
         }
         .buttonStyle(.plain)
@@ -6336,13 +6293,12 @@ struct DebugBrowserURLWindow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Image(systemName: "link")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.cyan.opacity(0.9))
+                RetraceSymbol("link", size: 11, weight: .semibold)
+                    .foregroundColor(.retraceAccent.opacity(0.9))
 
                 Text("Browser URL")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.88))
+                    .font(.retraceCaption2Bold)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
@@ -6351,11 +6307,11 @@ struct DebugBrowserURLWindow: View {
                         isPresented = false
                     }
                 }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(isCloseHovered ? .white.opacity(0.9) : .white.opacity(0.55))
+                    RetraceSymbol("xmark.circle.fill", size: 12, weight: .semibold)
+                        .foregroundColor(isCloseHovered ? .retraceInk : .retraceInk2)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close")
                 .onHover { hovering in
                     isCloseHovered = hovering
                     if hovering {
@@ -6367,7 +6323,7 @@ struct DebugBrowserURLWindow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
-            .background(Color.white.opacity(0.06))
+            .background(Color.retraceSurfaceSunken)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .global)
@@ -6394,12 +6350,12 @@ struct DebugBrowserURLWindow: View {
             }
 
             Divider()
-                .overlay(Color.white.opacity(0.08))
+                .overlay(Color.retraceBorder)
 
             ScrollView(.vertical, showsIndicators: true) {
                 Text(wrappedURLText)
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .foregroundColor(hasURL ? .cyan.opacity(0.95) : .white.opacity(0.6))
+                    .font(RetraceFont.mono(size: 12, weight: .regular))
+                    .foregroundColor(hasURL ? .retraceAccent.opacity(0.95) : .retraceInk2)
                     .lineSpacing(2)
                     .multilineTextAlignment(.leading)
                     .textSelection(.enabled)
@@ -6409,7 +6365,7 @@ struct DebugBrowserURLWindow: View {
             .frame(maxHeight: 170)
         }
         .frame(width: 720, alignment: .leading)
-        .retraceMattePanel(addPadding: false, cornerRadius: 10)
+        .retraceMattePanel(addPadding: false, cornerRadius: .radiusMd)
         .offset(
             x: panelPosition.width + dragOffset.width,
             y: panelPosition.height + dragOffset.height
@@ -6467,17 +6423,17 @@ struct OCRStatusIndicator: View {
     private var statusColor: Color {
         switch viewModel.ocrStatus.state {
         case .pending:
-            return .gray
+            return .retraceMuted
         case .queued:
-            return .orange
+            return .retraceWarningText
         case .processing:
-            return .blue
+            return .retraceSeries3
         case .rewriting:
-            return .orange
+            return .retraceWarningText
         case .failed:
-            return .red
+            return .retraceCritical
         default:
-            return .gray
+            return .retraceMuted
         }
     }
 
@@ -6486,17 +6442,16 @@ struct OCRStatusIndicator: View {
             HStack(spacing: 6) {
                 // Static icon - no animation to avoid idle wakeups
                 // The status text already indicates processing state
-                Image(systemName: statusIcon)
-                    .font(.retraceTinyMedium)
+                RetraceSymbol(statusIcon, size: 11)
                     .foregroundColor(statusColor)
 
                 Text(viewModel.ocrStatus.displayText)
                     .font(.retraceTinyMedium)
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundColor(.retraceInk2)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .timelineGlassSurface(.chip, cornerRadius: 8, borderColor: statusColor.opacity(0.4))
+            .timelineGlassSurface(.chip, cornerRadius: .radiusSm, borderColor: statusColor.opacity(0.4))
             .transition(.opacity.combined(with: .scale(scale: 0.9)))
             .animation(.easeInOut(duration: 0.2), value: viewModel.ocrStatus)
         }
@@ -6655,17 +6610,17 @@ struct DeveloperActionsMenu: View {
             HStack(spacing: 4) {
                 Image(systemName: "ant.fill")
                     .font(.retraceTinyMedium)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.retraceWarningText)
                 Text("Dev")
                     .font(.retraceTinyMedium)
-                    .foregroundColor(.orange)
+                    .foregroundColor(.retraceWarningText)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .timelineGlassSurface(
                 .chip,
-                cornerRadius: 8,
-                borderColor: isHovering ? Color.orange.opacity(0.5) : Color.white.opacity(0.15)
+                cornerRadius: .radiusSm,
+                borderColor: isHovering ? Color.retraceWarningText.opacity(0.5) : Color.retraceBorderStrong
             )
         }
         .menuStyle(.borderlessButton)
@@ -6713,23 +6668,22 @@ struct ControlsHiddenRestoreHintBanner: View {
 
     var body: some View {
         TimelineHintBanner(style: .capsule, scale: scale, onDismiss: onDismiss) {
-            Image(systemName: "menubar.arrow.down.rectangle")
-                .font(.system(size: 16 * scale, weight: .medium))
-                .foregroundColor(.white.opacity(0.9))
+            RetraceSymbol("menubar.arrow.down.rectangle", size: 16 * scale, weight: .medium)
+                .foregroundColor(.retraceInk)
 
             Text("Controls hidden")
-                .font(.system(size: 15 * scale, weight: .medium))
-                .foregroundColor(.white.opacity(0.92))
+                .font(RetraceFont.font(size: 15 * scale, weight: .medium))
+                .foregroundColor(.retraceInk)
 
             Rectangle()
-                .fill(Color.white.opacity(0.28))
+                .fill(Color.retraceBorder)
                 .frame(width: 1, height: 16 * scale)
 
             KeyboardBadge(symbol: "Right-click")
 
             Text("on screen to bring them back")
-                .font(.system(size: 14 * scale, weight: .medium))
-                .foregroundColor(.white.opacity(0.76))
+                .font(RetraceFont.font(size: 14 * scale, weight: .medium))
+                .foregroundColor(.retraceInk2)
         }
     }
 }
@@ -6742,27 +6696,26 @@ struct PositionRecoveryHintBanner: View {
 
     var body: some View {
         TimelineHintBanner(style: .capsule, scale: scale, onDismiss: onDismiss) {
-            Image(systemName: "arrow.uturn.backward.circle.fill")
-                .font(.system(size: 16 * scale, weight: .medium))
-                .foregroundColor(.white.opacity(0.9))
+            RetraceSymbol("arrow.uturn.backward.circle.fill", size: 16 * scale, weight: .medium)
+                .foregroundColor(.retraceInk)
 
             Text("Lost your place?")
-                .font(.system(size: 15 * scale, weight: .medium))
-                .foregroundColor(.white.opacity(0.92))
+                .font(RetraceFont.font(size: 15 * scale, weight: .medium))
+                .foregroundColor(.retraceInk)
 
             Rectangle()
-                .fill(Color.white.opacity(0.28))
+                .fill(Color.retraceBorder)
                 .frame(width: 1, height: 16 * scale)
 
             Text("Press")
-                .font(.system(size: 14 * scale, weight: .medium))
-                .foregroundColor(.white.opacity(0.76))
+                .font(RetraceFont.font(size: 14 * scale, weight: .medium))
+                .foregroundColor(.retraceInk2)
 
             KeyboardBadge(symbol: "⌘ Z")
 
             Text("to return to your previous position")
-                .font(.system(size: 14 * scale, weight: .medium))
-                .foregroundColor(.white.opacity(0.76))
+                .font(RetraceFont.font(size: 14 * scale, weight: .medium))
+                .foregroundColor(.retraceInk2)
         }
     }
 }
@@ -6777,36 +6730,35 @@ struct TextSelectionHintBanner: View {
     var body: some View {
         TimelineHintBanner(style: .card, onDismiss: onDismiss) {
             // Info icon
-            Image(systemName: "info.circle.fill")
-                .font(.retraceHeadline)
-                .foregroundColor(.white.opacity(0.9))
+            RetraceSymbol("info.circle.fill", size: 17, weight: .semibold)
+                .foregroundColor(.retraceInk)
 
             // Message
             Text("Selecting text?")
                 .font(.retraceCaptionMedium)
-                .foregroundColor(.white.opacity(0.9))
+                .foregroundColor(.retraceInk)
 
             // Keyboard shortcut guidance
             HStack(spacing: 4) {
                 Text("Try Area Selection")
                     .font(.retraceCaption)
-                    .foregroundColor(.white.opacity(0.75))
+                    .foregroundColor(.retraceInk2)
                 KeyboardBadge(symbol: "⇧ Shift")
                 Text("+")
                     .font(.retraceCaption2Medium)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.retraceMuted)
                 KeyboardBadge(symbol: "⊹ Drag")
                 Text("OR")
                     .font(.retraceCaption2Bold)
-                    .foregroundColor(.white.opacity(0.55))
+                    .foregroundColor(.retraceInk2)
                     .padding(.horizontal, 2)
                 Text("Box Selection")
                     .font(.retraceCaption)
-                    .foregroundColor(.white.opacity(0.75))
+                    .foregroundColor(.retraceInk2)
                 KeyboardBadge(symbol: "⌘ Cmd")
                 Text("+")
                     .font(.retraceCaption2Medium)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.retraceMuted)
                 KeyboardBadge(symbol: "⊹ Drag")
             }
         }
@@ -6822,13 +6774,12 @@ private struct SearchResultNavigationToast: View {
     var body: some View {
         VStack(alignment: .center, spacing: 10 * scale) {
             HStack(spacing: 10 * scale) {
-                Image(systemName: "text.magnifyingglass")
-                    .font(.system(size: 16 * scale, weight: .medium))
-                    .foregroundColor(.white.opacity(0.9))
+                RetraceSymbol("text.magnifyingglass", size: 16 * scale, weight: .medium)
+                    .foregroundColor(.retraceInk)
 
                 Text("\(state.currentPosition) of \(state.loadedCount)\(state.canLoadMore || state.isLoadingMore ? "+" : "")")
-                    .font(.system(size: 15 * scale, weight: .medium))
-                    .foregroundColor(.white.opacity(0.88))
+                    .font(RetraceFont.mono(size: 15 * scale, weight: .medium))
+                    .foregroundColor(.retraceInk)
                     .monospacedDigit()
             }
 
@@ -6852,16 +6803,16 @@ private struct SearchResultNavigationToast: View {
 
             if state.isLoadingMore {
                 HStack(spacing: 6 * scale) {
-                    SpinnerView(size: 12 * scale, lineWidth: 1.8, color: .white.opacity(0.85))
+                    SpinnerView(size: 12 * scale, lineWidth: 1.8, color: .retraceInk)
                     Text("Loading more")
-                        .font(.system(size: 14 * scale, weight: .medium))
-                        .foregroundColor(.white.opacity(0.76))
+                        .font(RetraceFont.font(size: 14 * scale, weight: .medium))
+                        .foregroundColor(.retraceInk2)
                 }
             }
         }
         .padding(.horizontal, 16 * scale)
         .padding(.vertical, 12 * scale)
-        .timelineGlassSurface(.banner, cornerRadius: 18 * scale)
+        .timelineGlassSurface(.banner, cornerRadius: CGFloat.radiusLg * scale)
     }
 }
 
@@ -6876,20 +6827,20 @@ private struct SearchResultNavigationButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 12 * scale, weight: .semibold))
-                .foregroundColor(.white.opacity(isDisabled ? 0.38 : 0.88))
+            RetraceSymbol(systemImage, size: 12 * scale, weight: .semibold)
+                .foregroundColor(.retraceInk.opacity(isDisabled ? 0.38 : 0.88))
                 .frame(width: 34 * scale, height: 34 * scale)
                 .background(
-                    RoundedRectangle(cornerRadius: 10 * scale)
+                    RoundedRectangle(cornerRadius: CGFloat.radiusMd * scale, style: .continuous)
                         .fill(buttonBackgroundColor)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10 * scale)
-                        .stroke(Color.white.opacity(isDisabled ? 0.08 : 0.16), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: CGFloat.radiusMd * scale, style: .continuous)
+                        .stroke(isDisabled ? Color.retraceBorder : Color.retraceBorderStrong, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(tooltipText)
         .disabled(isDisabled)
         .instantTooltip(tooltipText, isVisible: $isHovering)
         .onHover { hovering in
@@ -6907,9 +6858,9 @@ private struct SearchResultNavigationButton: View {
 
     private var buttonBackgroundColor: Color {
         if isDisabled {
-            return Color.white.opacity(0.04)
+            return Color.retraceSurfaceSunken
         }
-        return Color.white.opacity(isHovering ? 0.18 : 0.1)
+        return isHovering ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken
     }
 }
 
@@ -6920,23 +6871,22 @@ struct SearchHighlightControlsHintBanner: View {
 
     var body: some View {
         TimelineHintBanner(style: .card, onDismiss: onDismiss) {
-            Image(systemName: "lightbulb.fill")
-                .font(.retraceHeadline)
-                .foregroundColor(.white.opacity(0.9))
+            RetraceSymbol("lightbulb.fill", size: 17, weight: .semibold)
+                .foregroundColor(.retraceInk)
 
             Text("Highlighted text is under timeline controls.")
                 .font(.retraceCaptionMedium)
-                .foregroundColor(.white.opacity(0.9))
+                .foregroundColor(.retraceInk)
 
             Text("Press")
                 .font(.retraceCaption)
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(.retraceInk2)
 
             KeyboardBadge(symbol: "⌘ H")
 
             Text("to hide/show controls, or right-click.")
                 .font(.retraceCaption)
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(.retraceInk2)
         }
     }
 }
@@ -6946,17 +6896,16 @@ struct TimelineTapeRightClickHintBanner: View {
 
     var body: some View {
         TimelineHintBanner(style: .card, onDismiss: onDismiss) {
-            Image(systemName: "lightbulb.fill")
-                .font(.retraceHeadline)
-                .foregroundColor(.white.opacity(0.9))
+            RetraceSymbol("lightbulb.fill", size: 17, weight: .semibold)
+                .foregroundColor(.retraceInk)
 
             Text("Hint: You can also right-click the timeline tape to open the same tape menu!")
                 .font(.retraceCaptionMedium)
-                .foregroundColor(.white.opacity(0.9))
+                .foregroundColor(.retraceInk)
 
             // Text("That works even if the hover bubble disappears while you scroll.")
                 .font(.retraceCaption)
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(.retraceInk2)
         }
     }
 }
@@ -6973,32 +6922,31 @@ struct ScrollOrientationHintBanner: View {
     var body: some View {
         TimelineHintBanner(style: .card, onDismiss: onDismiss) {
             // Direction icon
-            Image(systemName: isHorizontal ? "arrow.up.arrow.down" : "arrow.left.arrow.right")
-                .font(.retraceHeadline)
-                .foregroundColor(.white.opacity(0.9))
+            RetraceSymbol(isHorizontal ? "arrow.up.arrow.down" : "arrow.left.arrow.right", size: 17, weight: .semibold)
+                .foregroundColor(.retraceInk)
 
             // Message
             Text(isHorizontal ? "Vertical scrolling detected." : "Horizontal scrolling detected.")
                 .font(.retraceCaptionMedium)
-                .foregroundColor(.white.opacity(0.9))
+                .foregroundColor(.retraceInk)
 
             Text(isHorizontal ? "Timeline is currently set to Left/Right." : "Timeline is currently set to Up/Down.")
                 .font(.retraceCaption)
-                .foregroundColor(.white.opacity(0.7))
+                .foregroundColor(.retraceInk2)
 
             // Switch action button
             Button(action: onSwitch) {
                 Text(isHorizontal ? "Switch to Up/Down" : "Switch to Left/Right")
                     .font(.retraceCaptionMedium)
-                    .foregroundColor(.white)
+                    .foregroundColor(.retraceOnAccent)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(
                         Capsule()
-                            .fill(Color.retraceSubmitAccent.opacity(isSwitchHovered ? 0.42 : 0.32))
+                            .fill(isSwitchHovered ? Color.retraceAccentHover : Color.retraceAccent)
                             .overlay(
                                 Capsule()
-                                    .stroke(Color.white.opacity(isSwitchHovered ? 0.45 : 0.3), lineWidth: 1)
+                                    .stroke(isSwitchHovered ? Color.retraceAccentHover : Color.retraceAccent, lineWidth: 1)
                             )
                     )
             }
@@ -7078,9 +7026,9 @@ private extension TimelineHintBannerStyle {
     func cornerRadius(scale: CGFloat) -> CGFloat {
         switch self {
         case .capsule:
-            return 999
+            return .radiusPill
         case .card:
-            return 10
+            return .radiusMd
         }
     }
 }
@@ -7092,16 +7040,16 @@ private struct TimelineHintDismissButton: View {
 
     var body: some View {
         Button(action: onDismiss) {
-            Image(systemName: "xmark")
-                .font(.system(size: 11 * scale, weight: .bold))
-                .foregroundColor(.white.opacity(isHovering ? 0.88 : 0.66))
+            RetraceSymbol("xmark", size: 11 * scale, weight: .bold)
+                .foregroundColor(.retraceInk.opacity(isHovering ? 0.88 : 0.66))
                 .frame(width: 24 * scale, height: 24 * scale)
                 .background(
                     Circle()
-                        .fill(Color.white.opacity(isHovering ? 0.16 : 0.1))
+                        .fill(isHovering ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Dismiss hint")
         .onHover { hovering in
             isHovering = hovering
             if hovering {
@@ -7124,29 +7072,28 @@ private struct RedactionReasonBanner: View {
                 AppIconView(bundleID: appBundleID, size: 18)
                     .frame(width: 18, height: 18)
             } else {
-                Image(systemName: "eye.slash.fill")
-                    .font(.retraceCaptionMedium)
-                    .foregroundColor(Color.orange.opacity(0.95))
+                RetraceSymbol("eye.slash.fill", size: 12.5)
+                    .foregroundColor(Color.retraceWarningText)
             }
 
             Text("Redacted")
                 .font(.retraceCaptionMedium)
-                .foregroundColor(.white.opacity(0.95))
+                .foregroundColor(.retraceInk)
 
             Rectangle()
-                .fill(Color.white.opacity(0.22))
+                .fill(Color.retraceBorder)
                 .frame(width: 1, height: 14)
 
             Text(reason)
                 .font(.retraceCaption)
-                .foregroundColor(.white.opacity(0.8))
+                .foregroundColor(.retraceInk2)
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .frame(maxWidth: 680)
-        .timelineGlassSurface(.banner, cornerRadius: 10, borderColor: Color.orange.opacity(0.35))
+        .timelineGlassSurface(.banner, cornerRadius: .radiusMd, borderColor: Color.retraceWarningText.opacity(0.35))
         .allowsHitTesting(false)
         .help("Current frame is redacted")
     }
@@ -7158,17 +7105,17 @@ private struct KeyboardBadge: View {
 
     var body: some View {
         Text(symbol)
-            .font(.retraceCaption2Medium)
-            .foregroundColor(.white)
+            .font(.retraceMonoSmall)
+            .foregroundColor(.retraceInk)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.white.opacity(0.15))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(Color.retraceSurfaceHover)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
             )
     }
 }
@@ -7666,7 +7613,7 @@ struct TimelineSegmentContextMenu: View {
                 }
 
                 Divider()
-                    .background(Color.white.opacity(0.1))
+                    .background(Color.retraceBorder)
                     .padding(.vertical, 4)
 
                 // Delete button
@@ -7789,8 +7736,7 @@ struct TimelineTagMenuButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: RetraceMenuStyle.iconTextSpacing) {
-                Image(systemName: icon)
-                    .font(.system(size: RetraceMenuStyle.iconSize, weight: RetraceMenuStyle.fontWeight))
+                RetraceSymbol(icon, size: RetraceMenuStyle.iconSize, weight: RetraceMenuStyle.fontWeight, label: "")
                     .foregroundColor(foregroundColor)
                     .frame(width: RetraceMenuStyle.iconFrameWidth)
 
@@ -7802,8 +7748,8 @@ struct TimelineTagMenuButton: View {
 
                         if overflowCount > 0 {
                             Text("+\(overflowCount)")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.white.opacity(isHovering ? 0.9 : 0.75))
+                                .font(RetraceFont.mono(size: 10, weight: .semibold))
+                                .foregroundColor(.retraceInk.opacity(isHovering ? 0.9 : 0.75))
                                 .padding(.horizontal, 4)
                         }
                     }
@@ -7826,8 +7772,7 @@ struct TimelineTagMenuButton: View {
                         .frame(minWidth: RetraceMenuStyle.shortcutColumnMinWidth, alignment: .trailing)
                 }
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: RetraceMenuStyle.chevronSize, weight: .bold))
+                RetraceSymbol("chevron.right", size: RetraceMenuStyle.chevronSize, weight: .bold)
                     .foregroundColor(RetraceMenuStyle.chevronColor)
             }
             .padding(.horizontal, RetraceMenuStyle.itemPaddingH)
@@ -7866,8 +7811,8 @@ struct TimelineTagMenuButton: View {
                 .frame(width: 5, height: 5)
 
             Text(tag.name)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.white.opacity(isHovering ? 0.95 : 0.85))
+                .font(RetraceFont.font(size: 10, weight: .semibold))
+                .foregroundColor(.retraceInk.opacity(isHovering ? 0.95 : 0.85))
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
@@ -7996,7 +7941,7 @@ struct CommentSubmenu: View {
     @FocusState private var isLinkFieldFocused: Bool
     private let submenuWidth: CGFloat = 450
     private let submenuHeight: CGFloat = 720
-    private let sectionCornerRadius: CGFloat = 14
+    private let sectionCornerRadius: CGFloat = .radiusMd
     private let allCommentsPageSize: Int = 10
     private let commentTargetTagOverlayOffsetY: CGFloat = 30
 
@@ -8194,11 +8139,11 @@ struct CommentSubmenu: View {
                 CommentChromeCircleButton(
                     icon: "chevron.left",
                     action: exitAllCommentsView,
-                    iconFont: .system(size: 12, weight: .semibold),
+                    iconSize: 12,
                     baseForeground: Color.retracePrimary.opacity(0.9),
                     hoverForeground: Color.retracePrimary.opacity(0.98),
-                    baseFill: Color.white.opacity(0.08),
-                    hoverFill: Color.white.opacity(0.12),
+                    baseFill: Color.retraceSurfaceSunken,
+                    hoverFill: Color.retraceSurfaceHover,
                     baseStroke: .clear,
                     hoverStroke: .clear
                 )
@@ -8212,12 +8157,11 @@ struct CommentSubmenu: View {
                     style: .accentOutline
                 ) {
                     HStack(spacing: 6) {
-                        Image(systemName: "list.bullet")
-                            .font(.system(size: 10, weight: .semibold))
+                        RetraceSymbol("list.bullet", size: 10, weight: .semibold)
                         Text("All Comments")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.retraceTinyBold)
                         Text("⌥A")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(RetraceFont.font(size: 10, weight: .semibold))
                             .foregroundColor(.retraceSecondary.opacity(0.85))
                             .padding(.leading, 2)
                     }
@@ -8232,7 +8176,7 @@ struct CommentSubmenu: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Text(threadCountLabel)
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(RetraceFont.mono(size: 12, weight: .semibold))
                         .foregroundColor(.retraceSecondary)
                 }
 
@@ -8241,17 +8185,16 @@ struct CommentSubmenu: View {
                         ProgressView()
                             .controlSize(.small)
                         Text("Loading thread...")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.retraceCaption2)
                             .foregroundColor(.retraceSecondary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 58, alignment: .center)
                 } else if let loadError = viewModel.blockCommentsLoadError {
                     HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 12, weight: .semibold))
+                        RetraceSymbol("exclamationmark.triangle.fill", size: 12, weight: .semibold)
                             .foregroundColor(.retraceDanger.opacity(0.9))
                         Text(loadError)
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.retraceCaption2)
                             .foregroundColor(.retraceSecondary)
                     }
                     .frame(maxWidth: .infinity, minHeight: 58, alignment: .center)
@@ -8276,21 +8219,20 @@ struct CommentSubmenu: View {
 
     private var commentThreadEmptyState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "text.bubble")
-                .font(.system(size: 18, weight: .semibold))
+            RetraceSymbol("text.bubble", size: 18, weight: .semibold)
                 .foregroundColor(.retracePrimary.opacity(0.92))
                 .frame(width: 34, height: 34)
                 .background(
                     Circle()
-                        .fill(Color.white.opacity(0.06))
+                        .fill(Color.retraceSurfaceSunken)
                 )
 
             Text("No comments yet.")
-                .font(.system(size: 13, weight: .semibold))
+                .font(RetraceFont.font(size: 13, weight: .semibold))
                 .foregroundColor(.retracePrimary.opacity(0.95))
 
             Text("Start the thread below.")
-                .font(.system(size: 12, weight: .medium))
+                .font(.retraceCaption2)
                 .foregroundColor(.retraceSecondary)
         }
         .frame(maxWidth: .infinity, minHeight: 72, alignment: .center)
@@ -8375,8 +8317,8 @@ struct CommentSubmenu: View {
             text: tag.name,
             icon: "tag.fill",
             foregroundColor: Color.retracePrimary.opacity(0.9),
-            backgroundColor: Color.white.opacity(0.08),
-            borderColor: Color.white.opacity(0.12)
+            backgroundColor: Color.retraceSurfaceSunken,
+            borderColor: Color.retraceBorder
         ) { isHovering in
             if isHovering {
                 Button {
@@ -8385,16 +8327,16 @@ struct CommentSubmenu: View {
                         source: "comment_target_tag_chip_remove"
                     )
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 7, weight: .bold))
-                        .foregroundColor(.white.opacity(0.9))
+                    RetraceSymbol("xmark", size: 7, weight: .bold)
+                        .foregroundColor(.retraceInk)
                         .frame(width: 13, height: 13)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.12))
+                                .fill(Color.retraceSurfaceHover)
                         )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Remove tag \(tag.name)")
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
         }
@@ -8414,11 +8356,10 @@ struct CommentSubmenu: View {
             }
         ) {
             HStack(spacing: 7) {
-                Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .bold))
+                RetraceSymbol("plus", size: 10, weight: .bold)
 
                 Text("Add tag")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.retraceTinyBold)
             }
         }
     }
@@ -8464,7 +8405,7 @@ struct CommentSubmenu: View {
     private var allCommentsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(hasActiveCommentSearch ? "Search Results (\(viewModel.commentSearchResults.count))" : allCommentsCountLabel)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.retraceCaption2Bold)
                 .foregroundColor(.retraceSecondary)
 
             allCommentsSearchField
@@ -8476,24 +8417,23 @@ struct CommentSubmenu: View {
                     ProgressView()
                         .controlSize(.small)
                     Text("Loading all comments...")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.retraceCaption2)
                         .foregroundColor(.retraceSecondary)
                 }
                 .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
             } else if let loadError = viewModel.commentTimelineLoadError,
                       viewModel.commentTimelineRows.isEmpty {
                 HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                    RetraceSymbol("exclamationmark.triangle.fill", size: 12, weight: .semibold)
                         .foregroundColor(.retraceDanger.opacity(0.9))
                     Text(loadError)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.retraceCaption2)
                         .foregroundColor(.retraceSecondary)
                 }
                 .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
             } else if viewModel.commentTimelineRows.isEmpty {
                 Text("No related comments found.")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.retraceCaption2)
                     .foregroundColor(.retraceSecondary)
                     .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
             } else {
@@ -8505,7 +8445,7 @@ struct CommentSubmenu: View {
                                     ProgressView()
                                         .controlSize(.small)
                                     Text("Loading older...")
-                                        .font(.system(size: 11, weight: .medium))
+                                        .font(.retraceTiny)
                                         .foregroundColor(.retraceSecondary)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .center)
@@ -8525,7 +8465,7 @@ struct CommentSubmenu: View {
                                     ProgressView()
                                         .controlSize(.small)
                                     Text("Loading newer...")
-                                        .font(.system(size: 11, weight: .medium))
+                                        .font(.retraceTiny)
                                         .foregroundColor(.retraceSecondary)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .center)
@@ -8566,23 +8506,22 @@ struct CommentSubmenu: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: sectionCornerRadius)
-                .fill(Color.white.opacity(0.03))
+                .fill(Color.retraceSurfaceSunken)
         )
         .overlay(
             RoundedRectangle(cornerRadius: sectionCornerRadius)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 
     private var allCommentsSearchField: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .semibold))
+            RetraceSymbol("magnifyingglass", size: 11, weight: .semibold)
                 .foregroundColor(.retraceSecondary.opacity(0.85))
 
             TextField("Search comments", text: commentSearchBinding)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12, weight: .medium))
+                .font(.retraceCaption2)
                 .foregroundColor(.retracePrimary)
                 .focused($isAllCommentsSearchFieldFocused)
                 .onSubmit {
@@ -8591,11 +8530,11 @@ struct CommentSubmenu: View {
 
             if !viewModel.commentSearchText.isEmpty {
                 Button(action: { viewModel.updateCommentSearchQuery("") }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11))
+                    RetraceSymbol("xmark.circle.fill", size: 11)
                         .foregroundColor(.retraceSecondary.opacity(0.85))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
                 .onHover { hovering in
                     if hovering { NSCursor.pointingHand.push() }
                     else { NSCursor.pop() }
@@ -8605,12 +8544,12 @@ struct CommentSubmenu: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.06))
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .fill(Color.retraceSurfaceSunken)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceBorderStrong, lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -8625,7 +8564,7 @@ struct CommentSubmenu: View {
                 ProgressView()
                     .controlSize(.small)
                 Text("Searching comments...")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.retraceCaption2)
                     .foregroundColor(.retraceSecondary)
             }
             .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
@@ -8633,11 +8572,10 @@ struct CommentSubmenu: View {
                   viewModel.commentSearchResults.isEmpty {
             VStack(alignment: .center, spacing: 8) {
                 HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                    RetraceSymbol("exclamationmark.triangle.fill", size: 12, weight: .semibold)
                         .foregroundColor(.retraceDanger.opacity(0.9))
                     Text(searchError)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.retraceCaption2)
                         .foregroundColor(.retraceSecondary)
                 }
 
@@ -8645,13 +8583,13 @@ struct CommentSubmenu: View {
                     viewModel.retryCommentSearch()
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold))
+                .font(.retraceTinyBold)
                 .foregroundColor(.retracePrimary.opacity(0.9))
             }
             .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
         } else if viewModel.commentSearchResults.isEmpty {
             Text("No matching comments.")
-                .font(.system(size: 12, weight: .medium))
+                .font(.retraceCaption2)
                 .foregroundColor(.retraceSecondary)
                 .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)
         } else {
@@ -8671,7 +8609,7 @@ struct CommentSubmenu: View {
                                 ProgressView()
                                     .controlSize(.small)
                                 Text("Loading more...")
-                                    .font(.system(size: 11, weight: .medium))
+                                    .font(.retraceTiny)
                                     .foregroundColor(.retraceSecondary)
                             }
                             .frame(maxWidth: .infinity, alignment: .center)
@@ -8716,18 +8654,18 @@ struct CommentSubmenu: View {
                                     .controlSize(.small)
                             }
                             Text(viewModel.isAddingComment ? "Adding..." : "Add Comment")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.retraceCaption2Bold)
                         }
                     }
                 }
                 .padding(8)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.035))
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
 
                 CommentChromeEditorSurface(
@@ -9029,25 +8967,24 @@ struct CommentSubmenu: View {
                     AppIconView(bundleID: bundleID, size: 20)
                         .frame(width: 20, height: 20)
                 } else {
-                    Image(systemName: "text.bubble")
-                        .font(.system(size: 10, weight: .semibold))
+                    RetraceSymbol("text.bubble", size: 10, weight: .semibold)
                         .foregroundColor(.retracePrimary.opacity(0.9))
                         .frame(width: 20, height: 20)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.white.opacity(0.07))
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .fill(Color.retraceSurfaceSunken)
                         )
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(rowHeaderLabel)
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.retraceTinyBold)
                         .foregroundColor(.retracePrimary.opacity(0.95))
                         .lineLimit(1)
 
                     if let rowHeaderSubtitle {
                         Text(rowHeaderSubtitle)
-                            .font(.system(size: 10, weight: .medium))
+                            .font(RetraceFont.font(size: 10, weight: .medium))
                             .foregroundColor(.retraceSecondary.opacity(0.82))
                             .lineLimit(1)
                     }
@@ -9073,18 +9010,17 @@ struct CommentSubmenu: View {
             }
 
             Text(commentPreviewText(from: row.comment.body))
-                .font(.system(size: 12, weight: .medium))
+                .font(.retraceCaption2)
                 .foregroundColor(.retracePrimary.opacity(0.95))
                 .lineLimit(2)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if let browserURL = row.context?.browserURL {
                 HStack(alignment: .top, spacing: 7) {
-                    Image(systemName: "globe")
-                        .font(.system(size: 10, weight: .semibold))
+                    RetraceSymbol("globe", size: 10, weight: .semibold)
                         .foregroundColor(.retraceSecondary.opacity(0.84))
                     Text(browserURL)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(RetraceFont.font(size: 10, weight: .medium))
                         .foregroundColor(.retraceSecondary.opacity(0.88))
                         .lineLimit(1)
                 }
@@ -9093,25 +9029,25 @@ struct CommentSubmenu: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                 .fill(
                     isAnchor
-                    ? Color.retraceSubmitAccent.opacity(0.16)
-                    : (isSearchHighlighted ? Color.retraceSubmitAccent.opacity(0.12) : Color.white.opacity(0.055))
+                    ? Color.retraceAccentWash
+                    : (isSearchHighlighted ? Color.retraceAccentWash : Color.retraceSurfaceSunken)
                 )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                 .stroke(
                     isAnchor
-                    ? Color.retraceSubmitAccent.opacity(0.42)
-                    : (isSearchHighlighted ? Color.retraceSubmitAccent.opacity(0.34) : Color.white.opacity(0.1)),
+                    ? Color.retraceAccent
+                    : (isSearchHighlighted ? Color.retraceAccent.opacity(0.6) : Color.retraceBorder),
                     lineWidth: 1
                 )
         )
         .scaleEffect(isHoveringInteractiveRow ? 1.01 : 1.0)
         .animation(.easeOut(duration: 0.12), value: isHoveringInteractiveRow)
-        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .contentShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
         .onTapGesture {
             guard isNavigable else { return }
             openLinkedComment(row.comment, preferredSegmentID: row.context?.segmentID)
@@ -9153,8 +9089,8 @@ struct CommentSubmenu: View {
             text: text,
             icon: icon,
             foregroundColor: accent,
-            backgroundColor: Color.white.opacity(0.08),
-            borderColor: Color.white.opacity(0.12)
+            backgroundColor: Color.retraceSurfaceSunken,
+            borderColor: Color.retraceBorder
         )
     }
 
@@ -9196,22 +9132,22 @@ struct CommentSubmenu: View {
     private var linkPopoverContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Insert Link")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.retraceCaption2Bold)
                 .foregroundColor(.retracePrimary)
 
             TextField("https://example.com", text: $pendingLinkURL)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .font(.retraceCaption2)
                 .foregroundColor(.retracePrimary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 7)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.07))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceBorderStrong, lineWidth: 1)
                 )
                 .focused($isLinkFieldFocused)
                 .contentShape(Rectangle())
@@ -9228,31 +9164,31 @@ struct CommentSubmenu: View {
                     isCommentFocused = true
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .medium))
+                .font(.retraceTiny)
                 .foregroundColor(.retraceSecondary)
 
                 Button("Insert") {
                     insertLinkFromPopover()
                 }
                 .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(normalizedPendingLinkURL == nil ? .retraceSecondary : .white)
+                .font(.retraceTinyBold)
+                .foregroundColor(normalizedPendingLinkURL == nil ? .retraceInk2 : .retraceOnAccent)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
                 .background(
                     Capsule()
                         .fill(
                             normalizedPendingLinkURL == nil
-                            ? Color.white.opacity(0.08)
-                            : Color.retraceSubmitAccent.opacity(0.9)
+                            ? Color.retraceSurfaceSunken
+                            : Color.retraceAccent
                         )
                 )
                 .overlay(
                     Capsule()
                         .stroke(
                             normalizedPendingLinkURL == nil
-                            ? Color.white.opacity(0.12)
-                            : Color.retraceSubmitAccent.opacity(0.35),
+                            ? Color.retraceBorder
+                            : Color.retraceAccent,
                             lineWidth: 1
                         )
                 )
@@ -9277,23 +9213,34 @@ struct CommentSubmenu: View {
 
     private func formattingButton(icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
+            RetraceSymbol(icon, size: 11, weight: .semibold)
                 .foregroundColor(.retracePrimary.opacity(0.9))
                 .frame(width: 26, height: 24)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.white.opacity(0.07))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.white.opacity(0.11), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceBorderStrong, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Self.formattingButtonAccessibilityLabel(for: icon))
         .onHover { hovering in
             if hovering { NSCursor.pointingHand.push() }
             else { NSCursor.pop() }
+        }
+    }
+
+    private static func formattingButtonAccessibilityLabel(for icon: String) -> String {
+        switch icon {
+        case "bold": return "Bold"
+        case "italic": return "Italic"
+        case "link": return "Insert link"
+        case "clock": return "Insert timestamp"
+        case "paperclip": return "Attach file"
+        default: return icon
         }
     }
 
@@ -9329,36 +9276,35 @@ struct CommentSubmenu: View {
 
     private func draftAttachmentChip(_ draft: CommentAttachmentDraft) -> some View {
         HStack(spacing: 7) {
-            Image(systemName: "doc.fill")
-                .font(.system(size: 10))
+            RetraceSymbol("doc.fill", size: 10)
                 .foregroundColor(.retraceSecondary.opacity(0.9))
             VStack(alignment: .leading, spacing: 1) {
                 Text(draft.fileName)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.retraceTinyBold)
                     .foregroundColor(.retracePrimary.opacity(0.95))
                     .lineLimit(1)
                 if let sizeBytes = draft.sizeBytes {
                     Text(ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file))
-                        .font(.system(size: 10, weight: .medium))
+                        .font(RetraceFont.mono(size: 10, weight: .medium))
                         .foregroundColor(.retraceSecondary)
                 }
             }
             Button(action: { viewModel.removeCommentAttachmentDraft(draft) }) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 11))
+                RetraceSymbol("xmark.circle.fill", size: 11)
                     .foregroundColor(.retraceSecondary.opacity(0.9))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Remove attachment \(draft.fileName)")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(
             Capsule()
-                .fill(Color.white.opacity(0.06))
+                .fill(Color.retraceSurfaceSunken)
         )
         .overlay(
             Capsule()
-                .stroke(Color.white.opacity(0.11), lineWidth: 1)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 
@@ -9370,11 +9316,11 @@ struct CommentSubmenu: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(comment.author)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.retraceTinyBold)
                     .foregroundColor(.retracePrimary)
 
                 Text(Self.threadDateFormatter.string(from: comment.createdAt))
-                    .font(.system(size: 10, weight: .medium))
+                    .font(RetraceFont.font(size: 10, weight: .medium))
                     .foregroundColor(.retraceSecondary.opacity(0.85))
 
                 Spacer()
@@ -9382,8 +9328,7 @@ struct CommentSubmenu: View {
                 Button(role: .destructive) {
                     pendingDeleteComment = comment
                 } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 10, weight: .semibold))
+                    RetraceSymbol("trash", size: 10, weight: .semibold)
                         .foregroundColor(.retraceDanger.opacity(0.95))
                         .frame(width: 20, height: 20)
                         .background(
@@ -9396,6 +9341,7 @@ struct CommentSubmenu: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Delete comment")
                 .frame(width: 20, height: 20)
                 .opacity(isHoveringCard ? 1 : 0)
                 .allowsHitTesting(isHoveringCard)
@@ -9420,29 +9366,28 @@ struct CommentSubmenu: View {
                         ForEach(comment.attachments) { attachment in
                             Button(action: { viewModel.openCommentAttachment(attachment) }) {
                                 HStack(spacing: 8) {
-                                    Image(systemName: "paperclip")
-                                        .font(.system(size: 10, weight: .semibold))
+                                    RetraceSymbol("paperclip", size: 10, weight: .semibold, label: "")
                                         .foregroundColor(.retraceSecondary.opacity(0.9))
                                     Text(attachment.fileName)
-                                        .font(.system(size: 11, weight: .semibold))
+                                        .font(.retraceTinyBold)
                                         .foregroundColor(.retracePrimary.opacity(0.95))
                                         .lineLimit(1)
                                     Spacer()
                                     if let sizeBytes = attachment.sizeBytes {
                                         Text(ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file))
-                                            .font(.system(size: 10, weight: .medium))
+                                            .font(RetraceFont.mono(size: 10, weight: .medium))
                                             .foregroundColor(.retraceSecondary)
                                     }
                                 }
                                 .padding(.horizontal, 9)
                                 .padding(.vertical, 6)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .fill(Color.white.opacity(0.05))
+                                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                        .fill(Color.retraceSurfaceSunken)
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color.white.opacity(0.09), lineWidth: 1)
+                                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                        .stroke(Color.retraceBorderStrong, lineWidth: 1)
                                 )
                             }
                             .buttonStyle(.plain)
@@ -9453,21 +9398,12 @@ struct CommentSubmenu: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.075),
-                                Color.white.opacity(0.038)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .fill(Color.retraceSurfaceSunken)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .stroke(Color.retraceBorder, lineWidth: 1)
             )
             .scaleEffect(isHoveringInteractiveCard ? 1.01 : 1.0)
             .animation(.easeOut(duration: 0.12), value: isHoveringInteractiveCard)
@@ -9750,7 +9686,7 @@ struct CommentSubmenu: View {
 
     private func markdownHeadingFont(for level: Int) -> Font {
         let size = max(13.0, 20.0 - (Double(level - 1) * 1.8))
-        return .system(size: size, weight: .semibold)
+        return RetraceFont.font(size: size, weight: .semibold)
     }
 }
 
@@ -9866,8 +9802,8 @@ struct CommentMarkdownEditor: NSViewRepresentable {
         var lastSerializedMarkdown: String = ""
 
         private static let baseFont = NSFont.systemFont(ofSize: 12, weight: .regular)
-        private static let baseColor = NSColor(white: 0.95, alpha: 1.0)
-        private static let linkColor = NSColor(red: 0.56, green: 0.76, blue: 0.98, alpha: 1.0)
+        private static let baseColor = NSColor.retraceInk
+        private static let linkColor = NSColor.retraceAccent
         private static let inlinePresentationIntentKey = NSAttributedString.Key("NSInlinePresentationIntent")
         private static let headingLevelAttributeKey = NSAttributedString.Key("RetraceHeadingLevel")
         private static let markdownParsingOptions = AttributedString.MarkdownParsingOptions(
@@ -10565,30 +10501,30 @@ struct TagSubmenuRow: View {
                     .frame(width: 8, height: 8)
                     .overlay(
                         Circle()
-                            .stroke(Color.white.opacity(0.35), lineWidth: 0.5)
+                            .stroke(Color.retraceBorderStrong, lineWidth: 0.5)
                     )
 
                 Text(tag.name)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white)
+                    .font(RetraceFont.font(size: 13, weight: .medium))
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
                 if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.white)
+                    RetraceSymbol("checkmark", size: 11, weight: .bold, label: "")
+                        .foregroundColor(.retraceInk)
                 }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill((isHovering || isKeyboardHighlighted) ? Color.white.opacity(0.1) : Color.clear)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill((isHovering || isKeyboardHighlighted) ? Color.retraceSurfaceHover : Color.clear)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) {
                 isHovering = hovering
@@ -10629,7 +10565,7 @@ struct FilterPanel: View {
 
     /// Border color for filter panel
     private var themeBorderColor: Color {
-        Color.white.opacity(0.15)
+        Color.retraceBorder
     }
 
     /// Label for apps filter chip (uses pending criteria)
@@ -10787,8 +10723,8 @@ struct FilterPanel: View {
             // Header
             HStack {
                 Text("Filter Timeline")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.white)
+                    .font(RetraceFont.font(size: 15, weight: .semibold))
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
@@ -10797,13 +10733,12 @@ struct FilterPanel: View {
                         viewModel.dismissFilterPanel()
                     }
                 }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white.opacity(0.4))
+                    RetraceSymbol("xmark", size: 10, weight: .bold)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 22, height: 22)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(0.1))
+                                .fill(Color.retraceSurfaceHover)
                         )
                         .overlay(
                             Circle()
@@ -10814,6 +10749,7 @@ struct FilterPanel: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close filters")
                 .onHover { hovering in
                     isCloseHovered = hovering
                 }
@@ -10839,7 +10775,7 @@ struct FilterPanel: View {
 
             // Divider
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(Color.retraceBorder)
                 .frame(height: 1)
                 .padding(.horizontal, 16)
 
@@ -10850,7 +10786,7 @@ struct FilterPanel: View {
                     VStack(alignment: .leading, spacing: 12) {
                         // Apps
                         CompactAppsFilterDropdown(
-                            label: "APPS",
+                            label: "Apps",
                             selectedApps: viewModel.pendingFilterCriteria.selectedApps,
                             isExcludeMode: viewModel.pendingFilterCriteria.appFilterMode == .exclude,
                             isOpen: viewModel.activeFilterDropdown == .apps,
@@ -10870,7 +10806,7 @@ struct FilterPanel: View {
 
                         // Visibility
                         CompactFilterDropdown(
-                            label: "VISIBILITY",
+                            label: "Visibility",
                             value: hiddenFilterLabel,
                             icon: "eye",
                             isActive: viewModel.pendingFilterCriteria.hiddenFilter != .hide,
@@ -10895,7 +10831,7 @@ struct FilterPanel: View {
                     VStack(alignment: .leading, spacing: 12) {
                         // Tags
                         CompactFilterDropdown(
-                            label: "TAGS",
+                            label: "Tags",
                             value: tagsLabel,
                             icon: "tag",
                             isActive: viewModel.pendingFilterCriteria.selectedTags != nil && !viewModel.pendingFilterCriteria.selectedTags!.isEmpty,
@@ -10916,7 +10852,7 @@ struct FilterPanel: View {
 
                         // Comments
                         CompactFilterDropdown(
-                            label: "COMMENTS",
+                            label: "Comments",
                             value: commentFilterLabel,
                             icon: "text.bubble",
                             isActive: viewModel.pendingFilterCriteria.commentFilter != .allFrames,
@@ -10940,7 +10876,7 @@ struct FilterPanel: View {
 
                 // Date row (full width)
                 CompactFilterDropdown(
-                    label: "DATE",
+                    label: "Date",
                     value: dateRangeLabel,
                     icon: "calendar",
                     isActive: !viewModel.pendingFilterCriteria.effectiveDateRanges.isEmpty,
@@ -10965,7 +10901,7 @@ struct FilterPanel: View {
 
             // Divider
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(Color.retraceBorder)
                 .frame(height: 1)
                 .padding(.horizontal, 16)
 
@@ -10977,7 +10913,7 @@ struct FilterPanel: View {
 
             // Divider before apply button
             Rectangle()
-                .fill(Color.white.opacity(0.08))
+                .fill(Color.retraceBorder)
                 .frame(height: 1)
                 .padding(.horizontal, 16)
 
@@ -10989,20 +10925,20 @@ struct FilterPanel: View {
                         clearFiltersByResettingAdvancedDrafts()
                     }) {
                         Text(clearButtonTitle)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.7))
+                            .font(RetraceFont.font(size: 14, weight: .semibold))
+                            .foregroundColor(.retraceInk2)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 11)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                                     .fill(
                                         (focusedActionButton == .clear || isClearHovered)
-                                            ? Color.white.opacity(0.16)
-                                            : Color.white.opacity(0.1)
+                                            ? Color.retraceSurfaceHover
+                                            : Color.retraceSurfaceSunken
                                     )
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                                     .stroke(
                                         (focusedActionButton == .clear || isClearHovered)
                                             ? RetraceMenuStyle.filterStrokeStrong
@@ -11023,32 +10959,26 @@ struct FilterPanel: View {
                         applyFiltersByCommittingAdvancedDrafts()
                     }) {
                         Text(applyButtonTitle)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
+                            .font(RetraceFont.font(size: 14, weight: .semibold))
+                            .foregroundColor(.retraceOnAccent)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 11)
                             .background(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                                     .fill(
                                         (focusedActionButton == .apply || isApplyHovered)
-                                            ? RetraceMenuStyle.actionBlue
-                                            : RetraceMenuStyle.actionBlue.opacity(0.8)
+                                            ? Color.retraceAccentHover
+                                            : Color.retraceAccent
                                     )
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 8)
+                                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                                     .stroke(
                                         (focusedActionButton == .apply || isApplyHovered)
                                             ? RetraceMenuStyle.filterStrokeStrong
                                             : Color.clear,
                                         lineWidth: 2.25
                                     )
-                            )
-                            .shadow(
-                                color: (focusedActionButton == .apply || isApplyHovered)
-                                    ? RetraceMenuStyle.actionBlue.opacity(0.65)
-                                    : .clear,
-                                radius: 8
                             )
                     }
                     .buttonStyle(.plain)
@@ -11062,9 +10992,9 @@ struct FilterPanel: View {
             .padding(.bottom, 14)
         }
         .frame(width: 360)
-        .retraceMattePanel(addPadding: false, cornerRadius: 16)
+        .retraceMattePanel(addPadding: false, cornerRadius: .radiusLg)
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
                 .stroke(themeBorderColor, lineWidth: 1)
         )
         .offset(
@@ -11722,22 +11652,21 @@ struct AdvancedFiltersSection: View {
                 }
             }) {
                 HStack {
-                    Text("ADVANCED")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(isAdvancedActive ? .white.opacity(0.8) : .white.opacity(0.4))
-                        .tracking(0.5)
+                    Text("Advanced")
+                        .font(.retraceLabel)
+                        .foregroundColor(isAdvancedActive ? .retraceInk2 : .retraceMuted)
+                        .retraceLabelTracking()
 
                     if hasActiveAdvancedFilters {
                         Circle()
-                            .fill(RetraceMenuStyle.actionBlue)
+                            .fill(Color.retraceAccent)
                             .frame(width: 6, height: 6)
                     }
 
                     Spacer()
 
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(isAdvancedActive ? .white.opacity(0.6) : .white.opacity(0.4))
+                    RetraceSymbol(isExpanded ? "chevron.up" : "chevron.down", size: 10, weight: .semibold)
+                        .foregroundColor(isAdvancedActive ? .retraceInk2 : .retraceMuted)
                 }
                 .padding(.horizontal, 12)
                 .contentShape(Rectangle())
@@ -11747,12 +11676,12 @@ struct AdvancedFiltersSection: View {
             .padding(.top, 12)
             .padding(.bottom, isExpanded ? 8 : 12)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isAdvancedActive && !isExpanded ? Color.white.opacity(0.08) : Color.clear)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isAdvancedActive && !isExpanded ? Color.retraceSurfaceSunken : Color.clear)
                     .padding(.horizontal, 16)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                     .stroke(
                         (isHeaderHovered || isHeaderKeyboardHighlighted)
                             ? RetraceMenuStyle.filterStrokeStrong
@@ -11772,8 +11701,8 @@ struct AdvancedFiltersSection: View {
                     // Window Name filter
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Window Name")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.6))
+                            .font(.retraceCaption2)
+                            .foregroundColor(.retraceInk2)
 
                         HStack(spacing: 10) {
                             FocusableTextInput(
@@ -11798,17 +11727,17 @@ struct AdvancedFiltersSection: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 7)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.white.opacity(0.08))
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .fill(Color.retraceSurfaceSunken)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                                 .stroke(
                                     focusedField == .windowName
                                         ? RetraceMenuStyle.filterStrokeStrong
                                         : (!draftState.windowNameChips.isEmpty
                                             ? RetraceMenuStyle.filterStrokeMedium
-                                            : (isWindowHovered ? Color.white.opacity(0.65) : RetraceMenuStyle.filterStrokeSubtle)),
+                                            : (isWindowHovered ? Color.retraceInk2 : RetraceMenuStyle.filterStrokeSubtle)),
                                     lineWidth: 1
                                 )
                         )
@@ -11837,8 +11766,8 @@ struct AdvancedFiltersSection: View {
                     // Browser URL filter
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Browser URL")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.white.opacity(0.6))
+                            .font(.retraceCaption2)
+                            .foregroundColor(.retraceInk2)
 
                         HStack(spacing: 10) {
                             FocusableTextInput(
@@ -11863,17 +11792,17 @@ struct AdvancedFiltersSection: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 7)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.white.opacity(0.08))
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .fill(Color.retraceSurfaceSunken)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                                 .stroke(
                                     focusedField == .browserUrl
                                         ? RetraceMenuStyle.filterStrokeStrong
                                         : (!draftState.browserUrlChips.isEmpty
                                             ? RetraceMenuStyle.filterStrokeMedium
-                                            : (isBrowserHovered ? Color.white.opacity(0.65) : RetraceMenuStyle.filterStrokeSubtle)),
+                                            : (isBrowserHovered ? Color.retraceInk2 : RetraceMenuStyle.filterStrokeSubtle)),
                                     lineWidth: 1
                                 )
                         )
@@ -12006,24 +11935,22 @@ private struct TimelineMetadataTermChip: View {
     }
 
     private var iconTint: Color {
-        mode == .include ? .blue.opacity(0.88) : .orange.opacity(0.9)
+        mode == .include ? .retraceAccent : .retraceWarningText
     }
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: iconName)
-                .font(.system(size: 9, weight: .semibold))
+            RetraceSymbol(iconName, size: 9, weight: .semibold)
                 .foregroundColor(iconTint)
 
             Text(term)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white)
+                .font(.retraceTiny)
+                .foregroundColor(.retraceInk)
                 .lineLimit(1)
 
             Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
+                RetraceSymbol("xmark.circle.fill", size: 10, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             }
             .buttonStyle(.plain)
             .onHover { hovering in
@@ -12034,11 +11961,11 @@ private struct TimelineMetadataTermChip: View {
         .padding(.vertical, 6)
         .background(
             Capsule()
-                .fill(Color.white.opacity(isHovered ? 0.2 : 0.14))
+                .fill(isHovered ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
         )
         .overlay(
             Capsule()
-                .stroke(Color.white.opacity(isHovered ? 0.35 : 0.2), lineWidth: 0.8)
+                .stroke(Color.retraceBorderStrong, lineWidth: 1)
         )
         .onHover { hovering in
             isHovered = hovering
@@ -12063,37 +11990,35 @@ struct CompactFilterDropdown: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white.opacity(0.4))
-                .tracking(0.5)
+                .font(.retraceLabel)
+                .foregroundColor(.retraceInk2)
+                .retraceLabelTracking()
 
             GeometryReader { geo in
                 let localFrame = geo.frame(in: .named("timelineContent"))
                 Button(action: { onTap(localFrame) }) {
                     HStack(spacing: 7) {
-                        Image(systemName: icon)
-                            .font(.system(size: 11))
-                            .foregroundColor(isActive ? .white : .white.opacity(0.5))
+                        RetraceSymbol(icon, size: 11)
+                            .foregroundColor(isActive ? .retraceInk : .retraceMuted)
 
                         Text(value)
-                            .font(.system(size: 12))
-                            .foregroundColor(isActive ? .white : .white.opacity(0.9))
+                            .font(.retraceCaption2)
+                            .foregroundColor(.retraceInk)
                             .lineLimit(1)
 
                         Spacer(minLength: 2)
 
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.4))
+                        RetraceSymbol("chevron.down", size: 9, weight: .semibold)
+                            .foregroundColor(.retraceMuted)
                     }
                     .padding(.horizontal, 11)
                     .padding(.vertical, 9)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(isActive ? Color.white.opacity(0.15) : ((isHovered || isOpen) ? Color.white.opacity(0.12) : Color.white.opacity(0.08)))
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(isActive ? Color.retraceAccentWash : ((isHovered || isOpen) ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                             .stroke(
                                 (isHovered || isOpen)
                                     ? RetraceMenuStyle.filterStrokeStrong
@@ -12147,9 +12072,9 @@ struct CompactAppsFilterDropdown: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white.opacity(0.4))
-                .tracking(0.5)
+                .font(.retraceLabel)
+                .foregroundColor(.retraceInk2)
+                .retraceLabelTracking()
 
             GeometryReader { geo in
                 let localFrame = geo.frame(in: .named("timelineContent"))
@@ -12157,10 +12082,9 @@ struct CompactAppsFilterDropdown: View {
                     HStack(spacing: 7) {
                         // Show exclude indicator
                         if isExcludeMode && isActive {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.system(size: 10))
+                            RetraceSymbol("minus.circle.fill", size: 10)
                                 .frame(width: iconSize, height: iconSize)
-                                .foregroundColor(.orange)
+                                .foregroundColor(.retraceWarningText)
                         }
 
                         if sortedApps.count == 1 {
@@ -12171,10 +12095,10 @@ struct CompactAppsFilterDropdown: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 3))
 
                             Text(appName(for: bundleID))
-                                .font(.system(size: 12))
-                                .foregroundColor(.white)
+                                .font(.retraceCaption2)
+                                .foregroundColor(.retraceInk)
                                 .lineLimit(1)
-                                .strikethrough(isExcludeMode, color: .orange)
+                                .strikethrough(isExcludeMode, color: .retraceWarningText)
                         } else if sortedApps.count > 1 {
                             // Multiple apps: show icons stacked
                             HStack(spacing: -4) {
@@ -12189,36 +12113,34 @@ struct CompactAppsFilterDropdown: View {
                             // Show "+X" if more than maxVisibleIcons
                             if sortedApps.count > maxVisibleIcons {
                                 Text("+\(sortedApps.count - maxVisibleIcons)")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white.opacity(0.8))
+                                    .font(RetraceFont.mono(size: 10, weight: .bold))
+                                    .foregroundColor(.retraceInk2)
                             }
                         } else {
                             // Default state - no apps selected
-                            Image(systemName: "square.grid.2x2")
-                                .font(.system(size: 11))
+                            RetraceSymbol("square.grid.2x2", size: 11)
                                 .frame(width: iconSize, height: iconSize)
-                                .foregroundColor(.white.opacity(0.5))
+                                .foregroundColor(.retraceMuted)
 
                             Text("All Apps")
-                                .font(.system(size: 12))
-                                .foregroundColor(.white.opacity(0.9))
+                                .font(.retraceCaption2)
+                                .foregroundColor(.retraceInk)
                         }
 
                         Spacer(minLength: 2)
 
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.4))
+                        RetraceSymbol("chevron.down", size: 9, weight: .semibold)
+                            .foregroundColor(.retraceMuted)
                     }
                     .frame(height: iconSize)
                     .padding(.horizontal, 11)
                     .padding(.vertical, 9)
                     .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(isActive ? Color.white.opacity(0.15) : ((isHovered || isOpen) ? Color.white.opacity(0.12) : Color.white.opacity(0.08)))
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(isActive ? Color.retraceAccentWash : ((isHovered || isOpen) ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                             .stroke(
                                 (isHovered || isOpen)
                                     ? RetraceMenuStyle.filterStrokeStrong
@@ -12275,20 +12197,19 @@ struct FilterToggleChipCompact: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                Image(systemName: icon)
-                    .font(.system(size: 11))
+                RetraceSymbol(icon, size: 11, label: "")
                 Text(label)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.retraceCaption2)
             }
-            .foregroundColor(isSelected ? .white : .white.opacity(0.5))
+            .foregroundColor(isSelected ? .retraceInk : .retraceMuted)
             .padding(.horizontal, 14)
             .padding(.vertical, 9)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.white.opacity(0.15) : Color.white.opacity(0.05))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isSelected ? Color.retraceAccentWash : Color.retraceSurfaceSunken)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                     .stroke(
                         isHovered
                             ? RetraceMenuStyle.filterStrokeStrong
@@ -12298,6 +12219,7 @@ struct FilterToggleChipCompact: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onHover { hovering in
             isHovered = hovering
         }
@@ -12343,8 +12265,8 @@ struct FilterDropdownOverlay: View {
 
                         // Scroll events are handled at TimelineWindowController level
                         dropdownContent
-                            .retraceMattePanel(addPadding: false, cornerRadius: 10)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .retraceMattePanel(addPadding: false, cornerRadius: .radiusMd)
+                            .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
                             .fixedSize()
                             .background(
                                 GeometryReader { geo in
@@ -12591,21 +12513,25 @@ struct FilterToggleChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
+                RetraceSymbol(icon, size: 12, label: "")
 
                 Text(label)
-                    .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                    .font(RetraceFont.font(size: 13, weight: isSelected ? .bold : .medium))
             }
-            .foregroundColor(isSelected ? .white : .white.opacity(0.6))
+            .foregroundColor(isSelected ? .retraceInk : .retraceInk2)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? Color.white.opacity(0.2) : (isHovered ? Color.white.opacity(0.1) : Color.clear))
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .fill(isSelected ? Color.retraceAccentWash : (isHovered ? Color.retraceSurfaceHover : Color.clear))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .stroke(isSelected ? Color.retraceAccent : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.15)) {
                 isHovered = hovering
@@ -12631,31 +12557,29 @@ struct FilterDropdownButton: View {
         Button(action: action) {
             HStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    Image(systemName: icon)
-                        .font(.system(size: 13))
-                        .foregroundColor(isActive ? .white : .white.opacity(0.5))
+                    RetraceSymbol(icon, size: 13)
+                        .foregroundColor(isActive ? .retraceInk : .retraceMuted)
 
                     Text(label)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(isActive ? .white : .white.opacity(0.7))
+                        .font(RetraceFont.font(size: 13, weight: .medium))
+                        .foregroundColor(isActive ? .retraceInk : .retraceInk2)
                 }
 
                 Spacer()
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.3))
+                RetraceSymbol("chevron.right", size: 11, weight: .semibold)
+                    .foregroundColor(.retraceMuted)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isActive ? RetraceMenuStyle.actionBlue.opacity(0.15) : Color.white.opacity(isHovered ? 0.1 : 0.06))
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .fill(isActive ? Color.retraceAccentWash : (isHovered ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(isActive ? RetraceMenuStyle.actionBlue.opacity(0.3) : Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .stroke(isActive ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)

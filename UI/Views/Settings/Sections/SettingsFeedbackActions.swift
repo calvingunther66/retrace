@@ -252,10 +252,10 @@ struct InPageURLInstructionAssetView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: 760)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .stroke(Color.retraceBorder, lineWidth: 1)
                     )
             case .idle, .loading:
                 ProgressView()

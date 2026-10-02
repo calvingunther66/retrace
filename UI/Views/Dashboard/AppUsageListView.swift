@@ -19,16 +19,16 @@ enum AppUsageLayoutSize {
 
     // MARK: - Text Fonts
 
-    var rankFont: Font { .retraceCaption2Bold }
-    var appNameFont: Font { .retraceCalloutMedium }
-    var sessionFont: Font { .retraceCaption2 }
-    var durationFont: Font { .retraceCalloutBold }
-    var percentageFont: Font { .retraceCaption2Medium }
+    var rankFont: Font { RetraceFont.mono(size: 12, weight: .medium) }
+    var appNameFont: Font { .retraceCallout }
+    var sessionFont: Font { .retraceMeta }
+    var durationFont: Font { RetraceFont.mono(size: 13.5, weight: .medium) }
+    var percentageFont: Font { RetraceFont.mono(size: 12, weight: .regular) }
 
     // MARK: - Window Row Fonts (slightly smaller than app fonts)
 
-    var windowNameFont: Font { .retraceCaptionMedium }
-    var windowDurationFont: Font { .retraceCaptionBold }
+    var windowNameFont: Font { .retraceCaption }
+    var windowDurationFont: Font { RetraceFont.mono(size: 12, weight: .medium) }
 
     // MARK: - Spacing & Padding
 
@@ -46,10 +46,10 @@ enum AppUsageLayoutSize {
 
 // MARK: - Scroll Affordance
 
-/// A subtle inner shadow at the bottom of a container that suggests scrollable content continues
+/// A subtle fade (functional scroll-edge mask) at the bottom of a container that suggests scrollable content continues
 private struct ScrollAffordance: View {
     var height: CGFloat = 24
-    var color: Color = .black
+    var color: Color = .retracePage
 
     var body: some View {
         VStack {
@@ -127,7 +127,7 @@ struct AppUsageListView: View {
     let apps: [AppUsageData]
     let totalTime: TimeInterval
     var layoutSize: AppUsageLayoutSize = .normal
-    var scrollAffordanceColor: Color = .retraceBackground
+    var scrollAffordanceColor: Color = .retracePage
     var loadWindowUsage: ((String, Int) async -> WindowUsagePage)? = nil  // For websites (domain aggregation)
     var loadTabsForDomain: ((String, String) async -> [WindowUsageData])? = nil  // (bundleID, domain) -> tabs for that domain
     var onWindowTapped: ((AppUsageData, WindowUsageData) -> Void)? = nil
@@ -212,7 +212,7 @@ struct AppUsageListView: View {
             if isLoading && windows.isEmpty {
                 HStack {
                     Spacer()
-                    SpinnerView(size: 14, lineWidth: 2, color: .retraceSecondary)
+                    SpinnerView(size: 14, lineWidth: 2, color: .retraceInk2)
                     Spacer()
                 }
                 .padding(.vertical, 8)
@@ -221,7 +221,7 @@ struct AppUsageListView: View {
                 HStack {
                     Text("No window data available")
                         .font(layoutSize.windowNameFont)
-                        .foregroundColor(.retraceSecondary.opacity(0.6))
+                        .foregroundColor(.retraceMuted)
                         .italic()
                 }
                 .padding(.vertical, 8)
@@ -303,30 +303,29 @@ struct AppUsageListView: View {
             }
         }) {
             HStack(spacing: 4) {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 10, weight: .medium))
+                RetraceSymbol("plus.circle", size: 10, weight: .medium)
                 Text("Load More")
                     .font(layoutSize.windowNameFont)
                 if !isLoading {
                     Text("(\(min(windowLoadIncrement, remainingCount)) more)")
-                        .font(.system(size: 10))
-                        .foregroundColor(.retraceSecondary.opacity(0.7))
+                        .font(RetraceFont.font(size: 10, weight: .regular))
+                        .foregroundColor(.retraceInk2)
                 } else {
                     Text("(loading)")
-                        .font(.system(size: 10))
-                        .foregroundColor(.retraceSecondary.opacity(0.7))
+                        .font(RetraceFont.font(size: 10, weight: .regular))
+                        .foregroundColor(.retraceInk2)
                 }
             }
-            .foregroundColor(.retraceSecondary)
+            .foregroundColor(.retraceInk2)
             .padding(.vertical, 6)
             .padding(.horizontal, 12)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovering ? Color.white.opacity(0.06) : Color.white.opacity(0.03))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isHovering ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -345,10 +344,10 @@ struct AppUsageListView: View {
 
     private func windowLoadingFooter(layoutSize: AppUsageLayoutSize) -> some View {
         HStack(spacing: 6) {
-            SpinnerView(size: 12, lineWidth: 2, color: .retraceSecondary)
+            SpinnerView(size: 12, lineWidth: 2, color: .retraceInk2)
             Text("Loading more")
                 .font(layoutSize.windowNameFont)
-                .foregroundColor(.retraceSecondary.opacity(0.8))
+                .foregroundColor(.retraceInk2)
         }
         .padding(.vertical, 6)
         .padding(.leading, layoutSize.windowRowIndent)
@@ -394,15 +393,15 @@ struct AppUsageListView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(displayTitle)
                     .font(layoutSize.windowNameFont)
-                    .foregroundColor(.retracePrimary.opacity(0.85))
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
                 // Show URL as subtitle in tabs view
                 if showAsTab, let url = window.browserUrl, !url.isEmpty {
                     Text(url)
-                        .font(.system(size: 10))
-                        .foregroundColor(.retraceSecondary.opacity(0.5))
+                        .font(RetraceFont.font(size: 10, weight: .regular))
+                        .foregroundColor(.retraceInk2)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -413,10 +412,10 @@ struct AppUsageListView: View {
             // Mini progress bar
             GeometryReader { geometry in
                 ZStack(alignment: .trailing) {
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.white.opacity(0.03))
+                    Capsule(style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
 
-                    RoundedRectangle(cornerRadius: 3)
+                    Capsule(style: .continuous)
                         .fill(appColor.opacity(0.5))
                         .frame(width: max(geometry.size.width * window.percentage, 4))
                 }
@@ -427,13 +426,13 @@ struct AppUsageListView: View {
             VStack(alignment: .trailing, spacing: 1) {
                 Text(formatDuration(window.duration))
                     .font(layoutSize.windowDurationFont)
-                    .foregroundColor(.retracePrimary.opacity(0.85))
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
                     .minimumScaleFactor(0.9)
 
                 Text(String(format: "%.1f%%", window.percentage * 100))
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.retraceSecondary.opacity(0.7))
+                    .font(RetraceFont.font(size: 9, weight: .medium))
+                    .foregroundColor(.retraceInk2)
             }
             .frame(width: layoutSize.durationWidth, alignment: .trailing)
         }
@@ -441,8 +440,8 @@ struct AppUsageListView: View {
         .padding(.vertical, layoutSize.verticalPadding * (showAsTab ? 0.7 : 0.6))
         .padding(.leading, layoutSize.windowRowIndent - layoutSize.rankWidth - 14)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isHovered ? Color.white.opacity(0.03) : Color.clear)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .fill(isHovered ? Color.retraceSurfaceHover : Color.clear)
         )
         .scaleEffect(isHovered ? 1.01 : 1.0)
         .animation(.easeInOut(duration: 0.15), value: isHovered)
@@ -478,9 +477,8 @@ struct AppUsageListView: View {
         return HStack(spacing: layoutSize.rowSpacing) {
             // Expand/collapse chevron - only show for websites (not window fallbacks)
             if window.isWebsite {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundColor(.retraceSecondary.opacity(0.5))
+                RetraceSymbol("chevron.right", size: 8, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
                     .frame(width: 10)
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     .animation(.easeInOut(duration: 0.2), value: isExpanded)
@@ -507,15 +505,15 @@ struct AppUsageListView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(displayTitle)
                     .font(layoutSize.windowNameFont)
-                    .foregroundColor(.retracePrimary.opacity(0.85))
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
                 if window.isWebsite {
                     if let tabCount = window.tabCount {
                         Text(tabCountLabel(tabCount))
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.retraceSecondary.opacity(0.65))
+                            .font(RetraceFont.font(size: 10, weight: .medium))
+                            .foregroundColor(.retraceInk2)
                     }
                 }
             }
@@ -528,10 +526,10 @@ struct AppUsageListView: View {
             let progressBarSlotHeight = layoutSize.progressBarHeight - 1
             let progressBarFillWidth = max(progressBarSlotWidth * window.percentage, 4)
             ZStack(alignment: .trailing) {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.white.opacity(0.03))
+                Capsule(style: .continuous)
+                    .fill(Color.retraceSurfaceSunken)
 
-                RoundedRectangle(cornerRadius: 3)
+                Capsule(style: .continuous)
                     .fill(appColor.opacity(0.5))
                     .frame(width: progressBarFillWidth)
             }
@@ -541,13 +539,13 @@ struct AppUsageListView: View {
             VStack(alignment: .trailing, spacing: 1) {
                 Text(formatDuration(window.duration))
                     .font(layoutSize.windowDurationFont)
-                    .foregroundColor(.retracePrimary.opacity(0.85))
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
                     .minimumScaleFactor(0.9)
 
                 Text(String(format: "%.1f%%", window.percentage * 100))
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.retraceSecondary.opacity(0.7))
+                    .font(RetraceFont.font(size: 9, weight: .medium))
+                    .foregroundColor(.retraceInk2)
             }
             .frame(width: layoutSize.durationWidth, alignment: .trailing)
         }
@@ -555,8 +553,8 @@ struct AppUsageListView: View {
         .padding(.vertical, layoutSize.verticalPadding * 0.6)
         .padding(.leading, layoutSize.windowRowIndent - layoutSize.rankWidth - 14)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(isHovered || isExpanded ? Color.white.opacity(0.03) : Color.clear)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .fill(isHovered || isExpanded ? Color.retraceSurfaceHover : Color.clear)
         )
         .scaleEffect(isHovered ? 1.01 : 1.0)
         .animation(.easeInOut(duration: 0.15), value: isHovered)
@@ -612,7 +610,7 @@ struct AppUsageListView: View {
             if isLoading && tabs.isEmpty {
                 HStack {
                     Spacer()
-                    SpinnerView(size: 12, lineWidth: 2, color: .retraceSecondary)
+                    SpinnerView(size: 12, lineWidth: 2, color: .retraceInk2)
                     Spacer()
                 }
                 .padding(.vertical, 6)
@@ -620,8 +618,8 @@ struct AppUsageListView: View {
             } else if tabs.isEmpty {
                 HStack {
                     Text("No tab data for this site")
-                        .font(.system(size: 10))
-                        .foregroundColor(.retraceSecondary.opacity(0.5))
+                        .font(RetraceFont.font(size: 10, weight: .regular))
+                        .foregroundColor(.retraceMuted)
                         .italic()
                 }
                 .padding(.vertical, 6)
@@ -666,14 +664,14 @@ struct AppUsageListView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(displayTitle)
                         .font(layoutSize.windowNameFont)
-                        .foregroundColor(.retracePrimary.opacity(0.85))
+                        .foregroundColor(.retraceInk)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
                     if let url = tab.browserUrl, !url.isEmpty {
                         Text(url)
-                            .font(.system(size: 10))
-                            .foregroundColor(.retraceSecondary.opacity(0.5))
+                            .font(RetraceFont.font(size: 10, weight: .regular))
+                            .foregroundColor(.retraceInk2)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -683,20 +681,19 @@ struct AppUsageListView: View {
 
                 HStack(spacing: 5) {
                     Text(formatDuration(tab.duration))
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.retraceSecondary.opacity(0.7))
+                        .font(RetraceFont.font(size: 9, weight: .medium))
+                        .foregroundColor(.retraceInk2)
 
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundColor(.retraceSecondary.opacity(isHovered ? 0.7 : 0.32))
+                    RetraceSymbol("chevron.right", size: 8, weight: .semibold)
+                        .foregroundColor(isHovered ? .retraceInk2 : .retraceInk2)
                 }
                 .frame(width: 60, alignment: .trailing)
             }
             .padding(.trailing, layoutSize.horizontalPadding)
             .padding(.vertical, 4)
             .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(isHovered ? Color.white.opacity(0.025) : Color.clear)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isHovered ? Color.retraceSurfaceHover : Color.clear)
             )
             .contentShape(Rectangle())
         }
@@ -724,15 +721,14 @@ struct AppUsageListView: View {
             }
         }) {
             HStack(spacing: 6) {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 11, weight: .medium))
+                RetraceSymbol("plus.circle", size: 11, weight: .medium)
                 Text("Show more")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(RetraceFont.font(size: 11, weight: .medium))
                 Text("(\(min(5, remainingCount)))")
-                    .font(.system(size: 11))
-                    .foregroundColor(.retraceSecondary.opacity(0.6))
+                    .font(RetraceFont.font(size: 11, weight: .regular))
+                    .foregroundColor(.retraceInk2)
             }
-            .foregroundColor(.retraceSecondary.opacity(0.7))
+            .foregroundColor(.retraceInk2)
             .padding(.vertical, 6)
             .padding(.horizontal, 10)
         }
@@ -768,24 +764,23 @@ struct AppUsageListView: View {
             }
         }) {
             HStack(spacing: 6) {
-                Image(systemName: "plus.circle")
-                    .font(.retraceCaption2Medium)
+                RetraceSymbol("plus.circle", size: 12)
                 Text("Load More")
-                    .font(.retraceCaption2Medium)
+                    .font(.retraceCaption2)
                 Text("(\(min(loadMoreIncrement, apps.count - displayedCount)) more)")
                     .font(.retraceCaption2)
-                    .foregroundColor(.retraceSecondary.opacity(0.7))
+                    .foregroundColor(.retraceInk2)
             }
-            .foregroundColor(.retraceSecondary)
+            .foregroundColor(.retraceInk2)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isHoveringLoadMore ? Color.white.opacity(0.08) : Color.white.opacity(0.04))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isHoveringLoadMore ? Color.retraceSurfaceHover : Color.retraceSurface)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -807,9 +802,8 @@ struct AppUsageListView: View {
 
         return HStack(spacing: layoutSize.rowSpacing) {
             // Expand/collapse chevron
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.retraceSecondary.opacity(0.6))
+            RetraceSymbol("chevron.right", size: 10, weight: .semibold)
+                .foregroundColor(.retraceInk2)
                 .frame(width: 12)
                 .rotationEffect(.degrees(isExpanded ? 90 : 0))
                 .animation(.easeInOut(duration: 0.2), value: isExpanded)
@@ -821,12 +815,12 @@ struct AppUsageListView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(app.appName)
                     .font(layoutSize.appNameFont)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
 
                 Text(app.uniqueItemLabel)
                     .font(layoutSize.sessionFont)
-                    .foregroundColor(.retraceSecondary)
+                    .foregroundColor(.retraceInk2)
             }
 
             Spacer()
@@ -835,18 +829,12 @@ struct AppUsageListView: View {
             GeometryReader { geometry in
                 ZStack(alignment: .trailing) {
                     // Background
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.white.opacity(0.05))
+                    Capsule(style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
 
                     // Progress
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(
-                            LinearGradient(
-                                colors: [appColor.opacity(0.8), appColor.opacity(0.4)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
+                    Capsule(style: .continuous)
+                        .fill(appColor.opacity(0.6))
                         .frame(width: max(geometry.size.width * app.percentage, 8))
                 }
             }
@@ -856,19 +844,19 @@ struct AppUsageListView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(formatDuration(app.duration))
                     .font(layoutSize.durationFont)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 Text(String(format: "%.1f%%", app.percentage * 100))
                     .font(layoutSize.percentageFont)
-                    .foregroundColor(.retraceSecondary)
+                    .foregroundColor(.retraceInk2)
             }
             .frame(width: layoutSize.durationWidth, alignment: .trailing)
         }
         .padding(.horizontal, layoutSize.horizontalPadding)
         .padding(.vertical, layoutSize.verticalPadding)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(isHovered || isExpanded ? Color.white.opacity(0.05) : Color.clear)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(isHovered || isExpanded ? Color.retraceSurfaceHover : Color.clear)
         )
         .scaleEffect(isHovered ? 1.01 : 1.0)
         .animation(.easeInOut(duration: 0.15), value: isHovered)
@@ -959,46 +947,44 @@ struct AppUsageListView: View {
     private var totalRow: some View {
         HStack(spacing: 12) {
             // Clock icon instead of rank
-            Image(systemName: "clock.fill")
-                .font(.system(size: 14))
-                .foregroundColor(.retraceSecondary)
+            RetraceSymbol("clock.fill", size: 14)
+                .foregroundColor(.retraceInk2)
                 .frame(width: 20)
 
             // Total icon placeholder (same size as app icons)
             ZStack {
                 Circle()
-                    .fill(Color.white.opacity(0.1))
+                    .fill(Color.retraceSurfaceSunken)
                     .frame(width: 32, height: 32)
-                Image(systemName: "sum")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.retraceSecondary)
+                RetraceSymbol("sum", size: 14, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             }
 
             // Label
             VStack(alignment: .leading, spacing: 2) {
                 Text("Total Screen Time")
-                    .font(.retraceCalloutMedium)
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceCallout)
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
 
                 Text("Selected range")
-                    .font(.retraceCaption2)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
             }
 
             Spacer()
 
             // Total duration
             Text(formatDuration(totalTime))
-                .font(.retraceCalloutBold)
-                .foregroundColor(.retracePrimary)
+                .font(RetraceFont.mono(size: 13.5, weight: .medium))
+                .foregroundColor(.retraceInk)
                 .frame(width: 70, alignment: .trailing)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.03))
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurfaceSunken)
         )
         .padding(.top, 8)
     }

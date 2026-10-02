@@ -7,7 +7,7 @@ enum CommentContextPreviewStyle {
     static let cardPadding: CGFloat = 14
     static let sectionSpacing: CGFloat = 14
     static let metadataRowMinHeight: CGFloat = 16
-    static let sectionCornerRadius: CGFloat = 14
+    static let sectionCornerRadius: CGFloat = .radiusMd
     static let collapsedColumnWidth: CGFloat = 164
     static let collapseButtonSize: CGFloat = 24
     static let collapseButtonHitArea: CGFloat = 34
@@ -46,13 +46,8 @@ private struct CommentContextPreviewCollapseButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: isCollapsed ? "chevron.down" : "chevron.up")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(
-                    isHovering
-                    ? Color.retracePrimary.opacity(0.98)
-                    : Color.retraceSecondary.opacity(0.92)
-                )
+            RetraceSymbol(isCollapsed ? "chevron.down" : "chevron.up", size: 10, weight: .semibold)
+                .foregroundColor(isHovering ? .retraceInk : .retraceInk2)
                 .frame(
                     width: CommentContextPreviewStyle.collapseButtonSize,
                     height: CommentContextPreviewStyle.collapseButtonSize
@@ -64,6 +59,7 @@ private struct CommentContextPreviewCollapseButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(isCollapsed ? "Expand context preview" : "Collapse context preview")
         .onHover { hovering in
             isHovering = hovering
             if hovering { NSCursor.pointingHand.push() }
@@ -209,8 +205,8 @@ struct CommentContextPreviewCard<TagsContent: View, FooterContent: View>: View {
         HStack(alignment: .top, spacing: CommentContextPreviewStyle.sectionSpacing) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Context Preview")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.retracePrimary.opacity(0.96))
+                    .font(.retraceLabel)
+                    .foregroundColor(.retraceInk)
                     .lineLimit(2)
                     .padding(.leading, 4)
 
@@ -241,8 +237,8 @@ struct CommentContextPreviewCard<TagsContent: View, FooterContent: View>: View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Context Preview")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.retracePrimary.opacity(0.96))
+                    .font(.retraceLabel)
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
 
                 timestampLabel
@@ -292,14 +288,14 @@ struct CommentContextPreviewCard<TagsContent: View, FooterContent: View>: View {
 
     private var timestampLabel: some View {
         HStack(alignment: .center, spacing: 8) {
-            Image(systemName: "clock")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.retraceSecondary.opacity(0.88))
+            RetraceSymbol("clock", size: 10, weight: .semibold)
+                .foregroundColor(.retraceInk2)
                 .frame(width: 14)
 
             Text(CommentContextPreviewFormatters.dateFormatter.string(from: timestamp))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.retraceSecondary.opacity(0.92))
+                .font(.retraceMonoSmall)
+                .monospacedDigit()
+                .foregroundColor(.retraceInk2)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
@@ -309,8 +305,8 @@ struct CommentContextPreviewCard<TagsContent: View, FooterContent: View>: View {
     private func previewTextStack(titleLineLimit: Int, showsSubtitle: Bool) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.retracePrimary.opacity(0.97))
+                .font(.retraceCalloutBold)
+                .foregroundColor(.retraceInk)
                 .lineLimit(titleLineLimit)
                 .truncationMode(.tail)
                 .multilineTextAlignment(.leading)
@@ -321,8 +317,8 @@ struct CommentContextPreviewCard<TagsContent: View, FooterContent: View>: View {
                let subtitle,
                subtitle != title {
                 Text(subtitle)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.retraceSecondary.opacity(0.92))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -337,17 +333,16 @@ struct CommentContextPreviewCard<TagsContent: View, FooterContent: View>: View {
             AppIconView(bundleID: appBundleID, size: 34)
                 .frame(width: 34, height: 34)
         } else {
-            Image(systemName: "macwindow")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.retracePrimary.opacity(0.9))
+            RetraceSymbol("macwindow", size: 14, weight: .semibold)
+                .foregroundColor(.retraceInk)
                 .frame(width: 34, height: 34)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.06))
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceSurface)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
         }
     }
@@ -355,17 +350,8 @@ struct CommentContextPreviewCard<TagsContent: View, FooterContent: View>: View {
     @ViewBuilder
     private var previewSurface: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 14)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.white.opacity(0.08),
-                            Color.white.opacity(0.03)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
 
             if let previewImage {
                 Image(nsImage: previewImage)
@@ -377,16 +363,15 @@ struct CommentContextPreviewCard<TagsContent: View, FooterContent: View>: View {
             } else if isPreviewLoading {
                 ProgressView()
                     .controlSize(.small)
-                    .tint(.white.opacity(0.9))
+                    .tint(.retraceInk2)
             } else {
                 VStack(spacing: 7) {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.86))
+                    RetraceSymbol("photo.on.rectangle.angled", size: 18, weight: .semibold)
+                        .foregroundColor(.retraceMuted)
 
                     Text(title)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.88))
+                        .font(.retraceCaptionBold)
+                        .foregroundColor(.retraceInk2)
                         .lineLimit(2)
                         .truncationMode(.tail)
                         .multilineTextAlignment(.center)
@@ -395,10 +380,10 @@ struct CommentContextPreviewCard<TagsContent: View, FooterContent: View>: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 }
@@ -438,36 +423,36 @@ struct CommentContextPreviewLoadingCard: View {
         HStack(alignment: .top, spacing: CommentContextPreviewStyle.sectionSpacing) {
             VStack(alignment: .leading, spacing: 10) {
                 Text(title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.retracePrimary.opacity(0.96))
+                    .font(.retraceLabel)
+                    .foregroundColor(.retraceInk)
                     .padding(.leading, 4)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.white.opacity(0.11))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurfaceHover)
                         .frame(width: 184, height: 14)
 
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.white.opacity(0.08))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurfaceHover)
                         .frame(width: 108, height: 11)
                 }
                 .padding(.top, 2)
 
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.white.opacity(0.07))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(Color.retraceSurfaceHover)
                     .frame(height: CommentContextPreviewStyle.metadataRowMinHeight)
 
                 Text(detail)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.retraceSecondary.opacity(0.86))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer(minLength: 0)
 
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.white.opacity(0.07))
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
                 .frame(
                     width: CommentContextPreviewStyle.previewWidth,
                     height: CommentContextPreviewStyle.previewHeight
@@ -477,8 +462,8 @@ struct CommentContextPreviewLoadingCard: View {
                         ProgressView()
                             .controlSize(.small)
                         Text("Loading preview")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.retraceSecondary.opacity(0.88))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                     }
                 )
                 .padding(.trailing, onToggleCollapsed == nil ? 0 : CommentContextPreviewStyle.expandedPreviewTrailingInset)
@@ -489,16 +474,16 @@ struct CommentContextPreviewLoadingCard: View {
         HStack(alignment: .center, spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Context Preview")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.retracePrimary.opacity(0.96))
+                    .font(.retraceLabel)
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
 
                 HStack(alignment: .center, spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
                     Text(title)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.retraceSecondary.opacity(0.88))
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
@@ -508,22 +493,21 @@ struct CommentContextPreviewLoadingCard: View {
                 alignment: .leading
             )
 
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(0.07))
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
                 .frame(width: 34, height: 34)
                 .overlay(
-                    Image(systemName: "macwindow")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.retracePrimary.opacity(0.78))
+                    RetraceSymbol("macwindow", size: 13, weight: .semibold)
+                        .foregroundColor(.retraceInk2)
                 )
 
             VStack(alignment: .leading, spacing: 7) {
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.white.opacity(0.11))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(Color.retraceSurfaceHover)
                     .frame(width: 124, height: 14)
 
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.white.opacity(0.08))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(Color.retraceSurfaceHover)
                     .frame(width: 86, height: 11)
             }
             .padding(.trailing, onToggleCollapsed == nil ? 0 : CommentContextPreviewStyle.collapseButtonInset)

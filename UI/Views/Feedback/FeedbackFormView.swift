@@ -436,36 +436,7 @@ public struct FeedbackFormView: View {
     // MARK: - Background
 
     private var backgroundView: some View {
-        ZStack {
-            Color.retraceBackground
-
-            // Subtle gradient orbs for depth
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [Color.retraceAccent.opacity(0.08), Color.clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 200
-                    )
-                )
-                .frame(width: 400, height: 400)
-                .offset(x: -150, y: -200)
-                .blur(radius: 50)
-
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [Color(red: 139/255, green: 92/255, blue: 246/255).opacity(0.06), Color.clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 150
-                    )
-                )
-                .frame(width: 300, height: 300)
-                .offset(x: 180, y: 200)
-                .blur(radius: 40)
-        }
+        Color.retracePage
     }
 
     // MARK: - Form View
@@ -534,19 +505,12 @@ public struct FeedbackFormView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 6)
                 .padding(.bottom, 20)
-                .background(Color.retraceBackground)
+                .background(Color.retracePage)
                 .overlay(alignment: .top) {
-                    LinearGradient(
-                        colors: [
-                            Color.black.opacity(0.22),
-                            Color.black.opacity(0.08),
-                            Color.clear
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 14)
-                    .allowsHitTesting(false)
+                    Rectangle()
+                        .fill(Color.retraceBorder)
+                        .frame(height: 1)
+                        .allowsHitTesting(false)
                 }
             .background(
                 GeometryReader { geometry in
@@ -576,36 +540,41 @@ public struct FeedbackFormView: View {
             HStack(spacing: 10) {
                 ZStack {
                     Circle()
-                        .fill(LinearGradient.retraceAccentGradient.opacity(0.2))
+                        .fill(Color.retraceAccentWash)
                         .frame(width: 36, height: 36)
 
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(LinearGradient.retraceAccentGradient)
+                    RetraceSymbol("bubble.left.and.bubble.right.fill", size: 14, weight: .semibold)
+                        .foregroundColor(.retraceAccent)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Share Feedback")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.retracePrimary)
+                        .font(.retraceTitle2)
+                        .foregroundColor(.retraceInk)
 
                     Text("Help us improve Retrace")
-                        .font(.system(size: 11))
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 }
             }
 
             Spacer()
 
             Button(action: { dismiss() }) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.retraceSecondary)
+                RetraceSymbol("xmark", size: 10, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
                     .frame(width: 24, height: 24)
-                    .background(Color.white.opacity(0.05))
-                    .cornerRadius(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(Color.retraceSurfaceSunken)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .stroke(Color.retraceBorderStrong, lineWidth: 1)
+                    )
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Close")
         }
     }
 
@@ -614,8 +583,9 @@ public struct FeedbackFormView: View {
     private var feedbackTypeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Type")
-                .font(.retraceCaptionBold)
-                .foregroundColor(.retracePrimary)
+                .font(.retraceLabel)
+                .retraceLabelTracking()
+                .foregroundColor(.retraceInk2)
 
             HStack(spacing: 8) {
                 ForEach(FeedbackType.allCases) { type in
@@ -630,24 +600,26 @@ public struct FeedbackFormView: View {
 
         return Button(action: { viewModel.setFeedbackType(type) }) {
             HStack(spacing: 5) {
-                Image(systemName: type.icon)
-                    .font(.system(size: 11, weight: .medium))
+                RetraceSymbol(type.icon, size: 11, weight: .medium)
                 Text(type.shortLabel)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.retraceCaption)
                     .lineLimit(1)
             }
-            .foregroundColor(isSelected ? .retracePrimary : .retraceSecondary)
+            .foregroundColor(isSelected ? .retraceInk : .retraceInk2)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity)
-            .background(isSelected ? Color.retraceAccent.opacity(0.15) : Color.white.opacity(0.03))
-            .cornerRadius(8)
+            .background(
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isSelected ? Color.retraceAccentWash : Color.retraceSurface)
+            )
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.retraceAccent.opacity(0.5) : Color.white.opacity(0.06), lineWidth: 1)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .stroke(isSelected ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     // MARK: - Email Section
@@ -655,34 +627,38 @@ public struct FeedbackFormView: View {
     private var emailSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Email")
-                .font(.retraceCaptionBold)
-                .foregroundColor(.retracePrimary)
+                .font(.retraceLabel)
+                .retraceLabelTracking()
+                .foregroundColor(.retraceInk2)
 
             TextField("your@email.com", text: $viewModel.email)
-                .font(.retraceCaption)
-                .foregroundColor(.retracePrimary)
+                .font(.retraceCallout)
+                .foregroundColor(.retraceInk)
                 .textFieldStyle(.plain)
                 .focused($focusedField, equals: .email)
                 .onTapGesture {
                     keyboardFocusTarget = .email
                 }
-                .padding(10)
-                .background(Color.white.opacity(0.03))
-                .cornerRadius(8)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurface)
+                )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                         .stroke(
                             viewModel.showEmailError
-                                ? Color.retraceDanger.opacity(0.5)
-                                : (keyboardFocusTarget == .email ? Color.retraceAccent.opacity(0.7) : Color.white.opacity(0.06)),
-                            lineWidth: 1
+                                ? Color.retraceCritical
+                                : (keyboardFocusTarget == .email ? Color.retraceAccent : Color.retraceBorderStrong),
+                            lineWidth: (keyboardFocusTarget == .email && !viewModel.showEmailError) ? 2 : 1
                         )
                 )
 
             if viewModel.showEmailError {
                 Text("Please enter a valid email address")
-                    .font(.system(size: 10))
-                    .foregroundColor(.retraceDanger)
+                    .font(.retraceCaption)
+                    .foregroundColor(.retraceCritical)
             }
         }
     }
@@ -692,35 +668,38 @@ public struct FeedbackFormView: View {
     private var descriptionSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Description")
-                .font(.retraceCaptionBold)
-                .foregroundColor(.retracePrimary)
+                .font(.retraceLabel)
+                .retraceLabelTracking()
+                .foregroundColor(.retraceInk2)
 
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $viewModel.description)
-                    .font(.retraceCaption)
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceCallout)
+                    .foregroundColor(.retraceInk)
                     .scrollContentBackground(.hidden)
                     .focused($focusedField, equals: .description)
                     .onTapGesture {
                         keyboardFocusTarget = .description
                     }
                     .padding(10)
-                    .background(Color.white.opacity(0.03))
-                    .cornerRadius(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(Color.retraceSurface)
+                    )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                             .stroke(
                                 keyboardFocusTarget == .description
-                                    ? Color.retraceAccent.opacity(0.7)
-                                    : Color.white.opacity(0.06),
-                                lineWidth: 1
+                                    ? Color.retraceAccent
+                                    : Color.retraceBorderStrong,
+                                lineWidth: keyboardFocusTarget == .description ? 2 : 1
                             )
                     )
 
                 if viewModel.description.isEmpty {
                     Text(viewModel.feedbackType.placeholder)
-                        .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary.opacity(0.5))
+                        .font(.retraceCallout)
+                        .foregroundColor(.retraceMuted)
                         .padding(14)
                         .allowsHitTesting(false)
                 }
@@ -735,12 +714,11 @@ public struct FeedbackFormView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 HStack(spacing: 6) {
-                    Image(systemName: "doc.text.magnifyingglass")
-                        .font(.retraceCaption2Medium)
-                        .foregroundColor(.retraceSecondary)
+                    RetraceSymbol("doc.text.magnifyingglass", size: 12, weight: .medium)
+                        .foregroundColor(.retraceInk2)
                     Text("What's Included")
                         .font(.retraceCaptionBold)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                 }
 
                 Spacer()
@@ -752,23 +730,20 @@ public struct FeedbackFormView: View {
                     HStack(spacing: 4) {
                         Text(viewModel.showDiagnosticsDetail ? "Hide" : "Details")
                             .font(.retraceCaption2Medium)
-                        Image(systemName: viewModel.showDiagnosticsDetail ? "chevron.up" : "chevron.down")
-                            .font(.retraceTinyBold)
+                        RetraceSymbol(viewModel.showDiagnosticsDetail ? "chevron.up" : "chevron.down", size: 11, weight: .semibold)
                     }
-                    .foregroundStyle(LinearGradient.retraceAccentGradient)
+                    .foregroundColor(keyboardFocusTarget == .details ? .retraceInk : .retraceAccent)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(
-                        keyboardFocusTarget == .details
-                            ? Color.retraceAccent.opacity(0.12)
-                            : Color.clear
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(keyboardFocusTarget == .details ? Color.retraceAccentWash : Color.clear)
                     )
-                    .cornerRadius(6)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                             .stroke(
                                 keyboardFocusTarget == .details
-                                    ? Color.retraceAccent.opacity(0.6)
+                                    ? Color.retraceAccent
                                     : Color.clear,
                                 lineWidth: 1
                             )
@@ -791,33 +766,33 @@ public struct FeedbackFormView: View {
 
             if viewModel.includesLogsInDiagnostics {
                 Text("Bug reports include recent logs plus a hierarchical Retrace memory summary from the system monitor sampler.")
-                    .font(.system(size: 10))
-                    .foregroundColor(.retraceSecondary.opacity(0.72))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             } else if viewModel.hasSelectedDiagnosticSections {
                 Text("Optional diagnostics are selected for this message. Expand details to exclude anything you don't want to share.")
-                    .font(.system(size: 10))
-                    .foregroundColor(.retraceSecondary.opacity(0.72))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             } else {
                 Text("Feature requests and questions send only your written message and any screenshot by default. Expand details to opt in to diagnostics.")
-                    .font(.system(size: 10))
-                    .foregroundColor(.retraceSecondary.opacity(0.72))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
 
             // Expanded details (lazy loaded)
             if viewModel.showDiagnosticsDetail {
                 Divider()
-                    .background(Color.white.opacity(0.06))
+                    .background(Color.retraceBorder)
 
                 if viewModel.diagnostics != nil {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Uncheck any section you don't want included with this report.")
-                            .font(.system(size: 10))
-                            .foregroundColor(.retraceSecondary.opacity(0.72))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
 
                         if viewModel.excludedDiagnosticSectionCount > 0 {
                             Text("\(viewModel.excludedDiagnosticSectionCount) section\(viewModel.excludedDiagnosticSectionCount == 1 ? "" : "s") currently excluded")
                                 .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary.opacity(0.58))
+                                .foregroundColor(.retraceMuted)
                         }
 
                         ScrollView(showsIndicators: true) {
@@ -831,9 +806,8 @@ public struct FeedbackFormView: View {
                         }
                         .scrollDisabled(!isDiagnosticsScrollEnabled)
                         .frame(height: 280)
-                        .background(Color.black.opacity(0.2))
-                        .cornerRadius(6)
-                        .clipped()
+                        .background(Color.retraceSurfaceSunken)
+                        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         .onHover { hovering in
                             scrollLatch.updateHoveredTarget(.details, isHovering: hovering)
                         }
@@ -841,7 +815,7 @@ public struct FeedbackFormView: View {
                         if !viewModel.hasSelectedDiagnosticSections {
                             Text("No diagnostics will be attached beyond your written description and any screenshot you add.")
                                 .font(.retraceCaption2)
-                                .foregroundColor(.retraceSecondary.opacity(0.58))
+                                .foregroundColor(.retraceMuted)
                         }
                     }
                 } else {
@@ -849,7 +823,7 @@ public struct FeedbackFormView: View {
                         SpinnerView(size: 16, lineWidth: 2)
                         Text("Loading diagnostics...")
                             .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary)
+                            .foregroundColor(.retraceInk2)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
@@ -858,22 +832,24 @@ public struct FeedbackFormView: View {
         }
         .animation(.easeOut(duration: 0.16), value: viewModel.showDiagnosticsDetail)
         .padding(12)
-        .background(Color.white.opacity(0.03))
-        .cornerRadius(10)
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
+        )
+        .retraceElevation(.sm)
     }
 
     private func diagnosticChip(icon: String, text: String) -> some View {
         HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 9))
+            RetraceSymbol(icon, size: 10)
             Text(text)
-                .font(.system(size: 10, weight: .medium))
+                .font(.retraceTiny)
         }
-        .foregroundColor(.retraceSecondary)
+        .foregroundColor(.retraceInk2)
     }
 
     private func diagnosticSectionCard(_ section: DiagnosticInfo.SectionSummary) -> some View {
@@ -886,85 +862,81 @@ public struct FeedbackFormView: View {
                 viewModel.toggleDiagnosticSection(section.id)
             }) {
                 HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: isIncluded ? "checkmark.square.fill" : "square")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(isIncluded ? .retraceAccent : .retraceSecondary.opacity(0.75))
+                    RetraceSymbol(isIncluded ? "checkmark.square.fill" : "square", size: 14, weight: .semibold)
+                        .foregroundColor(isIncluded ? .retraceAccent : .retraceInk2)
 
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 8) {
                             Text(section.title)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.retracePrimary)
+                                .font(.retraceCaptionBold)
+                                .foregroundColor(.retraceInk)
 
                             if let countSummary = section.countSummary {
                                 Text(countSummary)
-                                    .font(.system(size: 9, weight: .medium))
-                                    .foregroundColor(.retraceSecondary.opacity(0.82))
+                                    .font(.retraceMonoSmall)
+                                    .foregroundColor(.retraceInk2)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
-                                    .background(Color.white.opacity(0.05))
-                                    .cornerRadius(999)
+                                    .background(Capsule(style: .continuous).fill(Color.retraceSurfaceSunken))
                             }
                         }
 
                         Text(section.reason)
-                            .font(.system(size: 10))
-                            .foregroundColor(.retraceSecondary.opacity(0.74))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceMuted)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Spacer(minLength: 8)
 
                     Text(isIncluded ? "Included" : "Excluded")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(isIncluded ? .retraceAccent : .retraceSecondary.opacity(0.72))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
+                        .font(.retraceLabel)
+                        .foregroundColor(isIncluded ? .retraceInk : .retraceInk2)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
                         .background(
-                            (isIncluded ? Color.retraceAccent.opacity(0.14) : Color.white.opacity(0.04))
+                            Capsule(style: .continuous)
+                                .fill(isIncluded ? Color.retraceAccentWash : Color.retraceSurfaceSunken)
                         )
-                        .cornerRadius(999)
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityAddTraits(isIncluded ? .isSelected : [])
+            .accessibilityValue(isIncluded ? "Included" : "Excluded")
 
             Text(section.preview)
                 .font(.retraceMonoSmall)
                 .foregroundColor(
                     isIncluded
-                        ? .retraceSecondary
-                        : .retraceSecondary.opacity(0.58)
+                        ? .retraceInk
+                        : .retraceInk2
                 )
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(10)
                 .background(
-                    isIncluded
-                        ? Color.black.opacity(0.16)
-                        : Color.black.opacity(0.1)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurfaceSunken)
                 )
-                .cornerRadius(6)
 
             if let previewDisclosure = section.previewDisclosure {
                 Text(previewDisclosure)
-                    .font(.system(size: 9))
-                    .foregroundColor(.retraceSecondary.opacity(0.58))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
         }
         .padding(10)
         .background(
-            isIncluded
-                ? Color.white.opacity(0.035)
-                : Color.white.opacity(0.015)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .fill(Color.retraceSurface)
         )
-        .cornerRadius(8)
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                 .stroke(
                     isFocused
-                        ? Color.retraceAccent.opacity(0.64)
-                        : Color.white.opacity(isIncluded ? 0.08 : 0.04),
-                    lineWidth: 1
+                        ? Color.retraceAccent
+                        : (isIncluded ? Color.retraceBorderStrong : Color.retraceBorder),
+                    lineWidth: isFocused ? 2 : 1
                 )
         )
     }
@@ -982,38 +954,40 @@ public struct FeedbackFormView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(height: 50)
-                        .cornerRadius(6)
+                        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .stroke(Color.retraceBorder, lineWidth: 1)
                         )
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Image attached")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.retracePrimary)
+                            .font(.retraceCaption)
+                            .foregroundColor(.retraceInk)
                         if let data = viewModel.attachedImageData {
                             Text("\(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))")
-                                .font(.system(size: 10))
-                                .foregroundColor(.retraceSecondary)
+                                .font(.retraceMonoSmall)
+                                .foregroundColor(.retraceMuted)
                         }
                     }
 
                     Spacer()
 
                     Button(action: { viewModel.removeAttachedImage() }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(.retraceSecondary)
+                        RetraceSymbol("xmark.circle.fill", size: 16)
+                            .foregroundColor(.retraceInk2)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Remove image")
                 }
                 .padding(10)
-                .background(Color.white.opacity(0.03))
-                .cornerRadius(8)
+                .background(
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurface)
+                )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.retraceAccent.opacity(0.3), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
             } else {
                 // Drop zone / select button
@@ -1022,24 +996,25 @@ public struct FeedbackFormView: View {
                     viewModel.selectImageFromFinder()
                 }) {
                     HStack(spacing: 8) {
-                        Image(systemName: "photo.badge.plus")
-                            .font(.system(size: 12))
-                            .foregroundColor(.retraceSecondary)
+                        RetraceSymbol("photo.badge.plus", size: 12)
+                            .foregroundColor(.retraceInk2)
                         Text("Attach image")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.retraceSecondary)
+                            .font(.retraceCaption)
+                            .foregroundColor(.retraceInk2)
                         Spacer()
                         Text("Drop or click")
-                            .font(.system(size: 10))
-                            .foregroundColor(.retraceSecondary.opacity(0.6))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceInk2)
                     }
                     .padding(10)
-                    .background(isDropTargeted ? Color.retraceAccent.opacity(0.1) : Color.white.opacity(0.03))
-                    .cornerRadius(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(isDropTargeted ? Color.retraceAccentWash : Color.retraceSurfaceSunken)
+                    )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                             .stroke(
-                                isDropTargeted ? Color.retraceAccent.opacity(0.5) : Color.white.opacity(0.06),
+                                isDropTargeted ? Color.retraceAccent : Color.retraceBorderStrong,
                                 style: StrokeStyle(lineWidth: 1, dash: isDropTargeted ? [] : [4])
                             )
                     )
@@ -1051,12 +1026,12 @@ public struct FeedbackFormView: View {
             }
         }
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                 .stroke(
                     keyboardFocusTarget == .attachScreenshot
-                        ? Color.retraceAccent.opacity(0.6)
+                        ? Color.retraceAccent
                         : Color.clear,
-                    lineWidth: 1
+                    lineWidth: 2
                 )
         )
     }
@@ -1096,20 +1071,21 @@ public struct FeedbackFormView: View {
 
     private func errorBanner(_ message: String) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.retraceCallout)
-                .foregroundColor(.retraceDanger)
+            RetraceSymbol("exclamationmark.triangle.fill", size: 14)
+                .foregroundColor(.retraceCritical)
             Text(message)
-                .font(.retraceCaptionMedium)
-                .foregroundColor(.retraceDanger)
+                .font(.retraceCaption)
+                .foregroundColor(.retraceCritical)
             Spacer()
         }
         .padding(14)
-        .background(Color.retraceDanger.opacity(0.1))
-        .cornerRadius(12)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceCriticalBg)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.retraceDanger.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceCritical.opacity(0.4), lineWidth: 1)
         )
     }
 
@@ -1119,15 +1095,17 @@ public struct FeedbackFormView: View {
         HStack(spacing: 12) {
             Button(action: { dismiss() }) {
                 Text("Cancel")
-                    .font(.retraceCalloutMedium)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceCallout)
+                    .foregroundColor(.retraceInk)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .background(Color.white.opacity(0.05))
-                    .cornerRadius(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .fill(Color.retraceSurface)
+                    )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .stroke(Color.retraceBorderStrong, lineWidth: 1)
                     )
             }
             .buttonStyle(.plain)
@@ -1139,20 +1117,21 @@ public struct FeedbackFormView: View {
             }) {
                 Text("Send Feedback")
                     .font(.retraceCalloutBold)
-                .foregroundColor(.white)
+                .foregroundColor(.retraceOnAccent)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
-                .background(viewModel.canSubmit ? Color.retraceAccent : Color.retraceAccent.opacity(0.4))
-                .cornerRadius(10)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(
-                            keyboardFocusTarget == .submit
-                                ? Color.white.opacity(0.85)
-                                : Color.clear,
-                            lineWidth: 1
-                        )
+                .background(
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceAccent)
                 )
+                .overlay(
+                    RoundedRectangle(cornerRadius: CGFloat.radiusMd + 2, style: .continuous)
+                        .stroke(Color.retraceAccent, lineWidth: 2)
+                        .padding(-4)
+                        .opacity(keyboardFocusTarget == .submit ? 1 : 0)
+                        .allowsHitTesting(false)
+                )
+                .opacity(viewModel.canSubmit ? 1 : 0.5)
             }
             .buttonStyle(.plain)
             .disabled(!viewModel.canSubmit)
@@ -1162,21 +1141,20 @@ public struct FeedbackFormView: View {
 
     private var offlineExportCard: some View {
         HStack(alignment: .center, spacing: 12) {
-            Image(systemName: "arrow.down.doc")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(LinearGradient.retraceAccentGradient)
+            RetraceSymbol("arrow.down.doc", size: 14, weight: .semibold)
+                .foregroundColor(.retraceAccent)
                 .frame(width: 30, height: 30)
-                .background(Color.retraceAccent.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .background(Color.retraceAccentWash)
+                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Need to send it manually?")
                     .font(.retraceCaptionBold)
-                    .foregroundColor(.retracePrimary)
+                    .foregroundColor(.retraceInk)
 
                 Text("Download the report as a .json.gz file and email it to support@retrace.to. If you attached an image, Retrace saves it next to the gzipped JSON file.")
-                    .font(.system(size: 10))
-                    .foregroundColor(.retraceSecondary.opacity(0.78))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -1188,36 +1166,44 @@ public struct FeedbackFormView: View {
             }) {
                 HStack(spacing: 6) {
                     if viewModel.isExporting {
-                        SpinnerView(size: 12, lineWidth: 2, color: .white)
+                        SpinnerView(size: 12, lineWidth: 2, color: .retraceInk2)
                     }
                     Text(viewModel.isExporting ? "Preparing..." : "Download .json.gz")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.retraceCaptionBold)
                 }
-                .foregroundColor(.white)
+                .foregroundColor(.retraceInk)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
-                .background(viewModel.canExport ? Color.retraceAccent : Color.retraceAccent.opacity(0.4))
-                .cornerRadius(9)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 9)
-                        .stroke(
-                            keyboardFocusTarget == .downloadReport
-                                ? Color.white.opacity(0.85)
-                                : Color.clear,
-                            lineWidth: 1
-                        )
+                .background(
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurface)
                 )
+                .overlay(
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceBorderStrong, lineWidth: 1)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: CGFloat.radiusSm + 2, style: .continuous)
+                        .stroke(Color.retraceAccent, lineWidth: 2)
+                        .padding(-4)
+                        .opacity(keyboardFocusTarget == .downloadReport ? 1 : 0)
+                        .allowsHitTesting(false)
+                )
+                .opacity(viewModel.canExport ? 1 : 0.5)
             }
             .buttonStyle(.plain)
             .disabled(!viewModel.canExport)
         }
         .padding(12)
-        .background(Color.white.opacity(0.04))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurface)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
+        )
+        .retraceElevation(.sm)
     }
 
     // MARK: - Submitting View
@@ -1230,8 +1216,8 @@ public struct FeedbackFormView: View {
 
             VStack(spacing: 8) {
                 Text("Sending feedback")
-                    .font(.retraceMediumNumber)
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceTitle2)
+                    .foregroundColor(.retraceInk)
                     .multilineTextAlignment(.center)
 
                 Group {
@@ -1239,8 +1225,8 @@ public struct FeedbackFormView: View {
                         .id(viewModel.submissionStage)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-                .font(.retraceBodyMedium)
-                .foregroundColor(.retraceSecondary)
+                .font(.retraceBody)
+                .foregroundColor(.retraceInk2)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 300)
             }
@@ -1250,8 +1236,8 @@ public struct FeedbackFormView: View {
             Spacer()
 
             Text("Please keep this window open while we finish the upload.")
-                .font(.retraceCaptionMedium)
-                .foregroundColor(.retraceSecondary.opacity(0.78))
+                .font(.retraceMeta)
+                .foregroundColor(.retraceMuted)
         }
         .padding(.vertical, 28)
         .padding(.horizontal, 56)
@@ -1263,28 +1249,22 @@ public struct FeedbackFormView: View {
 
             ZStack {
                 Circle()
-                    .fill(Color.retraceDanger.opacity(0.16))
-                    .frame(width: 110, height: 110)
-                    .blur(radius: 18)
-
-                Circle()
-                    .fill(Color.retraceDanger.opacity(0.12))
+                    .fill(Color.retraceCriticalBg)
                     .frame(width: 84, height: 84)
 
-                Image(systemName: viewModel.submissionFailureSymbolName)
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundColor(.retraceDanger)
+                RetraceSymbol(viewModel.submissionFailureSymbolName, size: 28, weight: .semibold)
+                    .foregroundColor(.retraceCritical)
             }
 
             VStack(spacing: 8) {
                 Text(viewModel.submissionFailureTitle)
-                    .font(.retraceMediumNumber)
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceTitle2)
+                    .foregroundColor(.retraceInk)
                     .multilineTextAlignment(.center)
 
                 Text(viewModel.submissionFailureDetail)
-                    .font(.retraceBodyMedium)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceBody)
+                    .foregroundColor(.retraceInk2)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 330)
             }
@@ -1293,16 +1273,19 @@ public struct FeedbackFormView: View {
                 Button(action: { Task { await viewModel.exportFeedbackReport() } }) {
                     HStack(spacing: 8) {
                         if viewModel.isExporting {
-                            SpinnerView(size: 14, lineWidth: 2, color: .white)
+                            SpinnerView(size: 14, lineWidth: 2, color: .retraceOnAccent)
                         }
                         Text(viewModel.isExporting ? "Preparing..." : "Download .json.gz")
                             .font(.retraceCalloutBold)
                     }
-                    .foregroundColor(.white)
+                    .foregroundColor(.retraceOnAccent)
                     .frame(maxWidth: 220)
                     .padding(.vertical, 12)
-                    .background(viewModel.canExport ? Color.retraceAccent : Color.retraceAccent.opacity(0.4))
-                    .cornerRadius(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .fill(Color.retraceAccent)
+                    )
+                    .opacity(viewModel.canExport ? 1 : 0.5)
                 }
                 .buttonStyle(.plain)
                 .disabled(!viewModel.canExport)
@@ -1310,15 +1293,17 @@ public struct FeedbackFormView: View {
 
             Button(action: { viewModel.clearSubmissionFailure() }) {
                 Text("Back")
-                    .font(.retraceCalloutMedium)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceCallout)
+                    .foregroundColor(.retraceInk)
                     .frame(maxWidth: 220)
                     .padding(.vertical, 12)
-                    .background(Color.white.opacity(0.05))
-                    .cornerRadius(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .fill(Color.retraceSurface)
+                    )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .stroke(Color.retraceBorderStrong, lineWidth: 1)
                     )
             }
             .buttonStyle(.plain)
@@ -1332,26 +1317,19 @@ public struct FeedbackFormView: View {
     private var submissionProgressOrb: some View {
         ZStack {
             Circle()
-                .fill(Color.retraceAccent.opacity(0.14))
-                .frame(width: 100, height: 100)
-                .blur(radius: sendingPulseExpanded ? 18 : 12)
-                .scaleEffect(sendingPulseExpanded ? 1.06 : 0.94)
-
-            Circle()
-                .stroke(Color.white.opacity(0.08), lineWidth: 8)
+                .stroke(Color.retraceBorder, lineWidth: 8)
                 .frame(width: 88, height: 88)
 
             Circle()
                 .trim(from: 0, to: max(0.06, viewModel.submissionProgress))
                 .stroke(
-                    LinearGradient.retraceAccentGradient,
+                    Color.retraceAccent,
                     style: StrokeStyle(lineWidth: 8, lineCap: .round)
                 )
                 .frame(width: 88, height: 88)
                 .rotationEffect(.degrees(-90))
-                .shadow(color: Color.retraceAccent.opacity(0.42), radius: 14, x: 0, y: 0)
 
-            SpinnerView(size: 20, lineWidth: 2.2, color: .white.opacity(0.92))
+            SpinnerView(size: 20, lineWidth: 2.2, color: .retraceInk2)
         }
         .frame(width: 100, height: 100)
         .padding(.bottom, 6)
@@ -1365,30 +1343,18 @@ public struct FeedbackFormView: View {
 
             ZStack {
                 Circle()
-                    .stroke(Color.retraceSuccess.opacity(0.32), lineWidth: 2)
+                    .stroke(Color.retraceGood, lineWidth: 2)
                     .frame(width: 112, height: 112)
                     .scaleEffect(successBurstScale)
                     .opacity(successBurstOpacity)
 
                 Circle()
-                    .fill(Color.retraceSuccess.opacity(0.15))
-                    .frame(width: 100, height: 100)
-                    .blur(radius: 20)
-
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.retraceSuccess.opacity(0.3), Color.retraceSuccess.opacity(0.1)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(Color.retraceGoodBg)
                     .frame(width: 88, height: 88)
                     .scaleEffect(successIconScale)
 
-                Image(systemName: "checkmark")
-                    .font(.retraceDisplay2)
-                    .foregroundColor(.retraceSuccess)
+                RetraceSymbol("checkmark", size: 36, weight: .semibold)
+                    .foregroundColor(.retraceGood)
                     .scaleEffect(successIconScale)
                     .opacity(successIconOpacity)
             }
@@ -1396,12 +1362,12 @@ public struct FeedbackFormView: View {
 
             VStack(spacing: 8) {
                 Text(viewModel.completionPresentation?.title ?? "Feedback Sent!")
-                    .font(.retraceMediumNumber)
-                    .foregroundColor(.retracePrimary)
+                    .font(.retraceTitle2)
+                    .foregroundColor(.retraceInk)
 
                 Text(viewModel.completionPresentation?.detail ?? "Thanks for helping improve Retrace.")
-                    .font(.retraceBodyMedium)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceBody)
+                    .foregroundColor(.retraceInk2)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 330)
             }
@@ -1420,11 +1386,13 @@ public struct FeedbackFormView: View {
             Button(action: { dismiss() }) {
                 Text("Done")
                     .font(.retraceCalloutBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(.retraceOnAccent)
                     .frame(maxWidth: 200)
                     .padding(.vertical, 12)
-                    .background(Color.retraceAccent)
-                    .cornerRadius(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .fill(Color.retraceAccent)
+                    )
             }
             .buttonStyle(.plain)
             .padding(.bottom, 20)
@@ -1441,25 +1409,26 @@ public struct FeedbackFormView: View {
             VStack(spacing: 14) {
                 if let callToActionTitle = presentation.callToActionTitle {
                     Text(callToActionTitle)
-                        .font(.retraceCaptionMedium)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceCaption)
+                        .foregroundColor(.retraceInk2)
                 }
 
                 Link(destination: linkURL) {
                     HStack(spacing: 8) {
-                        Image(systemName: presentation.linkSymbolName ?? "message.fill")
-                            .font(.retraceCallout)
+                        RetraceSymbol(presentation.linkSymbolName ?? "message.fill", size: 14)
                         Text(linkTitle)
-                            .font(.retraceCalloutMedium)
+                            .font(.retraceCallout)
                     }
-                    .foregroundColor(.white)
+                    .foregroundColor(.retraceInk)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(Color.retraceAccent.opacity(0.3))
-                    .cornerRadius(10)
+                    .background(
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .fill(Color.retraceSurface)
+                    )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.retraceAccent.opacity(0.5), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .stroke(Color.retraceBorderStrong, lineWidth: 1)
                     )
                 }
             }
@@ -1516,7 +1485,6 @@ private struct FeedbackWindowObserver: NSViewRepresentable {
 struct FeedbackFormView_Previews: PreviewProvider {
     static var previews: some View {
         FeedbackFormView()
-            .preferredColorScheme(.dark)
     }
 }
 #endif

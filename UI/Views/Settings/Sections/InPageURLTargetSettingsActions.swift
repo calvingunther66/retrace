@@ -578,18 +578,4 @@ extension SettingsView {
             return "Unavailable (\(status))"
         }
     }
-
-    func inPageURLPermissionColor(for state: InPageURLPermissionState?) -> Color {
-        guard let state else { return .retraceSecondary }
-        switch state {
-        case .granted:
-            return .retraceSuccess
-        case .denied:
-            return .retraceDanger
-        case .needsConsent:
-            return .retraceWarning
-        case .unavailable:
-            return .retraceSecondary
-        }
-    }
 }

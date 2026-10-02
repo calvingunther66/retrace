@@ -100,20 +100,10 @@ struct MiniLineGraphView: View {
                             yAxisGridLines(height: graphHeight)
                         }
 
-                        // Gradient fill under the line (optional)
+                        // Solid wash under the line (optional)
                         if showGradientFill && !dataPoints.isEmpty {
                             fillPath(width: graphWidth, height: graphHeight)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            lineColor.opacity(0.3),
-                                            lineColor.opacity(0.05),
-                                            lineColor.opacity(0.0)
-                                        ],
-                                        startPoint: .top,
-                                        endPoint: .bottom
-                                    )
-                                )
+                                .fill(lineColor.opacity(0.14))
                         }
 
                         // The line graph
@@ -184,8 +174,8 @@ struct MiniLineGraphView: View {
                     HStack(spacing: 0) {
                         ForEach(Array(dataPoints.enumerated()), id: \.offset) { index, point in
                             Text(point.label)
-                                .font(.system(size: 8, weight: .medium, design: .monospaced))
-                                .foregroundColor(hoveredIndex == index ? lineColor : .retraceSecondary.opacity(0.6))
+                                .font(RetraceFont.mono(size: 8, weight: .medium))
+                                .foregroundColor(hoveredIndex == index ? lineColor : .retraceInk2)
                                 .frame(maxWidth: .infinity)
                                 .animation(.easeOut(duration: 0.15), value: hoveredIndex)
                         }
@@ -203,16 +193,16 @@ struct MiniLineGraphView: View {
         VStack(alignment: .trailing, spacing: 0) {
             // Max value label (top)
             Text(formatYAxisLabel(maxValue))
-                .font(.system(size: 7, weight: .medium, design: .monospaced))
-                .foregroundColor(.retraceSecondary.opacity(0.6))
+                .font(RetraceFont.mono(size: 7, weight: .medium))
+                .foregroundColor(.retraceInk2)
 
             Spacer()
 
             // Mid value label (center) - only show if there's a meaningful range
             if maxValue > minValue {
                 Text(formatYAxisLabel(midValue))
-                    .font(.system(size: 7, weight: .medium, design: .monospaced))
-                    .foregroundColor(.retraceSecondary.opacity(0.5))
+                    .font(RetraceFont.mono(size: 7, weight: .medium))
+                    .foregroundColor(.retraceInk2)
             }
 
             Spacer()
@@ -220,8 +210,8 @@ struct MiniLineGraphView: View {
             // Min value label (bottom) - only show if different from max
             if maxValue > minValue || maxValue == 0 {
                 Text(formatYAxisLabel(minValue))
-                    .font(.system(size: 7, weight: .medium, design: .monospaced))
-                    .foregroundColor(.retraceSecondary.opacity(0.6))
+                    .font(RetraceFont.mono(size: 7, weight: .medium))
+                    .foregroundColor(.retraceInk2)
             }
         }
         .padding(.trailing, 4)
@@ -239,7 +229,7 @@ struct MiniLineGraphView: View {
                 path.move(to: CGPoint(x: 0, y: topPadding))
                 path.addLine(to: CGPoint(x: 1000, y: topPadding))
             }
-            .stroke(Color.white.opacity(0.05), style: StrokeStyle(lineWidth: 0.5, dash: [2, 4]))
+            .stroke(Color.retraceBorder, style: StrokeStyle(lineWidth: 0.5, dash: [2, 4]))
 
             // Middle line (mid value)
             Path { path in
@@ -247,14 +237,14 @@ struct MiniLineGraphView: View {
                 path.move(to: CGPoint(x: 0, y: midY))
                 path.addLine(to: CGPoint(x: 1000, y: midY))
             }
-            .stroke(Color.white.opacity(0.03), style: StrokeStyle(lineWidth: 0.5, dash: [2, 4]))
+            .stroke(Color.retraceBorder, style: StrokeStyle(lineWidth: 0.5, dash: [2, 4]))
 
             // Bottom line (min/zero value)
             Path { path in
                 path.move(to: CGPoint(x: 0, y: height))
                 path.addLine(to: CGPoint(x: 1000, y: height))
             }
-            .stroke(Color.white.opacity(0.05), style: StrokeStyle(lineWidth: 0.5, dash: [2, 4]))
+            .stroke(Color.retraceBorder, style: StrokeStyle(lineWidth: 0.5, dash: [2, 4]))
         }
     }
 
@@ -274,15 +264,15 @@ struct MiniLineGraphView: View {
 
         VStack(alignment: hasBreakdown ? .leading : .center, spacing: hasBreakdown ? 3 : 2) {
             Text(tooltipContent.headline)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundColor(.white)
+                .font(RetraceFont.font(size: 11, weight: .semibold))
+                .foregroundColor(.retraceInk)
 
             if hasBreakdown {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(tooltipContent.details, id: \.self) { detail in
                         Text(detail)
-                            .font(.system(size: 9, weight: .medium, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.8))
+                            .font(RetraceFont.mono(size: 9, weight: .medium))
+                            .foregroundColor(.retraceInk2)
                     }
                 }
             }
@@ -291,12 +281,13 @@ struct MiniLineGraphView: View {
         .padding(.vertical, hasBreakdown ? 6 : 4)
         .fixedSize()
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.black.opacity(0.85))
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .fill(Color.retraceSurface)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(lineColor.opacity(0.5), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
+                .retraceElevation(.md)
         )
         .position(
             x: clampTooltipX(position.x, in: totalWidth, tooltipWidth: tooltipWidth),
@@ -455,13 +446,13 @@ struct MiniLineGraphView_Previews: PreviewProvider {
                     DailyDataPoint(date: Date().addingTimeInterval(-1 * 86400), value: 18),
                     DailyDataPoint(date: Date(), value: 14)
                 ],
-                lineColor: .purple,
+                lineColor: .retraceSeries1,
                 showGradientFill: true
             )
             .frame(height: 80)
             .padding()
-            .background(Color.black.opacity(0.8))
-            .cornerRadius(12)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
 
             // Sample with storage-like values
             MiniLineGraphView(
@@ -474,13 +465,13 @@ struct MiniLineGraphView_Previews: PreviewProvider {
                     DailyDataPoint(date: Date().addingTimeInterval(-1 * 86400), value: 2_900_000_000),
                     DailyDataPoint(date: Date(), value: 3_200_000_000)
                 ],
-                lineColor: .cyan,
+                lineColor: .retraceSeries2,
                 showGradientFill: true
             )
             .frame(height: 80)
             .padding()
-            .background(Color.black.opacity(0.8))
-            .cornerRadius(12)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
 
             // Sample with zero values
             MiniLineGraphView(
@@ -493,16 +484,15 @@ struct MiniLineGraphView_Previews: PreviewProvider {
                     DailyDataPoint(date: Date().addingTimeInterval(-1 * 86400), value: 0),
                     DailyDataPoint(date: Date(), value: 0)
                 ],
-                lineColor: .blue
+                lineColor: .retraceSeries3
             )
             .frame(height: 80)
             .padding()
-            .background(Color.black.opacity(0.8))
-            .cornerRadius(12)
+            .background(Color.retraceSurface)
+            .clipShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
         }
         .padding()
-        .background(Color.black)
-        .preferredColorScheme(.dark)
+        .background(Color.retracePage)
     }
 }
 #endif

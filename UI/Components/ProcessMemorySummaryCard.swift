@@ -43,17 +43,16 @@ struct ProcessMemorySummaryCard: View {
 
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "memorychip")
-                    .font(.retraceCallout)
-                    .foregroundColor(.retraceSecondary)
+                RetraceSymbol("memorychip", size: 13.5)
+                    .foregroundColor(.retraceInk2)
 
                 HStack(spacing: 3) {
                     Text("Memory Log")
                         .font(.retraceCalloutBold)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                     Text("*")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.retraceSecondary.opacity(0.85))
+                        .font(RetraceFont.font(size: 11, weight: .semibold))
+                        .foregroundColor(.retraceInk2)
                 }
 
                 Spacer()
@@ -62,13 +61,12 @@ struct ProcessMemorySummaryCard: View {
             .padding(.top, 12)
             .padding(.bottom, 10)
 
-            Divider()
-                .background(Color.white.opacity(0.06))
+            Rectangle().fill(Color.retraceBorder).frame(height: 1)
 
             VStack(alignment: .leading, spacing: 12) {
                 Text("Avg and Peak are sampled across the visible 12h window. Now is the latest sample.")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.retraceSecondary.opacity(0.9))
+                    .font(RetraceFont.font(size: 11, weight: .medium))
+                    .foregroundColor(.retraceInk2)
 
                 if snapshot.hasRenderableMemoryData {
                     let presentation = cardController.presentation(
@@ -79,26 +77,26 @@ struct ProcessMemorySummaryCard: View {
                     )
 
                     Text("Sampled duration: \(formatWindowDuration(snapshot.sampleDurationSeconds)) • Current Total: \(formatMemoryBytes(snapshot.totalTrackedCurrentResidentBytes)) • Avg Total: \(formatMemoryBytes(snapshot.totalTrackedAverageResidentBytes))")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.retraceSecondary.opacity(0.65))
+                        .font(RetraceFont.font(size: 10, weight: .medium))
+                        .foregroundColor(.retraceInk2)
 
                     VStack(spacing: 0) {
                         HStack {
                             Text("Top memory owners")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundColor(.retraceSecondary.opacity(0.7))
+                                .font(RetraceFont.font(size: 10, weight: .semibold))
+                                .foregroundColor(.retraceInk2)
                             Spacer()
                             Text("Now")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(RetraceFont.font(size: 10, weight: .semibold))
+                            .foregroundColor(.retraceInk2)
                             .frame(width: 66, alignment: .trailing)
                             Text("Avg")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.retraceAccent.opacity(0.95))
+                            .font(RetraceFont.font(size: 10, weight: .bold))
+                            .foregroundColor(.retraceAccent)
                             .frame(width: 66, alignment: .trailing)
                             Text("Peak")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.retraceSecondary.opacity(0.7))
+                            .font(RetraceFont.font(size: 10, weight: .semibold))
+                            .foregroundColor(.retraceInk2)
                             .frame(width: 66, alignment: .trailing)
                         }
                         .padding(.bottom, 6)
@@ -116,8 +114,7 @@ struct ProcessMemorySummaryCard: View {
                                         .id(displayedRow.rank.map(Self.memoryProcessRowAnchorID) ?? displayedRow.id)
 
                                         if index < presentation.displayedRows.count - 1 {
-                                            Divider()
-                                                .background(Color.white.opacity(0.06))
+                                            Rectangle().fill(Color.retraceBorder).frame(height: 1)
                                         }
                                     }
                                 }
@@ -162,12 +159,12 @@ struct ProcessMemorySummaryCard: View {
                                     cardController.loadMore(totalRows: presentation.totalRows)
                                 }
                                 .buttonStyle(.plain)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.retraceAccent.opacity(0.95))
+                                .font(RetraceFont.font(size: 11, weight: .semibold))
+                                .foregroundColor(.retraceAccent)
 
                                 Text("(\(presentation.visibleRows) / \(presentation.totalRows))")
-                                    .font(.system(size: 10, weight: .medium))
-                                    .foregroundColor(.retraceSecondary.opacity(0.75))
+                                    .font(RetraceFont.font(size: 10, weight: .medium))
+                                    .foregroundColor(.retraceInk2)
                                 Spacer()
                             }
                             .padding(.top, 4)
@@ -176,8 +173,10 @@ struct ProcessMemorySummaryCard: View {
                     .padding(.leading, Self.tableLeadingPadding)
                     .padding(.trailing, Self.tableTrailingPadding)
                     .padding(.vertical, Self.tableVerticalPadding)
-                    .background(Color.black.opacity(0.18))
-                    .cornerRadius(8)
+                    .background(
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(Color.retraceSurface)
+                    )
 
                     memoryUsageGuidePanel
                 } else {
@@ -186,14 +185,20 @@ struct ProcessMemorySummaryCard: View {
                             .controlSize(.small)
                         Text("No recent process memory history yet. Sampling now...")
                             .font(.retraceCaption2)
-                            .foregroundColor(.retraceSecondary)
+                            .foregroundColor(.retraceInk2)
                     }
                 }
             }
             .padding(12)
         }
-        .background(Color.white.opacity(0.02))
-        .cornerRadius(10)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(Color.retraceSurfaceSunken)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
+        )
         .onAppear {
             cardController.handleAppear()
         }
@@ -275,34 +280,24 @@ struct ProcessMemorySummaryCard: View {
             memoryRowIconView(for: displayedRow)
 
             Text(row.name)
-                .font(.system(size: 12, weight: .regular))
+                .font(RetraceFont.font(size: 12, weight: .regular))
                 .foregroundColor(textColor(for: displayedRow))
                 .lineLimit(1)
 
             if displayedRow.isPinnedRetrace && showsOCRBacklogAttribution {
-                Text("OCR running")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.retraceAccent.opacity(0.98))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.retraceAccent.opacity(0.14))
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.retraceAccent.opacity(0.32), lineWidth: 1)
-                    )
-                    .clipShape(Capsule())
+                RetraceBadge("OCR running", tone: .accent)
             }
 
             Spacer(minLength: 2)
 
-            memoryValueView(bytes: row.currentBytes, weight: .medium, color: .retraceSecondary.opacity(0.95))
-            memoryValueView(bytes: row.averageBytes, weight: .semibold, color: .retraceAccent.opacity(0.95))
-            memoryValueView(bytes: row.peakBytes, weight: .medium, color: .retraceSecondary.opacity(0.95))
+            memoryValueView(bytes: row.currentBytes, weight: .medium, color: .retraceInk2)
+            memoryValueView(bytes: row.averageBytes, weight: .semibold, color: .retraceInk)
+            memoryValueView(bytes: row.peakBytes, weight: .medium, color: .retraceInk2)
         }
         .padding(.vertical, 3)
         .padding(.leading, leadingPadding(for: displayedRow))
         .background(backgroundColor(for: displayedRow))
-        .cornerRadius(4)
+        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture {
             cardController.handleRowTap(
@@ -321,8 +316,8 @@ struct ProcessMemorySummaryCard: View {
         Group {
             if let rowNumber = displayedRow.rank {
                 Text("\(rowNumber).")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(.retraceSecondary.opacity(0.75))
+                    .font(RetraceFont.mono(size: 12, weight: .medium))
+                    .foregroundColor(.retraceInk2)
             } else {
                 Color.clear
                     .frame(width: 1, height: 1)
@@ -336,23 +331,20 @@ struct ProcessMemorySummaryCard: View {
     private func rowToggleIndicatorView(for displayedRow: DisplayedMemoryRow) -> some View {
         Group {
             if displayedRow.isPinnedRetrace {
-                Image(systemName: cardController.isRetraceExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.retraceSecondary.opacity(0.85))
+                RetraceSymbol(cardController.isRetraceExpanded ? "chevron.down" : "chevron.right", size: 10, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             } else if displayedRow.isRetraceCategory {
                 let isExpanded = displayedRow.retraceCategoryID.map {
                     cardController.expandedAttributionCategoryIDs.contains($0)
                 } ?? false
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.retraceSecondary.opacity(0.85))
+                RetraceSymbol(isExpanded ? "chevron.down" : "chevron.right", size: 10, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             } else if displayedRow.isRetraceFamily {
                 let isExpanded = displayedRow.retraceFamilyExpansionKey.map {
                     cardController.expandedAttributionFamilyIDs.contains($0)
                 } ?? false
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.retraceSecondary.opacity(0.85))
+                RetraceSymbol(isExpanded ? "chevron.down" : "chevron.right", size: 10, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             } else {
                 Color.clear
                     .frame(width: 10, height: 10)
@@ -363,23 +355,23 @@ struct ProcessMemorySummaryCard: View {
 
     private func memoryValueView(bytes: UInt64, weight: Font.Weight, color: Color) -> some View {
         Text(formatMemoryBytes(bytes))
-            .font(.system(size: 12, weight: weight, design: .monospaced))
+            .font(RetraceFont.mono(size: 12, weight: weight))
             .foregroundColor(color)
             .frame(width: 66, alignment: .trailing)
     }
 
     private func backgroundColor(for displayedRow: DisplayedMemoryRow) -> Color {
         if displayedRow.isPinnedRetrace {
-            return Color.retraceAccent.opacity(0.08)
+            return Color.retraceAccentWash
         }
         if displayedRow.isRetraceCategory {
-            return Color.retraceAccent.opacity(0.055)
+            return Color.retraceAccentWash
         }
         if displayedRow.isRetraceFamily {
-            return Color.retraceAccent.opacity(0.04)
+            return Color.retraceSurfaceHover
         }
         if displayedRow.isRetraceComponent {
-            return Color.white.opacity(0.02)
+            return Color.retraceSurfaceSunken
         }
         return .clear
     }
@@ -387,8 +379,8 @@ struct ProcessMemorySummaryCard: View {
     private var memoryUsageGuidePanel: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Avg Memory Usage Guide")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.retracePrimary)
+                .font(RetraceFont.font(size: 11, weight: .semibold))
+                .foregroundColor(.retraceInk)
                 .padding(.bottom, 4)
 
             memoryUsageScaleBar
@@ -396,16 +388,16 @@ struct ProcessMemorySummaryCard: View {
             memoryBoundaryValueRow
 
             Text("Retrace expands into explicit, inferred, and unattributed memory. Each category expands into families, then individual ledger components.")
-                .font(.system(size: 10))
-                .foregroundColor(.retraceSecondary.opacity(0.88))
+                .font(RetraceFont.font(size: 10, weight: .regular))
+                .foregroundColor(.retraceInk2)
                 .lineLimit(nil)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 4)
             Text("However Retrace's process should be consistent across different process tools")
-                .font(.system(size: 10))
-                .foregroundColor(.retraceSecondary.opacity(0.88))
+                .font(RetraceFont.font(size: 10, weight: .regular))
+                .foregroundColor(.retraceInk2)
                 .lineLimit(nil)
                 .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.leading)
@@ -413,43 +405,46 @@ struct ProcessMemorySummaryCard: View {
                 .padding(.top, 4)
         }
         .padding(10)
-        .background(Color.white.opacity(0.03))
-        .cornerRadius(8)
+        .background(
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .fill(Color.retraceSurface)
+        )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceBorder, lineWidth: 1)
         )
     }
 
     private var memoryUsageScaleBar: some View {
-        Capsule()
-            .fill(
-                LinearGradient(
-                    stops: [
-                        .init(color: Color.green.opacity(0.85), location: 0.00),
-                        .init(color: Color.green.opacity(0.85), location: 0.33),
-                        .init(color: Color.yellow.opacity(0.90), location: 0.33),
-                        .init(color: Color.yellow.opacity(0.90), location: 0.66),
-                        .init(color: Color.red.opacity(0.90), location: 0.66),
-                        .init(color: Color.red.opacity(0.90), location: 1.00)
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
+        Capsule(style: .continuous)
+            .fill(Color.retraceSurfaceSunken)
             .frame(height: 10)
+            .overlay {
+                // Three solid bands: good, caution, bad (thresholds at 33% and 66% of the bar).
+                GeometryReader { geometry in
+                    let width = geometry.size.width
+                    HStack(spacing: 1) {
+                        Rectangle().fill(Color.retraceGood).frame(width: width * 0.33)
+                        Rectangle().fill(Color.retraceWarningText).frame(width: width * 0.33)
+                        Rectangle().fill(Color.retraceCritical)
+                    }
+                    .background(Color.retraceSurface)
+                }
+                .clipShape(Capsule(style: .continuous))
+                .allowsHitTesting(false)
+            }
             .overlay {
                 GeometryReader { geometry in
                     let width = geometry.size.width
                     ZStack(alignment: .leading) {
-                        Capsule()
-                            .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                        Capsule(style: .continuous)
+                            .stroke(Color.retraceBorder, lineWidth: 1)
                         Rectangle()
-                            .fill(Color.white.opacity(0.45))
+                            .fill(Color.retraceInk2)
                             .frame(width: 1, height: 12)
                             .offset(x: max(0, (width * 0.33) - 0.5), y: -1)
                         Rectangle()
-                            .fill(Color.white.opacity(0.45))
+                            .fill(Color.retraceInk2)
                             .frame(width: 1, height: 12)
                             .offset(x: max(0, (width * 0.66) - 0.5), y: -1)
                     }
@@ -466,25 +461,30 @@ struct ProcessMemorySummaryCard: View {
             ZStack(alignment: .leading) {
                 HStack {
                     Text("Good")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(RetraceFont.font(size: 10, weight: .semibold))
                     Spacer()
                     Text("Bad")
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(RetraceFont.font(size: 10, weight: .semibold))
                 }
 
+                Text("Caution")
+                    .font(RetraceFont.font(size: 10, weight: .semibold))
+                    .frame(width: 50, alignment: .center)
+                    .offset(x: max(0, (width * 0.495) - 25))
+
                 Text("1.0 GB")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(RetraceFont.mono(size: 10, weight: .semibold))
                     .frame(width: 52, alignment: .center)
                     .offset(x: max(0, (width * 0.33) - 26))
                 Text("2.0 GB")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(RetraceFont.mono(size: 10, weight: .semibold))
                     .frame(width: 52, alignment: .center)
                     .offset(x: max(0, (width * 0.66) - 26))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(height: 14)
-        .foregroundColor(.retraceSecondary.opacity(0.92))
+        .foregroundColor(.retraceInk2)
     }
 
     @ViewBuilder
@@ -494,34 +494,31 @@ struct ProcessMemorySummaryCard: View {
             processIconView(for: displayedRow.row)
                 .frame(width: 17, height: 17)
         case .retraceCategory:
-            Image(systemName: "square.split.2x1.fill")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.retraceAccent.opacity(0.95))
+            RetraceSymbol("square.split.2x1.fill", size: 11, weight: .semibold)
+                .foregroundColor(.retraceAccent)
                 .frame(width: 17, height: 17)
         case .retraceFamily:
-            Image(systemName: "square.stack.3d.up.fill")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.retraceAccent.opacity(0.95))
+            RetraceSymbol("square.stack.3d.up.fill", size: 11, weight: .semibold)
+                .foregroundColor(.retraceAccent)
                 .frame(width: 17, height: 17)
         case .retraceComponent:
-            Image(systemName: "circle.hexagongrid.fill")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundColor(.retraceSecondary.opacity(0.8))
+            RetraceSymbol("circle.hexagongrid.fill", size: 10, weight: .medium)
+                .foregroundColor(.retraceInk2)
                 .frame(width: 17, height: 17)
         }
     }
 
     private func textColor(for displayedRow: DisplayedMemoryRow) -> Color {
         if displayedRow.isRetraceCategory {
-            return .retracePrimary.opacity(0.98)
+            return .retraceInk
         }
         if displayedRow.isRetraceFamily {
-            return .retracePrimary.opacity(0.96)
+            return .retraceInk
         }
         if displayedRow.isRetraceComponent {
-            return .retraceSecondary.opacity(0.96)
+            return .retraceInk2
         }
-        return .retracePrimary
+        return .retraceInk
     }
 
     private func leadingPadding(for displayedRow: DisplayedMemoryRow) -> CGFloat {
@@ -544,11 +541,10 @@ struct ProcessMemorySummaryCard: View {
                 Image(nsImage: icon)
                     .resizable()
                     .interpolation(.high)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm / 2, style: .continuous))
             } else {
-                Image(systemName: "app.fill")
-                    .font(.system(size: 12))
-                    .foregroundColor(.retraceSecondary.opacity(0.75))
+                RetraceSymbol("app.fill", size: 12)
+                    .foregroundColor(.retraceInk2)
             }
         }
         .onAppear {

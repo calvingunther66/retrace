@@ -45,8 +45,8 @@ extension SettingsView {
         ModernSettingsCard(title: "Manage Tags", icon: "tag") {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Create and manage tags for organizing your recordings. Choose a color for each tag to make it easier to scan across the app.")
-                        .font(.retraceCaption)
-                        .foregroundColor(.retraceSecondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
 
                     // Create tag section
                     VStack(alignment: .leading, spacing: 8) {
@@ -54,11 +54,12 @@ extension SettingsView {
                             TextField("Tag name", text: $newTagName)
                                 .textFieldStyle(.plain)
                                 .font(.retraceCallout)
-                                .foregroundColor(.retracePrimary)
+                                .foregroundColor(.retraceInk)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 8)
-                                .background(Color.retraceSecondary.opacity(0.05))
-                                .cornerRadius(8)
+                                .background(Color.retraceSurface)
+                                .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous).stroke(Color.retraceBorderStrong, lineWidth: 1))
                                 .disabled(isCreatingTag)
                                 .onSubmit {
                                     Task {
@@ -86,9 +87,8 @@ extension SettingsView {
 
                         if let error = tagCreationError {
                             HStack(spacing: 6) {
-                                Image(systemName: "exclamationmark.triangle.fill")
+                                RetraceSymbol("exclamationmark.triangle.fill", size: 12)
                                     .foregroundColor(.retraceWarning)
-                                    .font(.system(size: 12))
                                 Text(error)
                                     .font(.retraceCaption2)
                                     .foregroundColor(.retraceWarning)
@@ -98,8 +98,7 @@ extension SettingsView {
                     }
 
                     if !tagsForSettings.isEmpty {
-                        Divider()
-                            .background(Color.retraceBorder)
+                        Divider().overlay(Color.retraceBorder)
                             .padding(.vertical, 4)
 
                         VStack(spacing: 0) {
@@ -107,8 +106,7 @@ extension SettingsView {
                                 tagRow(for: tag)
 
                                 if tag.id != tagsForSettings.last?.id {
-                                    Divider()
-                                        .background(Color.retraceBorder)
+                                    Divider().overlay(Color.retraceBorder)
                                 }
                             }
                         }
@@ -116,12 +114,11 @@ extension SettingsView {
                         HStack {
                             Spacer()
                             VStack(spacing: 8) {
-                                Image(systemName: "tag.slash")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.retraceSecondary.opacity(0.5))
+                                RetraceSymbol("tag.slash", size: 24)
+                                    .foregroundColor(.retraceMuted)
                                 Text("No tags created yet")
-                                    .font(.retraceCaption2)
-                                    .foregroundColor(.retraceSecondary.opacity(0.6))
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceMuted)
                             }
                             .padding(.vertical, 20)
                             Spacer()
@@ -144,8 +141,8 @@ extension SettingsView {
 
                 let count = tagSegmentCounts[tag.id] ?? 0
                 Text("\(count) segment\(count == 1 ? "" : "s")")
-                    .font(.retraceCaption2)
-                    .foregroundColor(.retraceSecondary)
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
 
             Spacer()
@@ -159,8 +156,7 @@ extension SettingsView {
                 tagToDelete = tag
                 showTagDeleteConfirmation = true
             } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 14))
+                RetraceSymbol("trash", size: 14)
                     .foregroundColor(.retraceSecondary)
             }
             .buttonStyle(.plain)
@@ -304,11 +300,11 @@ extension SettingsView {
 //                        Spacer()
 //                        Text("50")
 //                            .font(.retraceCalloutBold)
-//                            .foregroundColor(.white)
+//                            .foregroundColor(.retraceInk)
 //                            .padding(.horizontal, 12)
 //                            .padding(.vertical, 6)
-//                            .background(Color.retraceAccent.opacity(0.3))
-//                            .cornerRadius(8)
+//                            .background(Color.retraceAccentWash)
+//                            .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
 //                    }
 //
 //                    ModernSlider(value: .constant(50), range: 10...200, step: 10)

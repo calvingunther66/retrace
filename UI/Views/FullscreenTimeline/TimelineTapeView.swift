@@ -172,7 +172,7 @@ public struct TimelineTapeView: View {
             let xOffset = layout.offsetForFrame(frameIndex) - pixelsPerFrame / 2
 
             Rectangle()
-                .fill(Color.blue)
+                .fill(Color.retraceSeries3)
                 .frame(width: 2, height: tapeHeight + 16)
                 .offset(x: xOffset, y: -8)
         }
@@ -191,7 +191,7 @@ public struct TimelineTapeView: View {
 
             // Thick red line that protrudes above and below the tape
             Rectangle()
-                .fill(Color.red)
+                .fill(Color.retraceCritical)
                 .frame(width: 3, height: tapeHeight + 16)
                 .offset(x: xOffset, y: -8)
         }
@@ -206,28 +206,28 @@ public struct TimelineTapeView: View {
 
         return ZStack {
             // Hatched background
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color.white.opacity(0.05))
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .fill(Color.retraceSurfaceSunken)
                 .frame(width: gapWidth, height: tapeHeight)
                 .overlay(
                     GapHatchPattern()
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceBorder, lineWidth: 1)
                 )
 
             // Gap duration text with background
             if let gapText = block.formattedGapBefore {
                 Text(gapText)
-                    .font(.system(size: 10 * TimelineScaleFactor.current, weight: .medium))
-                    .foregroundColor(.white.opacity(0.6))
+                    .font(RetraceFont.mono(size: 10 * TimelineScaleFactor.current))
+                    .foregroundColor(.retraceInk2)
                     .padding(.horizontal, 6 * TimelineScaleFactor.current)
                     .padding(.vertical, 2 * TimelineScaleFactor.current)
                     .background(
-                        Capsule()
-                            .fill(Color(white: 0.2))
+                        Capsule(style: .continuous)
+                            .fill(Color.retraceSurfaceHover)
                     )
             }
         }
@@ -277,7 +277,7 @@ public struct TimelineTapeView: View {
 
         return ZStack {
             // Background block
-            RoundedRectangle(cornerRadius: 4)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                 .fill(color)
                 .frame(width: blockWidth, height: tapeHeight)
                 .opacity(isCurrentBlock || isSelectedBlock ? 1.0 : 0.7)
@@ -335,8 +335,8 @@ public struct TimelineTapeView: View {
             }
 
             // Selection/current border overlay (on top of frame segments so border is fully visible)
-            RoundedRectangle(cornerRadius: 4)
-                .stroke(isSelectedBlock ? Color.blue : (isCurrentBlock ? Color.white : Color.clear), lineWidth: isSelectedBlock ? 3 : 2)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(isSelectedBlock ? Color.retraceAccent : (isCurrentBlock ? Color.retraceInk : Color.clear), lineWidth: isSelectedBlock ? 3 : 2)
                 .frame(width: blockWidth, height: tapeHeight)
                 .allowsHitTesting(false)
         }
@@ -535,7 +535,7 @@ public struct TimelineTapeView: View {
         if let bundleID = block.bundleID {
             return Color.segmentColor(for: bundleID)
         }
-        return Color.gray.opacity(0.5)
+        return Color.retraceMuted.opacity(0.5)
     }
 
     private func appIcon(for bundleID: String) -> some View {
@@ -587,6 +587,7 @@ public struct TimelineTapeView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Open tags")
                     .help("Open tags")
                     .scaleEffect(isTagGroupHovering ? 1.12 : 1.0)
                     .animation(.spring(response: 0.18, dampingFraction: 0.72), value: isTagGroupHovering)
@@ -599,13 +600,13 @@ public struct TimelineTapeView: View {
 
                 if presentation.showsCommentIndicator {
                     Button(action: { onOpenComments("tape_indicator") }) {
-                        Image(systemName: "text.bubble")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.white.opacity(emphasized ? 0.9 : 0.8))
+                        RetraceSymbol("text.bubble", size: 10, weight: .semibold)
+                            .foregroundColor(emphasized ? .retraceInk : .retraceInk2)
                             .frame(width: indicatorRowHeight, height: indicatorRowHeight)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Open comments")
                     .help("Open comments")
                     .scaleEffect(isCommentIconHovering ? 1.18 : 1.0)
                     .animation(.spring(response: 0.18, dampingFraction: 0.72), value: isCommentIconHovering)
@@ -633,7 +634,6 @@ public struct TimelineTapeView: View {
             let hasOverflow = block.tagIDs.count > visibleTagIDs.count
             let dotOpacity = emphasized ? 0.96 : 0.82
             let dotStrokeOpacity = emphasized ? 0.58 : 0.42
-            let dotGlowOpacity = emphasized ? 0.40 : 0.26
             let dotSize: CGFloat = 9
             let visibleCount = CGFloat(visibleTagIDs.count + (hasOverflow ? 1 : 0))
             let intrinsicRowWidth = visibleCount * dotSize + max(0, visibleCount - 1) * 3
@@ -648,13 +648,12 @@ public struct TimelineTapeView: View {
                             Circle()
                                 .stroke(color.opacity(dotStrokeOpacity), lineWidth: 0.8)
                         )
-                        .shadow(color: color.opacity(dotGlowOpacity), radius: emphasized ? 3.2 : 2.4, x: 0, y: 0)
                         .frame(width: dotSize, height: dotSize)
                 }
 
                 if hasOverflow {
                     Circle()
-                        .fill(Color.white.opacity(dotOpacity))
+                        .fill(Color.retraceInk.opacity(dotOpacity))
                         .frame(width: dotSize - 1, height: dotSize - 1)
                 }
             }
@@ -681,22 +680,22 @@ public struct TimelineTapeView: View {
 
             var body: some View {
                 Button(action: action) {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: emphasized ? 10 : 9, weight: .bold))
-                        .foregroundColor(.white.opacity(emphasized || isHovering ? 0.84 : 0.7))
+                    RetraceSymbol("ellipsis", size: emphasized ? 10 : 9, weight: .semibold)
+                        .foregroundColor(emphasized || isHovering ? .retraceInk : .retraceInk2)
                         .frame(width: emphasized ? 16 : 14, height: emphasized ? 16 : 14)
                         .background(
                             Circle()
-                                .fill(Color.white.opacity(emphasized || isHovering ? 0.16 : 0.09))
+                                .fill(emphasized || isHovering ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
                         )
                         .overlay(
                             Circle()
-                                .stroke(Color.white.opacity(emphasized || isHovering ? 0.24 : 0.16), lineWidth: 0.8)
+                                .stroke(emphasized || isHovering ? Color.retraceBorderStrong : Color.retraceBorder, lineWidth: 0.8)
                         )
                         .scaleEffect(isHovering ? 1.12 : 1.0)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Open actions")
                 .help("Open actions")
                 .animation(.spring(response: 0.18, dampingFraction: 0.72), value: isHovering)
                 .onHover { hovering in
@@ -768,7 +767,7 @@ public struct TimelineTapeView: View {
 
                 // Playhead vertical line (fixed at center)
                 UnevenRoundedRectangle(topLeadingRadius: 3, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 3)
-                    .fill(Color.white)
+                    .fill(Color.retraceInk)
                     .frame(width: TimelineScaleFactor.playheadWidth, height: tapeHeight * 2.5)
                     .position(x: centerX, y: tapeHeight / 2)
 
@@ -817,7 +816,7 @@ struct FrameSegmentView: View {
 
     var body: some View {
         Rectangle()
-            .fill(isHovering ? Color.white.opacity(0.2) : Color.clear)
+            .fill(isHovering ? Color.retraceInk.opacity(0.2) : Color.clear)
             .frame(width: pixelsPerFrame, height: tapeHeight)
             .contentShape(Rectangle())
             .overlay(
@@ -864,22 +863,23 @@ struct DatetimeButton: View {
         }) {
             HStack(spacing: TimelineScaleFactor.iconSpacing) {
                 Text(viewModel.currentDateString)
-                    .font(.system(size: TimelineScaleFactor.fontCaption, weight: .medium))
-                    .foregroundColor(isHovering ? .white : .white.opacity(0.7))
+                    .font(RetraceFont.font(size: TimelineScaleFactor.fontCaption, weight: .regular))
+                    .foregroundColor(isHovering ? .retraceInk : .retraceInk2)
 
                 Text(viewModel.currentTimeString)
-                    .font(.system(size: TimelineScaleFactor.fontMono, weight: .regular, design: .monospaced))
-                    .foregroundColor(.white)
+                    .font(RetraceFont.mono(size: TimelineScaleFactor.fontMono))
+                    .monospacedDigit()
+                    .foregroundColor(.retraceInk)
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: TimelineScaleFactor.fontTiny, weight: .bold))
-                    .foregroundColor(isHovering ? .white.opacity(0.7) : .white.opacity(0.4))
+                RetraceSymbol("chevron.down", size: TimelineScaleFactor.fontTiny, weight: .semibold)
+                    .foregroundColor(isHovering ? .retraceInk2 : .retraceMuted)
             }
             .padding(.horizontal, TimelineScaleFactor.paddingH)
             .padding(.vertical, TimelineScaleFactor.paddingV)
             .themeAwareCapsuleStyle(isHovering: isHovering)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Go to date and time")
         .onHover { hovering in
             isHovering = hovering
             if hovering {
@@ -905,13 +905,13 @@ struct GoToNowButton: View {
             viewModel.dismissContextMenu()
             viewModel.goToNow()
         }) {
-            Image(systemName: "forward.end.fill")
-                .font(.system(size: TimelineScaleFactor.fontCaption2, weight: .medium))
-                .foregroundColor(isHovering ? .white : .white.opacity(0.7))
+            RetraceSymbol("forward.end.fill", size: TimelineScaleFactor.fontCaption2, weight: .medium)
+                .foregroundColor(isHovering ? .retraceInk : .retraceInk2)
                 .frame(width: TimelineScaleFactor.controlButtonSize, height: TimelineScaleFactor.controlButtonSize)
                 .themeAwareCircleStyle(isHovering: isHovering)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Go to now")
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) {
                 isHovering = hovering
@@ -938,13 +938,13 @@ struct RefreshButton: View {
                 await viewModel.refreshProcessingStatuses()
             }
         }) {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: TimelineScaleFactor.fontCaption2, weight: .medium))
-                .foregroundColor(isHovering ? .white : .white.opacity(0.7))
+            RetraceSymbol("arrow.clockwise", size: TimelineScaleFactor.fontCaption2, weight: .medium)
+                .foregroundColor(isHovering ? .retraceInk : .retraceInk2)
                 .frame(width: TimelineScaleFactor.controlButtonSize, height: TimelineScaleFactor.controlButtonSize)
                 .themeAwareCircleStyle(isHovering: isHovering)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Refresh")
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) {
                 isHovering = hovering
@@ -980,13 +980,13 @@ struct VideoControlsButton: View {
                 viewModel.togglePlayback()
             }
         }) {
-            Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                .font(.system(size: TimelineScaleFactor.fontCaption2, weight: .medium))
-                .foregroundColor(isHoveringControl || viewModel.isPlaying ? .white : .white.opacity(0.7))
+            RetraceSymbol(viewModel.isPlaying ? "pause.fill" : "play.fill", size: TimelineScaleFactor.fontCaption2, weight: .medium)
+                .foregroundColor(isHoveringControl || viewModel.isPlaying ? .retraceInk : .retraceInk2)
                 .frame(width: TimelineScaleFactor.controlButtonSize, height: TimelineScaleFactor.controlButtonSize)
                 .themeAwareCircleStyle(isActive: viewModel.isPlaying, isHovering: isHoveringControl)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(viewModel.isPlaying ? "Pause" : "Play")
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) {
                 isButtonHovering = hovering
@@ -1024,11 +1024,12 @@ struct VideoControlsButton: View {
                 .padding(.vertical, 4)
                 .padding(.horizontal, 4)
                 .background(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                         .fill(RetraceMenuStyle.backgroundColor)
+                        .retraceElevation(.md)
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .stroke(Color.retraceBorder, lineWidth: 1)
                         )
                 )
                 // Position picker so its bottom sits above the button top with a fixed gap.
@@ -1074,15 +1075,16 @@ private struct SpeedOptionRow: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 11, weight: isSelected ? .bold : .medium, design: .monospaced))
-                .foregroundColor(isSelected || isHovering ? .white : .white.opacity(0.6))
+                .font(RetraceFont.mono(size: 11, weight: isSelected ? .semibold : .regular))
+                .foregroundColor(isSelected || isHovering ? .retraceInk : .retraceInk2)
                 .frame(width: 40, height: 22)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(isSelected ? Color.white.opacity(0.15) : (isHovering ? Color.white.opacity(0.1) : Color.clear))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(isSelected ? Color.retraceAccentWash : (isHovering ? Color.retraceSurfaceHover : Color.clear))
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) {
                 isHovering = hovering
@@ -1172,8 +1174,8 @@ struct CurrentAppBadge: View {
                         HStack(spacing: 8) {
                             if shouldShowExpanded {
                                 Text(expandedLabel)
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.white)
+                                    .font(.retraceCallout)
+                                    .foregroundColor(.retraceInk)
                                     .transition(.opacity.combined(with: .scale(scale: 0.8)))
                             }
                             appIconView(for: bundleID)
@@ -1185,11 +1187,11 @@ struct CurrentAppBadge: View {
                         .background(
                             Group {
                                 if shouldShowExpanded {
-                                    Capsule()
-                                        .fill(Color(white: 0.15))
+                                    Capsule(style: .continuous)
+                                        .fill(Color.retraceSurface)
                                         .overlay(
-                                            Capsule()
-                                                .stroke(Color.white.opacity(0.15), lineWidth: 1.0)
+                                            Capsule(style: .continuous)
+                                                .stroke(Color.retraceBorder, lineWidth: 1.0)
                                         )
                                 }
                             }
@@ -1198,6 +1200,7 @@ struct CurrentAppBadge: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(isCurrentFrameRedacted ? "Redacted" : "Open current URL")
                 .contentShape(Rectangle())
                 .help(currentRedactionReason.map { "Redacted: \($0)" } ?? "Open current URL")
                 .onHover { hovering in
@@ -1304,13 +1307,13 @@ struct ZoomControl: View {
                 viewModel.isZoomSliderExpanded.toggle()
             }
         }) {
-            Image(systemName: "plus.magnifyingglass")
-                .font(.system(size: TimelineScaleFactor.fontCallout, weight: .medium))
-                .foregroundColor(isHovering || viewModel.isZoomSliderExpanded ? .white : .white.opacity(0.6))
+            RetraceSymbol("plus.magnifyingglass", size: TimelineScaleFactor.fontCallout, weight: .medium)
+                .foregroundColor(isHovering || viewModel.isZoomSliderExpanded ? .retraceInk : .retraceInk2)
                 .frame(width: TimelineScaleFactor.controlButtonSize, height: TimelineScaleFactor.controlButtonSize)
                 .themeAwareCircleStyle(isActive: viewModel.isZoomSliderExpanded, isHovering: isHovering)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Zoom")
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) {
                 isHovering = hovering
@@ -1322,9 +1325,8 @@ struct ZoomControl: View {
             // Expanded slider panel - positioned to the left of the button
             if viewModel.isZoomSliderExpanded {
                 HStack(spacing: TimelineScaleFactor.iconSpacing) {
-                    Image(systemName: "minus.magnifyingglass")
-                        .font(.system(size: TimelineScaleFactor.fontCaption2, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
+                    RetraceSymbol("minus.magnifyingglass", size: TimelineScaleFactor.fontCaption2, weight: .medium)
+                        .foregroundColor(.retraceMuted)
 
                     ZoomSlider(
                         value: $viewModel.zoomLevel,
@@ -1332,18 +1334,17 @@ struct ZoomControl: View {
                     )
                         .frame(width: TimelineScaleFactor.zoomSliderWidth)
 
-                    Image(systemName: "plus.magnifyingglass")
-                        .font(.system(size: TimelineScaleFactor.fontCaption2, weight: .medium))
-                        .foregroundColor(.white.opacity(0.5))
+                    RetraceSymbol("plus.magnifyingglass", size: TimelineScaleFactor.fontCaption2, weight: .medium)
+                        .foregroundColor(.retraceMuted)
                 }
                 .padding(.horizontal, TimelineScaleFactor.buttonPaddingH)
                 .padding(.vertical, TimelineScaleFactor.buttonPaddingV)
                 .background(
-                    Capsule()
-                        .fill(Color(white: 0.15))
+                    Capsule(style: .continuous)
+                        .fill(Color.retraceSurface)
                         .overlay(
-                            Capsule()
-                                .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                            Capsule(style: .continuous)
+                                .stroke(Color.retraceBorder, lineWidth: 1)
                         )
                 )
                 .offset(x: -TimelineScaleFactor.controlButtonSize - 8) // Position to the left of the button
@@ -1353,15 +1354,19 @@ struct ZoomControl: View {
         .overlay(alignment: .top) {
             if showTooltip {
                 Text("Zoom")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.white)
+                    .font(.retraceCallout)
+                    .foregroundColor(.retraceInk)
                     .lineLimit(1)
                     .fixedSize()
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(
-                        Capsule()
-                            .fill(Color.black)
+                        Capsule(style: .continuous)
+                            .fill(Color.retraceSurface)
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .stroke(Color.retraceBorder, lineWidth: 1)
+                            )
                     )
                     .offset(y: -44)
                     .transition(.opacity)
@@ -1393,16 +1398,16 @@ struct FilterButton: View {
                     }
                 }
             }) {
-                Image(systemName: "line.3.horizontal.decrease")
-                    .font(.system(size: TimelineScaleFactor.fontCallout, weight: .medium))
+                RetraceSymbol("line.3.horizontal.decrease", size: TimelineScaleFactor.fontCallout, weight: .medium)
                     .foregroundColor(isHovering || viewModel.isFilterPanelVisible || viewModel.activeFilterCount > 0
-                        ? .white
-                        : .white.opacity(0.6))
+                        ? .retraceInk
+                        : .retraceInk2)
                     .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.isFilterPanelVisible)
                     .frame(width: TimelineScaleFactor.controlButtonSize, height: TimelineScaleFactor.controlButtonSize)
                     .themeAwareCircleStyle(isActive: viewModel.isFilterPanelVisible || viewModel.activeFilterCount > 0, isHovering: isHovering)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Filter")
             .onHover { hovering in
                 withAnimation(.easeOut(duration: 0.1)) {
                     isHovering = hovering
@@ -1419,21 +1424,22 @@ struct FilterButton: View {
                 }) {
                     Group {
                         if isBadgeHovering {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundColor(.white)
+                            RetraceSymbol("xmark", size: 8, weight: .semibold)
+                                .foregroundColor(.retraceOnAccent)
                         } else {
                             Text("\(viewModel.activeFilterCount)")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
+                                .font(RetraceFont.mono(size: 10, weight: .semibold))
+                                .foregroundColor(.retraceOnAccent)
                         }
                     }
                     .frame(width: 16, height: 16)
-                    .background(Color.red)
+                    .background(Color.retraceAccent)
                     .clipShape(Circle())
                     .scaleEffect(isBadgeHovering ? 1.15 : 1.0)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear filters")
+                .accessibilityValue("\(viewModel.activeFilterCount) active")
                 .offset(x: 4, y: -4)
                 .onHover { hovering in
                     withAnimation(.easeOut(duration: 0.1)) {
@@ -1462,11 +1468,11 @@ struct FilterAndPeekGroup: View {
     var body: some View {
         ZStack(alignment: .trailing) {
             // Background capsule sized as if both buttons exist, so nothing jumps
-            Capsule()
-                .fill(Color.white.opacity(showPeekButton ? 0.08 : 0))
+            Capsule(style: .continuous)
+                .fill(Color.retraceSurfaceSunken.opacity(showPeekButton ? 1 : 0))
                 .overlay(
-                    Capsule()
-                        .stroke(Color.white.opacity(showPeekButton ? 0.15 : 0), lineWidth: 0.5)
+                    Capsule(style: .continuous)
+                        .stroke(Color.retraceBorder.opacity(showPeekButton ? 1 : 0), lineWidth: 1)
                 )
                 .frame(
                     width: showPeekButton
@@ -1509,13 +1515,13 @@ struct PeekButton: View {
         Button(action: {
             viewModel.togglePeek()
         }) {
-            Image(systemName: "eye")
-                .font(.system(size: TimelineScaleFactor.fontCallout, weight: .medium))
-                .foregroundColor(isHovering || viewModel.isPeeking ? .white : .white.opacity(0.6))
+            RetraceSymbol("eye", size: TimelineScaleFactor.fontCallout, weight: .medium)
+                .foregroundColor(isHovering || viewModel.isPeeking ? .retraceInk : .retraceInk2)
                 .frame(width: TimelineScaleFactor.controlButtonSize, height: TimelineScaleFactor.controlButtonSize)
                 .themeAwareCircleStyle(isActive: viewModel.isPeeking, isHovering: isHovering)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(viewModel.isPeeking ? "Hide context" : "See context")
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) {
                 isHovering = hovering
@@ -1539,14 +1545,14 @@ struct ControlsToggleButton: View {
             viewModel.dismissContextMenu()
             viewModel.toggleControlsVisibility()
         }) {
-            Image(systemName: viewModel.areControlsHidden ? "menubar.arrow.up.rectangle" : "menubar.arrow.down.rectangle")
-                .font(.system(size: TimelineScaleFactor.fontMono, weight: .medium))
-                .foregroundColor(isHovering ? .white : .white.opacity(0.6))
+            RetraceSymbol(viewModel.areControlsHidden ? "menubar.arrow.up.rectangle" : "menubar.arrow.down.rectangle", size: TimelineScaleFactor.fontMono, weight: .medium)
+                .foregroundColor(isHovering ? .retraceInk : .retraceInk2)
                 .padding(.horizontal, TimelineScaleFactor.paddingV)
                 .padding(.vertical, TimelineScaleFactor.paddingV)
                 .themeAwareCapsuleStyle(isHovering: isHovering)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(viewModel.areControlsHidden ? "Show controls" : "Hide controls")
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.1)) {
                 isHovering = hovering
@@ -1586,26 +1592,25 @@ struct SearchButton: View {
             DashboardViewModel.recordSearchDialogOpen(coordinator: coordinatorWrapper.coordinator)
         }) {
             HStack(spacing: TimelineScaleFactor.iconSpacing) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: TimelineScaleFactor.fontCaption, weight: .medium))
-                    .foregroundColor(hasSearchQuery ? .white.opacity(0.9) : (isHovering ? .white.opacity(0.9) : .white.opacity(0.5)))
+                RetraceSymbol("magnifyingglass", size: TimelineScaleFactor.fontCaption, weight: .medium)
+                    .foregroundColor(hasSearchQuery ? .retraceInk : (isHovering ? .retraceInk : .retraceMuted))
 
                 Text(displayText)
-                    .font(.system(size: TimelineScaleFactor.fontCaption, weight: .regular))
-                    .foregroundColor(hasSearchQuery ? .white.opacity(0.9) : (isHovering ? .white.opacity(0.8) : .white.opacity(0.4)))
+                    .font(RetraceFont.font(size: TimelineScaleFactor.fontCaption, weight: .regular))
+                    .foregroundColor(hasSearchQuery ? .retraceInk : (isHovering ? .retraceInk2 : .retraceMuted))
                     .lineLimit(1)
 
                 Spacer()
 
                 // Keyboard shortcut hint
                 Text("⌘K")
-                    .font(.system(size: TimelineScaleFactor.fontCaption2, weight: .medium))
-                    .foregroundColor(isHovering ? .white.opacity(0.7) : .white.opacity(0.3))
+                    .font(RetraceFont.mono(size: TimelineScaleFactor.fontCaption2))
+                    .foregroundColor(isHovering ? .retraceInk2 : .retraceMuted)
                     .padding(.horizontal, 6 * TimelineScaleFactor.current)
                     .padding(.vertical, 2 * TimelineScaleFactor.current)
                     .background(
-                        RoundedRectangle(cornerRadius: 4 * TimelineScaleFactor.current)
-                            .fill(isHovering ? Color.white.opacity(0.15) : Color.white.opacity(0.1))
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(isHovering ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
                     )
             }
             .padding(.horizontal, TimelineScaleFactor.paddingH)
@@ -1636,9 +1641,8 @@ struct MoreOptionsMenu: View {
         Button(action: {
             viewModel.dismissContextMenu()
         }) {
-            Image(systemName: "ellipsis")
-                .font(.system(size: TimelineScaleFactor.fontCallout, weight: .medium))
-                .foregroundColor(isButtonHovering || viewModel.isMoreOptionsMenuVisible ? .white : .white.opacity(0.6))
+            RetraceSymbol("ellipsis", size: TimelineScaleFactor.fontCallout, weight: .medium)
+                .foregroundColor(isButtonHovering || viewModel.isMoreOptionsMenuVisible ? .retraceInk : .retraceInk2)
                 .frame(width: TimelineScaleFactor.controlButtonSize, height: TimelineScaleFactor.controlButtonSize)
                 .themeAwareCircleStyle(isActive: viewModel.isMoreOptionsMenuVisible, isHovering: isButtonHovering)
         }
@@ -1697,19 +1701,19 @@ enum TimelineHoverTooltipStyle {
     static let fontSize: CGFloat = 13
     static let horizontalPadding: CGFloat = 12
     static let verticalPadding: CGFloat = 6
-    static let backgroundColor = Color(white: 0.11)
+    static let backgroundColor = Color.retraceSurface
 
     static var font: Font {
-        .system(size: fontSize, weight: .medium)
+        RetraceFont.font(size: fontSize, weight: .regular)
     }
 
     static var height: CGFloat {
-        let font = NSFont.systemFont(ofSize: fontSize, weight: .medium)
+        let font = NSFont.retraceTimelineSerif(size: fontSize)
         return ceil(font.ascender - font.descender + font.leading + (verticalPadding * 2))
     }
 
     static func width(for text: String) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: fontSize, weight: .medium)
+        let font = NSFont.retraceTimelineSerif(size: fontSize)
         let size = (text as NSString).size(withAttributes: [.font: font])
         return ceil(size.width + (horizontalPadding * 2))
     }
@@ -1759,14 +1763,19 @@ struct InstantTooltip: ViewModifier {
                 if isVisible {
                     Text(text)
                         .font(TimelineHoverTooltipStyle.font)
-                        .foregroundColor(.white)
+                        .foregroundColor(.retraceInk)
                         .lineLimit(1)
                         .fixedSize()
                         .padding(.horizontal, TimelineHoverTooltipStyle.horizontalPadding)
                         .padding(.vertical, TimelineHoverTooltipStyle.verticalPadding)
                         .background(
-                            Capsule()
+                            Capsule(style: .continuous)
                                 .fill(TimelineHoverTooltipStyle.backgroundColor)
+                                .overlay(
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.retraceBorder, lineWidth: 1)
+                                )
+                                .retraceElevation(.sm)
                         )
                         .offset(y: verticalOffset)
                         .transition(.opacity.combined(with: .offset(y: transitionYOffset)))
@@ -1805,20 +1814,20 @@ struct ZoomSlider: View {
 
             ZStack(alignment: .leading) {
                 // Track background
-                Capsule()
-                    .fill(Color.white.opacity(0.15))
+                Capsule(style: .continuous)
+                    .fill(Color.retraceSurfaceSunken)
                     .frame(height: 4)
 
                 // Filled portion
-                Capsule()
-                    .fill(Color.retraceAccent.opacity(0.8))
+                Capsule(style: .continuous)
+                    .fill(Color.retraceAccent)
                     .frame(width: thumbX, height: 4)
 
                 // Thumb
                 Circle()
-                    .fill(Color.white)
+                    .fill(Color.retraceInk)
                     .frame(width: isDragging ? 14 : 10, height: isDragging ? 14 : 10)
-                    .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                    .retraceElevation(.sm)
                     .offset(x: thumbX - (isDragging ? 7 : 5))
                     .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isDragging)
             }
@@ -1872,23 +1881,23 @@ struct FloatingDateSearchPanel: View {
     }
 
     private var calendarButtonForegroundColor: Color {
-        .white.opacity(isCalendarButtonHovering ? 1 : 0.9)
+        .retraceInk
     }
 
     private var calendarButtonBackgroundColor: Color {
         isCalendarButtonHovering
-            ? RetraceMenuStyle.actionBlue
-            : Color.white.opacity(0.08)
+            ? Color.retraceSurfaceHover
+            : Color.retraceSurfaceSunken
     }
 
     private var calendarButtonBorderColor: Color {
         if isCalendarButtonHovering {
-            return RetraceMenuStyle.actionBlue.opacity(0.55)
+            return Color.retraceBorderStrong
         }
         if isCalendarKeyboardSelected {
-            return Color.white.opacity(0.95)
+            return Color.retraceAccent
         }
-        return Color.white.opacity(0.08)
+        return Color.retraceBorder
     }
 
     private func openCalendarPicker() {
@@ -1905,26 +1914,25 @@ struct FloatingDateSearchPanel: View {
         VStack(spacing: 0) {
             // Header with title and close button - this is the drag handle
             HStack {
-                Image(systemName: "line.3.horizontal")
-                    .font(.retraceTinyBold)
-                    .foregroundColor(.white.opacity(0.25))
+                RetraceSymbol("line.3.horizontal", size: 11, weight: .semibold)
+                    .foregroundColor(.retraceMuted)
                     .padding(.trailing, 4)
 
                 Text("Jump to")
                     .font(.retraceCaptionMedium)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.retraceMuted)
 
                 Spacer()
 
                 Button(action: onCancel) {
-                    Image(systemName: "xmark")
-                        .font(.retraceTinyBold)
-                        .foregroundColor(.white.opacity(0.4))
+                    RetraceSymbol("xmark", size: 11, weight: .semibold)
+                        .foregroundColor(.retraceMuted)
                         .frame(width: 20, height: 20)
-                        .background(Color.white.opacity(0.1))
+                        .background(Color.retraceSurfaceSunken)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close")
                 .onHover { hovering in
                     if hovering { NSCursor.pointingHand.push() }
                     else { NSCursor.pop() }
@@ -1978,11 +1986,11 @@ struct FloatingDateSearchPanel: View {
 
                 if !text.isEmpty {
                     Button(action: { text = "" }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.retraceHeadline)
-                            .foregroundColor(.white.opacity(0.35))
+                        RetraceSymbol("xmark.circle.fill", size: 17, weight: .semibold)
+                            .foregroundColor(.retraceMuted)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Clear text")
                     .transition(.opacity)
                 }
 
@@ -1990,14 +1998,14 @@ struct FloatingDateSearchPanel: View {
                 Button(action: onSubmit) {
                     ZStack {
                         Circle()
-                            .fill(text.isEmpty ? Color.white.opacity(0.2) : Color.retraceSubmitAccent.opacity(isSubmitButtonHovering ? 1.0 : 0.8))
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white)
+                            .fill(text.isEmpty ? Color.retraceSurfaceSunken : Color.retraceAccent.opacity(isSubmitButtonHovering ? 1.0 : 0.8))
+                        RetraceSymbol("arrow.right", size: 12, weight: .semibold)
+                            .foregroundColor(text.isEmpty ? .retraceMuted : .retraceOnAccent)
                     }
                     .frame(width: 26, height: 26)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Go")
                 .disabled(text.isEmpty)
                 .onHover { hovering in
                     isSubmitButtonHovering = hovering
@@ -2008,27 +2016,27 @@ struct FloatingDateSearchPanel: View {
             .padding(.horizontal, RetraceMenuStyle.searchFieldPaddingH)
             .padding(.vertical, RetraceMenuStyle.searchFieldPaddingV)
             .background(
-                RoundedRectangle(cornerRadius: RetraceMenuStyle.searchFieldCornerRadius)
+                RoundedRectangle(cornerRadius: RetraceMenuStyle.searchFieldCornerRadius, style: .continuous)
                     .fill(RetraceMenuStyle.searchFieldBackground)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: RetraceMenuStyle.searchFieldCornerRadius)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                RoundedRectangle(cornerRadius: RetraceMenuStyle.searchFieldCornerRadius, style: .continuous)
+                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
             )
             .padding(.horizontal, 20)
 
             // OR divider
             HStack(spacing: 12) {
                 Rectangle()
-                    .fill(Color.white.opacity(0.15))
+                    .fill(Color.retraceBorder)
                     .frame(height: 1)
 
                 Text("OR")
                     .font(.retraceTinyBold)
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.retraceMuted)
 
                 Rectangle()
-                    .fill(Color.white.opacity(0.15))
+                    .fill(Color.retraceBorder)
                     .frame(height: 1)
             }
             .padding(.horizontal, 20)
@@ -2042,8 +2050,7 @@ struct FloatingDateSearchPanel: View {
                 openCalendarPicker()
             }) {
                 HStack(spacing: 8) {
-                    Image(systemName: "calendar")
-                        .font(.retraceCalloutMedium)
+                    RetraceSymbol("calendar", size: 13.5)
                     Text("Browse Calendar")
                         .font(.retraceCaptionMedium)
                 }
@@ -2052,11 +2059,11 @@ struct FloatingDateSearchPanel: View {
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity)
                 .background(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                         .fill(calendarButtonBackgroundColor)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                         .stroke(calendarButtonBorderColor, lineWidth: isCalendarKeyboardSelected ? 1.5 : 1)
                 )
             }
@@ -2074,25 +2081,6 @@ struct FloatingDateSearchPanel: View {
         .padding(.bottom, 16)
         .frame(width: TimelineScaleFactor.searchPanelWidth)
         .retraceMenuContainer(addPadding: false)
-        .background(
-            ZStack {
-                // Remove custom background - now using unified system
-                RoundedRectangle(cornerRadius: RetraceMenuStyle.cornerRadius)
-                    .stroke(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.15),
-                                Color.white.opacity(0.03)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
-            }
-        )
-        .shadow(color: .black.opacity(0.4), radius: 40, y: 20)
-        .shadow(color: .retraceAccent.opacity(0.1), radius: 60, y: 30)
         .offset(
             x: panelPosition.width + dragOffset.width,
             y: panelPosition.height + dragOffset.height
@@ -2116,21 +2104,20 @@ struct SuggestionChip: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.retraceTinyMedium)
+                RetraceSymbol(icon, size: 11)
                 Text(text)
                     .font(.retraceCaption2Medium)
             }
-            .foregroundColor(isHovering ? .white : .white.opacity(0.6))
+            .foregroundColor(isHovering ? .retraceInk : .retraceInk2)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
-                Capsule()
-                    .fill(isHovering ? Color.white.opacity(0.15) : Color.white.opacity(0.08))
+                Capsule(style: .continuous)
+                    .fill(isHovering ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
             )
             .overlay(
-                Capsule()
-                    .stroke(Color.white.opacity(isHovering ? 0.2 : 0.1), lineWidth: 0.5)
+                Capsule(style: .continuous)
+                    .stroke(isHovering ? Color.retraceBorderStrong : Color.retraceBorder, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -2165,7 +2152,7 @@ struct CalendarPickerView: View {
 
             // Divider
             Rectangle()
-                .fill(Color.white.opacity(0.1))
+                .fill(Color.retraceBorder)
                 .frame(width: 1)
                 .padding(.vertical, 20)
 
@@ -2174,31 +2161,14 @@ struct CalendarPickerView: View {
         }
         .background(
             ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(Color(white: 0.08))
+                RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                    .fill(Color.retraceSurface)
 
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.08), Color.white.opacity(0.02)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.15), Color.white.opacity(0.03)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1
-                    )
+                RoundedRectangle(cornerRadius: .radiusLg, style: .continuous)
+                    .stroke(Color.retraceBorder, lineWidth: 1)
             }
         )
-        .shadow(color: .black.opacity(0.4), radius: 40, y: 20)
-        .shadow(color: .retraceAccent.opacity(0.1), radius: 60, y: 30)
+        .retraceElevation(.lg)
         .offset(
             x: panelPosition.width + dragOffset.width,
             y: panelPosition.height + dragOffset.height
@@ -2220,7 +2190,7 @@ struct CalendarPickerView: View {
                 Spacer()
                 Text("Jump to Date & Time")
                     .font(.retraceCalloutBold)
-                    .foregroundColor(.white)
+                    .foregroundColor(.retraceInk)
                 Spacer()
             }
             .padding(.top, 14)
@@ -2245,34 +2215,34 @@ struct CalendarPickerView: View {
             HStack {
                 // Previous month button
                 Button(action: { changeMonth(by: -1) }) {
-                    Image(systemName: "chevron.left")
-                        .font(.retraceCaption2Bold)
-                        .foregroundColor(.white.opacity(0.6))
+                    RetraceSymbol("chevron.left", size: 12, weight: .semibold)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.08))
+                        .background(Color.retraceSurfaceSunken)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Previous month")
                 .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
 
                 Spacer()
 
                 Text(monthYearString)
                     .font(.retraceCaptionMedium)
-                    .foregroundColor(.white.opacity(0.8))
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
                 // Next month button
                 Button(action: { changeMonth(by: 1) }) {
-                    Image(systemName: "chevron.right")
-                        .font(.retraceCaption2Bold)
-                        .foregroundColor(.white.opacity(0.6))
+                    RetraceSymbol("chevron.right", size: 12, weight: .semibold)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 28, height: 28)
-                        .background(Color.white.opacity(0.08))
+                        .background(Color.retraceSurfaceSunken)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Next month")
                 .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
             }
             .padding(.horizontal, 16)
@@ -2283,7 +2253,7 @@ struct CalendarPickerView: View {
                 ForEach(weekdaySymbols, id: \.self) { day in
                     Text(day)
                         .font(.retraceTinyMedium)
-                        .foregroundColor(.white.opacity(0.4))
+                        .foregroundColor(.retraceMuted)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -2393,22 +2363,23 @@ struct CalendarPickerView: View {
                             .font(isToday ? .retraceCaptionBold : .retraceCaption)
                             .foregroundColor(
                                 hasFrames
-                                    ? (isSelected ? .white : .white.opacity(isCurrentMonth ? 0.9 : 0.4))
-                                    : .white.opacity(isCurrentMonth ? 0.25 : 0.1)
+                                    ? ((isSelected || isCurrentMonth) ? Color.retraceInk : Color.retraceInk2)
+                                    : Color.retraceMuted.opacity(isCurrentMonth ? 0.55 : 0.3)
                             )
                             .frame(width: 32, height: 32)
                             .background(
                                 ZStack {
                                     if isSelected {
                                         Circle()
-                                            .fill(RetraceMenuStyle.actionBlue)
-                                        if viewModel.calendarKeyboardFocus == .dateGrid {
-                                            Circle()
-                                                .stroke(Color.white.opacity(0.95), lineWidth: 1.5)
-                                        }
+                                            .fill(Color.retraceAccentWash)
+                                        Circle()
+                                            .stroke(
+                                                viewModel.calendarKeyboardFocus == .dateGrid ? Color.retraceInk : Color.retraceAccent,
+                                                lineWidth: 1.5
+                                            )
                                     } else if isToday {
                                         Circle()
-                                            .stroke(RetraceMenuStyle.actionBlue, lineWidth: 1.5)
+                                            .stroke(Color.retraceAccent, lineWidth: 1.5)
                                     }
                                 }
                             )
@@ -2527,22 +2498,22 @@ struct TimeSlotButton: View {
                 .font(.retraceMono)
                 .foregroundColor(
                     hasFrames
-                        ? ((isHovering || isKeyboardSelected) ? .white : .white.opacity(0.9))
-                        : .white.opacity(0.25)
+                        ? ((isHovering || isKeyboardSelected) ? Color.retraceInk : Color.retraceInk2)
+                        : Color.retraceMuted
                 )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                         .fill(
                             hasFrames
-                                ? ((isHovering || isKeyboardSelected) ? RetraceMenuStyle.actionBlue : Color.white.opacity(0.1))
+                                ? ((isHovering || isKeyboardSelected) ? Color.retraceAccentWash : Color.retraceSurfaceSunken)
                                 : Color.clear
                         )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color.white.opacity(isKeyboardSelected ? 0.95 : 0), lineWidth: 1.5)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .stroke(Color.retraceAccent.opacity(isKeyboardSelected ? 1 : 0), lineWidth: 1.5)
                 )
         }
         .buttonStyle(.plain)
@@ -2579,12 +2550,12 @@ struct DateSearchField: NSViewRepresentable {
         textField.placeholderAttributedString = NSAttributedString(
             string: placeholder,
             attributes: [
-                .foregroundColor: NSColor.white.withAlphaComponent(0.35),
-                .font: NSFont.systemFont(ofSize: 16, weight: .regular)
+                .foregroundColor: NSColor.retraceMuted,
+                .font: NSFont.retraceTimelineSerif(size: 16)
             ]
         )
-        textField.font = .systemFont(ofSize: 16, weight: .regular)
-        textField.textColor = .white
+        textField.font = NSFont.retraceTimelineSerif(size: 16)
+        textField.textColor = NSColor.retraceInk
         textField.backgroundColor = .clear
         textField.isBordered = false
         textField.focusRingType = .none
@@ -2725,7 +2696,7 @@ struct DateSearchField: NSViewRepresentable {
             }
 
             // Hide insertion caret while keyboard selection is on the calendar button.
-            fieldEditor.insertionPointColor = isCalendarSelected ? .clear : .white
+            fieldEditor.insertionPointColor = isCalendarSelected ? .clear : NSColor.retraceInk
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -2861,7 +2832,7 @@ struct HiddenSegmentOverlay: View {
             Canvas { context, size in
                 let stripeWidth: CGFloat = 3
                 let spacing: CGFloat = 6
-                let color = Color.white.opacity(0.3)
+                let color = Color.retraceInk.opacity(0.3)
 
                 // Draw diagonal stripes from bottom-left to top-right
                 var x: CGFloat = -size.height
@@ -2887,7 +2858,7 @@ struct GapHatchPattern: View {
             Canvas { context, size in
                 let stripeWidth: CGFloat = 1
                 let spacing: CGFloat = 5
-                let color = Color.white.opacity(0.1)
+                let color = Color.retraceBorder
 
                 // Draw diagonal stripes
                 var x: CGFloat = -size.height
@@ -2914,9 +2885,6 @@ struct ThemeAwareCircleButtonStyle: ViewModifier {
     let isActive: Bool
     let isHovering: Bool
 
-    // Track theme changes to trigger view updates
-    @State private var theme: MilestoneCelebrationManager.ColorTheme = MilestoneCelebrationManager.getCurrentTheme()
-
     private var showColoredBorders: Bool {
         timelineSettingsStore.bool(forKey: "timelineColoredBorders")
     }
@@ -2925,18 +2893,16 @@ struct ThemeAwareCircleButtonStyle: ViewModifier {
         content
             .background(
                 Circle()
-                    .fill(isActive ? Color.white.opacity(0.15) : Color(white: 0.15))
+                    .fill(isActive ? Color.retraceAccentWash : (isHovering ? Color.retraceSurfaceHover : Color.retraceSurface))
                     .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isActive)
             )
             .overlay(
                 Circle()
-                    .stroke(showColoredBorders ? theme.controlBorderColor : Color.white.opacity(0.15), lineWidth: 1.0)
+                    .stroke(
+                        isActive || showColoredBorders ? Color.retraceAccent : Color.retraceBorderStrong,
+                        lineWidth: isActive ? 1.5 : 1.0
+                    )
             )
-            .onReceive(NotificationCenter.default.publisher(for: .colorThemeDidChange)) { notification in
-                if let newTheme = notification.object as? MilestoneCelebrationManager.ColorTheme {
-                    theme = newTheme
-                }
-            }
     }
 }
 
@@ -2945,9 +2911,6 @@ struct ThemeAwareCapsuleButtonStyle: ViewModifier {
     let isActive: Bool
     let isHovering: Bool
 
-    // Track theme changes to trigger view updates
-    @State private var theme: MilestoneCelebrationManager.ColorTheme = MilestoneCelebrationManager.getCurrentTheme()
-
     private var showColoredBorders: Bool {
         timelineSettingsStore.bool(forKey: "timelineColoredBorders")
     }
@@ -2955,18 +2918,16 @@ struct ThemeAwareCapsuleButtonStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                Capsule()
-                    .fill(isActive || isHovering ? Color(white: 0.2) : Color(white: 0.15))
+                Capsule(style: .continuous)
+                    .fill(isActive ? Color.retraceAccentWash : (isHovering ? Color.retraceSurfaceHover : Color.retraceSurface))
             )
             .overlay(
-                Capsule()
-                    .stroke(showColoredBorders ? theme.controlBorderColor : Color.white.opacity(0.15), lineWidth: 1.0)
+                Capsule(style: .continuous)
+                    .stroke(
+                        isActive || showColoredBorders ? Color.retraceAccent : Color.retraceBorderStrong,
+                        lineWidth: isActive ? 1.5 : 1.0
+                    )
             )
-            .onReceive(NotificationCenter.default.publisher(for: .colorThemeDidChange)) { notification in
-                if let newTheme = notification.object as? MilestoneCelebrationManager.ColorTheme {
-                    theme = newTheme
-                }
-            }
     }
 }
 
@@ -2984,5 +2945,19 @@ extension View {
     /// Apply theme-based styling to capsule control buttons
     func themeAwareCapsuleStyle(isActive: Bool = false, isHovering: Bool = false) -> some View {
         modifier(ThemeAwareCapsuleButtonStyle(isActive: isActive, isHovering: isHovering))
+    }
+}
+
+// MARK: - AppKit font helpers
+
+extension NSFont {
+    /// Serif face for the timeline's AppKit text; see `NSFont.retraceFont(size:weight:)`.
+    static func retraceTimelineSerif(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        retraceFont(size: size, weight: weight)
+    }
+
+    /// Mono face for the timeline's AppKit text; see `NSFont.retraceMono(size:weight:)`.
+    static func retraceTimelineMono(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+        retraceMono(size: size, weight: weight)
     }
 }

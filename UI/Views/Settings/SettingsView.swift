@@ -381,24 +381,8 @@ public struct SettingsView: View {
     }
 
     var settingsBackground: some View {
-        ZStack {
-            themeBaseBackground
-
-            // Subtle gradient orb
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [Color.retraceAccent.opacity(0.05), Color.clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 400
-                    )
-                )
-                .frame(width: 800, height: 800)
-                .offset(x: 200, y: -100)
-                .blur(radius: 80)
-        }
-        .ignoresSafeArea()
+        themeBaseBackground
+            .ignoresSafeArea()
     }
 
     var settingsShell: some View {
@@ -413,7 +397,7 @@ public struct SettingsView: View {
 
                 // Divider
                 Rectangle()
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color.retraceBorder)
                     .frame(width: 1)
 
                 // Content
@@ -477,21 +461,20 @@ public struct SettingsView: View {
         .overlay(alignment: .top) {
             if let message = settingsToastMessage {
                 HStack(spacing: 10) {
-                    Image(systemName: settingsToastIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(settingsToastIsError ? .orange : .green)
+                    RetraceSymbol(settingsToastIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill", size: 14, weight: .semibold)
+                        .foregroundColor(settingsToastIsError ? .retraceWarningText : .retraceGood)
                     Text(message)
                         .font(.retraceCaption)
-                        .foregroundColor(.retracePrimary)
+                        .foregroundColor(.retraceInk)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(.ultraThinMaterial, in: Capsule())
+                .background(Capsule(style: .continuous).fill(Color.retraceSurface))
                 .overlay(
-                    Capsule()
-                        .stroke((settingsToastIsError ? Color.orange : Color.green).opacity(0.35), lineWidth: 1)
+                    Capsule(style: .continuous)
+                        .stroke((settingsToastIsError ? Color.retraceWarningText : Color.retraceGood).opacity(0.4), lineWidth: 1)
                 )
-                .shadow(color: Color.black.opacity(0.18), radius: 16, x: 0, y: 10)
+                .retraceElevation(.lg)
                 .padding(.top, 16)
                 .scaleEffect(settingsToastVisible ? 1.0 : 0.9)
                 .opacity(settingsToastVisible ? 1.0 : 0.0)

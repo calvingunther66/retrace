@@ -14,10 +14,9 @@ struct ExcludedAppChip: View {
                 Image(nsImage: icon)
                     .resizable()
                     .frame(width: 20, height: 20)
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .clipShape(RoundedRectangle(cornerRadius: .radiusSm, style: .continuous))
             } else {
-                Image(systemName: "app.fill")
-                    .font(.system(size: 12, weight: .medium))
+                RetraceSymbol("app.fill", size: 12, weight: .medium)
                     .foregroundColor(.retraceSecondary)
                     .frame(width: 20, height: 20)
             }
@@ -30,12 +29,12 @@ struct ExcludedAppChip: View {
             Spacer(minLength: 0)
 
             Button(action: onRemove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .semibold))
+                RetraceSymbol("xmark", size: 11, weight: .semibold)
                     .foregroundColor(.retraceSecondary)
                     .frame(width: 16, height: 16)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(app.name)")
             .opacity(isHovered ? 1 : 0)
             .allowsHitTesting(isHovered)
         }
@@ -43,12 +42,12 @@ struct ExcludedAppChip: View {
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.white.opacity(isHovered ? 0.09 : 0.055))
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .fill(isHovered ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.white.opacity(isHovered ? 0.14 : 0.07), lineWidth: 1)
+            RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                .stroke(isHovered ? Color.retraceBorderStrong : Color.retraceBorder, lineWidth: 1)
         )
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {
@@ -81,13 +80,12 @@ struct ExcludedAppsAddButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.retraceSecondary.opacity(0.9))
+                RetraceSymbol("plus", size: 13, weight: .medium)
+                    .foregroundColor(.retraceInk2)
 
                 Text("Add App...")
-                    .font(.retraceCaptionMedium)
-                    .foregroundColor(.retraceSecondary.opacity(0.9))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceInk2)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
@@ -96,16 +94,17 @@ struct ExcludedAppsAddButton: View {
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.white.opacity((isHovered || isOpen) ? 0.09 : 0.045))
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .fill((isHovered || isOpen) ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
                     .stroke(
-                        isOpen ? RetraceMenuStyle.filterStrokeStrong : Color.white.opacity((isHovered || isOpen) ? 0.22 : 0.1),
+                        isOpen ? RetraceMenuStyle.filterStrokeStrong : Color.retraceBorderStrong,
                         lineWidth: isOpen ? 1.2 : 1
                     )
             )
+            .retraceFocusRing(cornerRadius: .radiusMd)
         }
         .buttonStyle(.plain)
         .onHover { hovering in

@@ -22,37 +22,36 @@ struct RetentionTagsChip<PopoverContent: View>: View {
             isPopoverShown.toggle()
         }) {
             HStack(spacing: 6) {
-                Image(systemName: "tag.fill")
-                    .font(.system(size: 12))
+                RetraceSymbol("tag.fill", size: 12)
 
                 if selectedTags.count == 1 {
                     Text(selectedTags[0].name)
-                        .font(.retraceCaptionMedium)
+                        .font(.retraceCaption)
                         .lineLimit(1)
                 } else if selectedTags.count > 1 {
                     Text("\(selectedTags.count) tags")
-                        .font(.retraceCaptionMedium)
+                        .font(.retraceCaption)
                 } else {
                     Text("None")
-                        .font(.retraceCaptionMedium)
+                        .font(.retraceCaption)
                 }
 
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
+                RetraceSymbol("chevron.down", size: 10, weight: .semibold)
                     .rotationEffect(.degrees(isPopoverShown ? 180 : 0))
             }
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: selectedTagIds)
-            .foregroundColor(isActive ? .white : .retraceSecondary)
+            .foregroundColor(isActive ? .retraceInk : .retraceInk2)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isActive ? Color.retraceAccent.opacity(0.2) : Color.white.opacity(0.05))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isActive ? Color.retraceAccentWash : (isHovered ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(isActive ? Color.retraceAccent.opacity(0.4) : Color.white.opacity(0.1), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .stroke(isActive ? Color.retraceAccent : Color.retraceBorderStrong, lineWidth: 1)
                     )
             )
+            .retraceFocusRing(cornerRadius: .radiusSm)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

@@ -93,8 +93,8 @@ struct StandaloneQuickCommentView: View {
 
                     if let messageText = viewModel.messageText {
                         Text(messageText)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(viewModel.messageIsError ? .orange : .retraceSecondary)
+                            .font(.retraceCaption)
+                            .foregroundColor(viewModel.messageIsError ? .retraceCritical : .retraceInk2)
                     }
                 }
                 .frame(width: contentWidth, alignment: .topLeading)
@@ -108,8 +108,8 @@ struct StandaloneQuickCommentView: View {
             onClose: onClose,
             spacing: 10,
             iconContainerSize: 30,
-            iconCornerRadius: 9,
-            iconFont: .system(size: 13, weight: .semibold)
+            iconCornerRadius: .radiusMd,
+            iconSize: 13
         )
     }
 
@@ -129,8 +129,8 @@ struct StandaloneQuickCommentView: View {
         } footerContent: {
             if viewModel.isReadOnlyTarget {
                 Text("Rewind segments are read-only. Choose a live Retrace segment to comment or tag.")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.orange.opacity(0.92))
+                    .font(.retraceCaption)
+                    .foregroundColor(.retraceWarningText)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -185,7 +185,7 @@ struct StandaloneQuickCommentView: View {
                         .controlSize(.small)
                 }
                 Text(viewModel.isSubmittingComment ? "Adding..." : "Add Comment")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.retraceLabel)
             }
         }
         .keyboardShortcut(.return, modifiers: [.command])
@@ -203,18 +203,16 @@ struct StandaloneQuickCommentView: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Image(systemName: footerAddTagIconName)
-                        .font(.system(size: 10, weight: .semibold))
+                    RetraceSymbol(footerAddTagIconName, size: 10, weight: .semibold)
                         .foregroundColor(footerAddTagIconColor)
                 }
 
                 Text(footerAddTagLabel)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.retraceLabel)
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Image(systemName: isShowingTagPicker ? "chevron.up" : "chevron.down")
-                    .font(.system(size: 9, weight: .bold))
+                RetraceSymbol(isShowingTagPicker ? "chevron.up" : "chevron.down", size: 9, weight: .semibold)
             }
         }
         .overlay(alignment: .bottomTrailing) {
@@ -298,7 +296,7 @@ struct StandaloneQuickCommentView: View {
         CommentChromeChip(
             text: tag.name,
             icon: "tag.fill",
-            foregroundColor: .white.opacity(0.94),
+            foregroundColor: .retraceInk,
             backgroundColor: TagColorStore.color(for: tag).opacity(0.24),
             borderColor: TagColorStore.color(for: tag).opacity(0.34)
         )
@@ -307,22 +305,21 @@ struct StandaloneQuickCommentView: View {
     private var successState: some View {
         VStack(spacing: 14) {
             Circle()
-                .fill(Color.retraceSubmitAccent.opacity(0.18))
+                .fill(Color.retraceAccentWash)
                 .frame(width: 52, height: 52)
                 .overlay(
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(Color.retraceSubmitAccent.opacity(0.96))
+                    RetraceSymbol("checkmark", size: 20, weight: .semibold)
+                        .foregroundColor(.retraceAccent)
                 )
 
             VStack(spacing: 6) {
                 Text("Comment added")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.retracePrimary.opacity(0.98))
+                    .font(.retraceTitle2)
+                    .foregroundColor(.retraceInk)
 
                 Text("Closing quick comment...")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.retraceSecondary.opacity(0.84))
+                    .font(.retraceMeta)
+                    .foregroundColor(.retraceMuted)
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)

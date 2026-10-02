@@ -75,6 +75,7 @@ extension View {
 /// Used in apps, tags, and visibility filter popovers
 public struct FilterRow: View {
     let icon: Image?
+    let symbolName: String?
     let appIconBundleID: String?
     let iconColorOverride: Color?
     let title: String
@@ -96,6 +97,7 @@ public struct FilterRow: View {
         action: @escaping () -> Void
     ) {
         self.icon = icon
+        self.symbolName = nil
         self.appIconBundleID = appIconBundleID
         self.iconColorOverride = iconColorOverride
         self.title = title
@@ -115,7 +117,8 @@ public struct FilterRow: View {
         isKeyboardHighlighted: Bool = false,
         action: @escaping () -> Void
     ) {
-        self.icon = Image(systemName: systemIcon)
+        self.icon = nil
+        self.symbolName = systemIcon
         self.appIconBundleID = nil
         self.iconColorOverride = iconColorOverride
         self.title = title
@@ -137,8 +140,10 @@ public struct FilterRow: View {
     ) {
         if let nsImage = nsImage {
             self.icon = Image(nsImage: nsImage)
+            self.symbolName = nil
         } else {
-            self.icon = Image(systemName: "app.fill")
+            self.icon = nil
+            self.symbolName = "app.fill"
         }
         self.appIconBundleID = nil
         self.iconColorOverride = iconColorOverride
@@ -158,6 +163,7 @@ public struct FilterRow: View {
         action: @escaping () -> Void
     ) {
         self.icon = nil
+        self.symbolName = nil
         self.appIconBundleID = appIconBundleID
         self.iconColorOverride = nil
         self.title = title
@@ -181,6 +187,10 @@ public struct FilterRow: View {
                             width: RetraceMenuStyle.iconFrameWidth,
                             height: RetraceMenuStyle.iconFrameWidth
                         )
+                } else if let symbolName {
+                    RetraceSymbol(symbolName, size: 14)
+                        .frame(width: RetraceMenuStyle.iconFrameWidth)
+                        .foregroundColor(iconColorOverride ?? (shouldHighlight ? RetraceMenuStyle.textColor : RetraceMenuStyle.textColorMuted))
                 } else if let icon = icon {
                     icon
                         .resizable()
@@ -197,8 +207,8 @@ public struct FilterRow: View {
                             .foregroundColor(shouldHighlight ? RetraceMenuStyle.textColor : RetraceMenuStyle.textColorMuted)
                             .lineLimit(1)
                         Text(subtitle)
-                            .font(.system(size: 11))
-                            .foregroundColor(RetraceMenuStyle.textColorMuted.opacity(0.7))
+                            .font(.retraceMeta)
+                            .foregroundColor(.retraceInk2)
                             .lineLimit(1)
                     }
                 } else {
@@ -212,20 +222,20 @@ public struct FilterRow: View {
 
                 // Checkmark for selected
                 if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.white)
+                    RetraceSymbol("checkmark", size: 11, weight: .bold)
+                        .foregroundColor(.retraceAccent)
                 }
             }
             .padding(.horizontal, RetraceMenuStyle.itemPaddingH)
             .padding(.vertical, RetraceMenuStyle.itemPaddingV)
             .background(
-                RoundedRectangle(cornerRadius: RetraceMenuStyle.itemCornerRadius)
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                     .fill(shouldHighlight ? RetraceMenuStyle.itemHoverColor : Color.clear)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onHover { hovering in
             withAnimation(.easeOut(duration: RetraceMenuStyle.hoverAnimationDuration)) {
                 isHovered = hovering
@@ -302,29 +312,32 @@ public struct FilterSearchField: View {
 
     public var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
+            RetraceSymbol("magnifyingglass", size: 12, weight: .medium)
+                .foregroundColor(.retraceInk2)
 
             textField
                 .textFieldStyle(.plain)
                 .font(RetraceMenuStyle.font)
-                .foregroundColor(.white)
+                .foregroundColor(.retraceInk)
 
             if !text.isEmpty {
                 Button(action: { text = "" }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.4))
+                    RetraceSymbol("xmark.circle.fill", size: 12, weight: .medium)
+                        .foregroundColor(.retraceInk2)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
             }
         }
         .padding(.horizontal, RetraceMenuStyle.searchFieldPaddingH)
         .padding(.vertical, RetraceMenuStyle.searchFieldPaddingV)
         .background(
-            RoundedRectangle(cornerRadius: RetraceMenuStyle.searchFieldCornerRadius)
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                 .fill(RetraceMenuStyle.searchFieldBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .stroke(Color.retraceBorderStrong, lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onTapGesture {
@@ -578,8 +591,8 @@ public struct AppsFilterPopover: View {
                                 ProgressView()
                                     .controlSize(.small)
                                 Text("Loading apps…")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(.secondary)
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceMuted)
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 24)
@@ -606,8 +619,8 @@ public struct AppsFilterPopover: View {
                         } else if filterMode == .exclude {
                             // In exclude mode, show a hint
                             Text("Select apps to hide")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.secondary)
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 6)
@@ -637,8 +650,8 @@ public struct AppsFilterPopover: View {
                                 ProgressView()
                                     .controlSize(.small)
                                 Text("Refreshing Rewind history…")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(.secondary)
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceMuted)
                                 Spacer(minLength: 0)
                             }
                             .padding(.horizontal, 12)
@@ -651,8 +664,9 @@ public struct AppsFilterPopover: View {
                                 .padding(.vertical, 8)
 
                             Text("Other Apps")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.secondary)
+                                .font(.retraceLabel)
+                                .retraceLabelTracking()
+                                .foregroundColor(.retraceInk2)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 12)
                                 .padding(.bottom, 4)
@@ -673,8 +687,8 @@ public struct AppsFilterPopover: View {
                             }
                         } else if filteredApps.isEmpty && !isLoading {
                             Text(searchText.isEmpty ? "No apps found" : "No matching apps")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.secondary)
+                                .font(.retraceMeta)
+                                .foregroundColor(.retraceMuted)
                                 .frame(maxWidth: .infinity, alignment: .center)
                                 .padding(.vertical, 18)
                         }
@@ -749,21 +763,21 @@ private struct FilterModeButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .medium))
+                RetraceSymbol(icon, size: 10, weight: .medium)
                 Text(title)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.retraceTiny)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .frame(maxWidth: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isSelected ? RetraceMenuStyle.actionBlue : (isHovered ? Color.white.opacity(0.05) : Color.clear))
+                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                    .fill(isSelected ? RetraceMenuStyle.actionBlue : (isHovered ? Color.retraceSurfaceHover : Color.clear))
             )
-            .foregroundColor(isSelected ? .white : RetraceMenuStyle.textColorMuted)
+            .foregroundColor(isSelected ? .retraceOnAccent : RetraceMenuStyle.textColorMuted)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onHover { hovering in
             isHovered = hovering
             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
@@ -960,23 +974,21 @@ public struct TagsFilterPopover: View {
 
             if visibleTags.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "tag.slash")
-                        .font(.system(size: 24))
-                        .foregroundColor(.secondary)
+                    RetraceSymbol("tag.slash", size: 24)
+                        .foregroundColor(.retraceMuted)
                     Text("No tags created")
-                        .font(.retraceCaption)
-                        .foregroundColor(.secondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
             } else if filteredTags.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 24))
-                        .foregroundColor(.secondary)
+                    RetraceSymbol("magnifyingglass", size: 24)
+                        .foregroundColor(.retraceMuted)
                     Text("No matching tags")
-                        .font(.retraceCaption)
-                        .foregroundColor(.secondary)
+                        .font(.retraceMeta)
+                        .foregroundColor(.retraceMuted)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
@@ -1004,8 +1016,8 @@ public struct TagsFilterPopover: View {
                             } else if filterMode == .exclude && searchText.isEmpty {
                                 // In exclude mode, show a hint
                                 Text("Select tags to hide")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(.secondary)
+                                    .font(.retraceMeta)
+                                    .foregroundColor(.retraceMuted)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
@@ -1365,8 +1377,8 @@ public struct AdvancedSearchFilterPopover: View {
         FilterPopoverContainer(width: 340) {
             HStack {
                 Text("Advanced Filters")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                    .font(.retraceCalloutBold)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
@@ -1384,21 +1396,22 @@ public struct AdvancedSearchFilterPopover: View {
                         browserInputText = ""
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.65))
+                    .font(.retraceCaption)
+                    .foregroundColor(.retraceInk2)
                 }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(Color.retraceBorder)
 
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Exclude Frames With Words")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.65))
+                        .font(.retraceLabel)
+                        .retraceLabelTracking()
+                        .foregroundColor(.retraceInk2)
 
                     FocusableTextInput(
                         text: $excludedInputText,
@@ -1416,16 +1429,16 @@ public struct AdvancedSearchFilterPopover: View {
                         .padding(.horizontal, 11)
                         .padding(.vertical, 9)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.white.opacity(0.08))
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .fill(Color.retraceSurface)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                                 .stroke(
                                     focusedField == .excludeTerms
                                         ? RetraceMenuStyle.filterStrokeStrong
                                         : (isExcludeHovered
-                                            ? Color.white.opacity(0.65)
+                                            ? Color.retraceMuted
                                             : RetraceMenuStyle.filterStrokeSubtle),
                                     lineWidth: 1
                                 )
@@ -1454,8 +1467,9 @@ public struct AdvancedSearchFilterPopover: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Window Name")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.65))
+                        .font(.retraceLabel)
+                        .retraceLabelTracking()
+                        .foregroundColor(.retraceInk2)
 
                     HStack(spacing: 10) {
                         FocusableTextInput(
@@ -1478,16 +1492,16 @@ public struct AdvancedSearchFilterPopover: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 7)
                     .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color.white.opacity(0.08))
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(Color.retraceSurface)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                             .stroke(
                                 focusedField == .windowNameInput
                                     ? RetraceMenuStyle.filterStrokeStrong
                                     : (isWindowHovered
-                                        ? Color.white.opacity(0.65)
+                                        ? Color.retraceMuted
                                         : RetraceMenuStyle.filterStrokeSubtle),
                                 lineWidth: 1
                             )
@@ -1516,8 +1530,9 @@ public struct AdvancedSearchFilterPopover: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Browser URL")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.white.opacity(0.65))
+                        .font(.retraceLabel)
+                        .retraceLabelTracking()
+                        .foregroundColor(.retraceInk2)
 
                     HStack(spacing: 10) {
                         FocusableTextInput(
@@ -1540,16 +1555,16 @@ public struct AdvancedSearchFilterPopover: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 7)
                     .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color.white.opacity(0.08))
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                            .fill(Color.retraceSurface)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6)
+                        RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                             .stroke(
                                 focusedField == .browserUrlInput
                                     ? RetraceMenuStyle.filterStrokeStrong
                                     : (isBrowserHovered
-                                        ? Color.white.opacity(0.65)
+                                        ? Color.retraceMuted
                                         : RetraceMenuStyle.filterStrokeSubtle),
                                 lineWidth: 1
                             )
@@ -1619,15 +1634,15 @@ struct IncludeExcludeModeToggle: View {
             TogglePillButton(
                 title: "Exclude",
                 isSelected: mode == .exclude,
-                selectedTint: .orange.opacity(0.9)
+                selectedTint: .retraceWarningText
             ) {
                 mode = .exclude
             }
         }
         .padding(3)
         .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(Color.white.opacity(0.05))
+            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                .fill(Color.retraceSurfaceSunken)
         )
     }
 }
@@ -1643,21 +1658,22 @@ private struct TogglePillButton: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(isSelected ? .white : RetraceMenuStyle.textColorMuted)
+                .font(.retraceTinyBold)
+                .foregroundColor(isSelected ? .retraceOnAccent : RetraceMenuStyle.textColorMuted)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
                 .frame(maxWidth: .infinity)
                 .background(
-                    RoundedRectangle(cornerRadius: 5)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                         .fill(
                             isSelected
                                 ? selectedTint
-                                : (isHovered ? Color.white.opacity(0.08) : Color.clear)
+                                : (isHovered ? Color.retraceSurfaceHover : Color.clear)
                         )
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onHover { hovering in
             isHovered = hovering
             if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
@@ -1677,26 +1693,25 @@ private struct MetadataTermChip: View {
     }
 
     private var iconTint: Color {
-        mode == .include ? .blue.opacity(0.88) : .orange.opacity(0.9)
+        mode == .include ? .retraceAccent : .retraceWarningText
     }
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: iconName)
-                .font(.system(size: 9, weight: .semibold))
+            RetraceSymbol(iconName, size: 9, weight: .semibold)
                 .foregroundColor(iconTint)
 
             Text(term)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.white)
+                .font(.retraceTiny)
+                .foregroundColor(.retraceInk)
                 .lineLimit(1)
 
             Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.7))
+                RetraceSymbol("xmark.circle.fill", size: 10, weight: .semibold)
+                    .foregroundColor(.retraceInk2)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Remove \(term)")
             .onHover { hovering in
                 if hovering { NSCursor.pointingHand.push() } else { NSCursor.pop() }
             }
@@ -1704,13 +1719,13 @@ private struct MetadataTermChip: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
         .background(
-            Capsule()
-                .fill(Color.white.opacity(isHovered ? 0.2 : 0.14))
+            Capsule(style: .continuous)
+                .fill(isHovered ? Color.retraceSurfaceHover : Color.retraceSurfaceSunken)
         )
         .overlay(
-            Capsule()
+            Capsule(style: .continuous)
                 .stroke(
-                    isHovered ? Color.white.opacity(0.6) : RetraceMenuStyle.filterStrokeSubtle,
+                    isHovered ? Color.retraceMuted : RetraceMenuStyle.filterStrokeSubtle,
                     lineWidth: 1
                 )
         )
@@ -2055,18 +2070,18 @@ public struct DropdownOverlayModifier<DropdownContent: View>: ViewModifier {
                     // Wrap content in a background container to ensure solid background
                     ZStack {
                         // Solid background layer
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color(nsColor: .windowBackgroundColor))
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .fill(Color.retraceSurface)
 
                         // Actual content on top
                         dropdownContent()
                     }
                     .fixedSize(horizontal: false, vertical: true)
-                    .shadow(color: .black.opacity(0.4), radius: 12, y: opensUpward ? -4 : 4)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                            .stroke(Color.retraceBorder, lineWidth: 1)
                     )
+                    .retraceElevation(.md)
                     .contentShape(Rectangle())
                     .offset(y: opensUpward ? -yOffset : yOffset)
                     .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: opensUpward ? .bottom : .top)))
@@ -2944,24 +2959,24 @@ public struct DateRangeFilterPopover: View {
     }
 
     private var calendarToggleForegroundColor: Color {
-        .white.opacity(isCalendarToggleHighlighted ? 1 : 0.88)
+        isCalendarToggleHighlighted ? .retraceInk : .retraceInk2
     }
 
     private var calendarToggleBackgroundColor: Color {
         isCalendarToggleHighlighted
-            ? RetraceMenuStyle.actionBlue
-            : Color.white.opacity(0.08)
+            ? Color.retraceAccentWash
+            : Color.retraceSurfaceSunken
     }
 
     private var calendarToggleBorderColor: Color {
         if isCalendarToggleHighlighted {
-            return RetraceMenuStyle.actionBlue.opacity(0.55)
+            return .retraceAccent
         }
-        return Color.white.opacity(0.08)
+        return .retraceBorderStrong
     }
 
     private var calendarToggleHintColor: Color {
-        isCalendarToggleHighlighted ? .white.opacity(0.82) : .white.opacity(0.55)
+        .retraceInk2
     }
 
     public init(
@@ -3010,8 +3025,8 @@ public struct DateRangeFilterPopover: View {
             // Header
             HStack {
                 Text("Date Range")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.white)
+                    .font(.retraceCalloutBold)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
@@ -3021,8 +3036,8 @@ public struct DateRangeFilterPopover: View {
                         clearAllRangesAndDismiss()
                     }
                     .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(isResetEnabled ? RetraceMenuStyle.actionBlue : RetraceMenuStyle.textColorMuted.opacity(0.55))
+                    .font(.retraceCaption)
+                    .foregroundColor(isResetEnabled ? RetraceMenuStyle.actionBlue : Color.retraceMuted.opacity(0.5))
                     .disabled(!isResetEnabled)
                     .onHover { hovering in
                         isHoveringResetButton = hovering
@@ -3046,14 +3061,13 @@ public struct DateRangeFilterPopover: View {
             .padding(.vertical, 10)
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(Color.retraceBorder)
 
             // Natural language range input
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.45))
+                    RetraceSymbol("magnifyingglass", size: 11, weight: .medium)
+                        .foregroundColor(.retraceInk2)
 
                     FocusableTextInput(
                         text: $rangeInputText,
@@ -3092,25 +3106,25 @@ public struct DateRangeFilterPopover: View {
                             hasCommittedPrimaryRange = false
                             applyAllRanges(moveToNextDropdown: false)
                         }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.white.opacity(0.35))
+                            RetraceSymbol("xmark.circle.fill", size: 12, weight: .medium)
+                                .foregroundColor(.retraceInk2)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Clear date range")
                     }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.white.opacity(0.06))
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                        .fill(Color.retraceSurface)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                         .stroke(
                             isPrimaryInputHighlighted
                                 ? RetraceMenuStyle.filterStrokeMedium
-                                : Color.clear,
+                                : RetraceMenuStyle.filterStrokeSubtle,
                             lineWidth: 1
                         )
                 )
@@ -3124,17 +3138,16 @@ public struct DateRangeFilterPopover: View {
 
                 if let parseError {
                     Text(parseError)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.orange.opacity(0.9))
+                        .font(.retraceTiny)
+                        .foregroundColor(.retraceWarningText)
                         .padding(.horizontal, 2)
                 }
 
                 if allowMultipleRanges {
                     ForEach(additionalRangeIDs, id: \.self) { rangeID in
                         HStack(spacing: 8) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.white.opacity(0.3))
+                            RetraceSymbol("magnifyingglass", size: 11, weight: .medium)
+                                .foregroundColor(.retraceMuted)
 
                             FocusableTextInput(
                                 text: additionalRangeBinding(for: rangeID),
@@ -3156,22 +3169,22 @@ public struct DateRangeFilterPopover: View {
                             Button(action: {
                                 removeAdditionalRange(id: rangeID)
                             }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(.white.opacity(0.35))
+                                RetraceSymbol("xmark.circle.fill", size: 12, weight: .medium)
+                                    .foregroundColor(.retraceInk2)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Remove date range")
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.white.opacity(0.06))
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                .fill(Color.retraceSurface)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 6)
+                            RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                                 .stroke(
-                                    isAdditionalInputHighlighted(rangeID) ? RetraceMenuStyle.filterStrokeMedium : Color.clear,
+                                    isAdditionalInputHighlighted(rangeID) ? RetraceMenuStyle.filterStrokeMedium : RetraceMenuStyle.filterStrokeSubtle,
                                     lineWidth: 1
                                 )
                         )
@@ -3185,8 +3198,8 @@ public struct DateRangeFilterPopover: View {
 
                         if let additionalError = additionalParseErrorMessage(for: rangeID) {
                             Text(additionalError)
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundColor(.orange.opacity(0.9))
+                                .font(.retraceTiny)
+                                .foregroundColor(.retraceWarningText)
                                 .padding(.horizontal, 2)
                         }
                     }
@@ -3196,21 +3209,20 @@ public struct DateRangeFilterPopover: View {
                             addAdditionalRangeInput()
                         }) {
                             HStack(spacing: 6) {
-                                Image(systemName: "plus.circle")
-                                    .font(.system(size: 11, weight: .semibold))
+                                RetraceSymbol("plus.circle", size: 11, weight: .semibold)
                                 Text("Add another date range")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .font(.retraceTinyBold)
                             }
-                            .foregroundColor(.white.opacity(0.78))
+                            .foregroundColor(.retraceInk2)
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(Color.white.opacity(0.09))
+                                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                    .fill(Color.retraceSurfaceSunken)
                             )
                             .overlay(
-                                RoundedRectangle(cornerRadius: 6)
-                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
+                                    .stroke(Color.retraceBorderStrong, lineWidth: 1)
                             )
                         }
                         .buttonStyle(.plain)
@@ -3224,36 +3236,35 @@ public struct DateRangeFilterPopover: View {
             .padding(.vertical, 10)
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(Color.retraceBorder)
 
             // Calendar range toggle and hint
             Button(action: {
                 toggleCalendarVisibility()
             }) {
                 HStack(spacing: 8) {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 12, weight: .medium))
+                    RetraceSymbol("calendar", size: 12, weight: .medium)
                         .foregroundColor(calendarToggleForegroundColor)
                     Text(isCalendarVisible ? "Hide Calendar" : "Browse Calendar")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.retraceCaption2)
                         .foregroundColor(calendarToggleForegroundColor)
 
                     Spacer()
 
                     if isCalendarVisible {
                         Text(activeCalendarBoundary == .start ? "Pick start" : "Pick end")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.retraceTinyBold)
                             .foregroundColor(calendarToggleHintColor)
                     }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                         .fill(calendarToggleBackgroundColor)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: .radiusSm, style: .continuous)
                         .stroke(calendarToggleBorderColor, lineWidth: 1)
                 )
             }
@@ -3274,7 +3285,7 @@ public struct DateRangeFilterPopover: View {
             }
 
             Divider()
-                .background(Color.white.opacity(0.1))
+                .background(Color.retraceBorder)
 
             // Quick presets (horizontal chips)
             HStack(spacing: 6) {
@@ -3337,41 +3348,41 @@ public struct DateRangeFilterPopover: View {
         VStack(spacing: 6) {
             HStack {
                 Button(action: { changeMonth(by: -1) }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.6))
+                    RetraceSymbol("chevron.left", size: 10, weight: .semibold)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 22, height: 22)
-                        .background(Color.white.opacity(0.08))
+                        .background(Color.retraceSurfaceSunken)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Previous month")
                 .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
 
                 Spacer()
 
                 Text(monthYearString)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.8))
+                    .font(.retraceCaption2Bold)
+                    .foregroundColor(.retraceInk)
 
                 Spacer()
 
                 Button(action: { changeMonth(by: 1) }) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.6))
+                    RetraceSymbol("chevron.right", size: 10, weight: .semibold)
+                        .foregroundColor(.retraceInk2)
                         .frame(width: 22, height: 22)
-                        .background(Color.white.opacity(0.08))
+                        .background(Color.retraceSurfaceSunken)
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Next month")
                 .onHover { h in if h { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
             }
 
             HStack(spacing: 0) {
                 ForEach(weekdaySymbols, id: \.self) { day in
                     Text(day)
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.white.opacity(0.4))
+                        .font(.retraceTiny)
+                        .foregroundColor(.retraceMuted)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -3404,12 +3415,12 @@ public struct DateRangeFilterPopover: View {
                         HStack(spacing: 0) {
                             // Left half - only show if not the start date
                             Rectangle()
-                                .fill(isStart ? Color.clear : RetraceMenuStyle.actionBlue.opacity(0.28))
+                                .fill(isStart ? Color.clear : Color.retraceAccentWash)
                                 .frame(maxWidth: .infinity, maxHeight: 26)
 
                             // Right half - only show if not the end date
                             Rectangle()
-                                .fill(isEnd ? Color.clear : RetraceMenuStyle.actionBlue.opacity(0.28))
+                                .fill(isEnd ? Color.clear : Color.retraceAccentWash)
                                 .frame(maxWidth: .infinity, maxHeight: 26)
                         }
                     }
@@ -3420,13 +3431,13 @@ public struct DateRangeFilterPopover: View {
                     }) {
                         ZStack {
                             Text("\(calendar.component(.day, from: normalizedDay))")
-                                .font(.system(size: 11, weight: (isToday || isStart || isEnd) ? .semibold : .regular))
+                                .font(RetraceFont.mono(size: 11, weight: (isToday || isStart || isEnd) ? .semibold : .regular))
                                 .foregroundColor(
                                     isFuture
-                                        ? .white.opacity(0.2)
+                                        ? Color.retraceMuted.opacity(0.5)
                                         : ((isStart || isEnd)
-                                           ? .white
-                                           : .white.opacity(isCurrentMonth ? 0.82 : 0.35))
+                                           ? Color.retraceOnAccent
+                                           : (isCurrentMonth ? Color.retraceInk : Color.retraceMuted))
                                 )
                                 .frame(width: 26, height: 26)
                                 .background(
@@ -3445,6 +3456,7 @@ public struct DateRangeFilterPopover: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits((isStart || isEnd) ? .isSelected : [])
                     .disabled(isFuture)
                     .onHover { hovering in
                         if !isFuture {
@@ -3468,18 +3480,18 @@ public struct DateRangeFilterPopover: View {
         }) {
             HStack(spacing: 0) {
                 Text(preset.chipLabel)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(isHighlighted ? .white : .white.opacity(0.8))
+                    .font(.retraceTiny)
+                    .foregroundColor(.retraceInk)
             }
             .frame(minWidth: 34, minHeight: 24, alignment: .center)
             .padding(.horizontal, 10)
             .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isHighlighted ? Color.white.opacity(0.2) : Color.white.opacity(0.1))
+                Capsule(style: .continuous)
+                    .fill(isHighlighted ? Color.retraceAccentWash : Color.retraceSurfaceSunken)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(isHighlighted ? RetraceMenuStyle.filterStrokeMedium : Color.clear, lineWidth: 1)
+                Capsule(style: .continuous)
+                    .stroke(isHighlighted ? RetraceMenuStyle.filterStrokeMedium : Color.retraceBorderStrong, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
