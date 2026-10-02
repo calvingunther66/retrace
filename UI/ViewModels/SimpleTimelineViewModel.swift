@@ -4061,7 +4061,9 @@ public class SimpleTimelineViewModel: ObservableObject {
             targetIndex = findClosestFrameIndex(to: targetDate)
         }
 
-        guard requestStillCurrent?() ?? true else { return nil }
+        // No staleness re-check here: everything since the post-fetch check above is synchronous, and
+        // `applyNavigationFrameWindow` legitimately moves the playhead (frames.didSet clamps currentIndex into
+        // the replacement window), so a playhead-identity check would always report the request as stale.
         navigateToFrame(targetIndex)
         return targetIndex
     }
