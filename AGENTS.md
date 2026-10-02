@@ -57,6 +57,13 @@ sign with a stable local identity so permission grants persist:
 ./build_and_sign.sh
 ```
 
+> **The installed app is stale until you rebuild it.** The Retrace in
+> `/Applications` is whatever `./build_and_sign.sh` last installed. `swift build`
+> and `swift test` do **not** update it. Before any live testing of your changes
+> in the real app (computer-use, manual smoke checks, screenshots of the running
+> app), run `./build_and_sign.sh` first. See
+> [Critical Rule 9](#9-rebuild-the-installed-app-before-live-testing).
+
 Why this exists, full setup/renewal/troubleshooting steps, and the rule for
 future changes to the signing logic: see
 [Code Signing for Local Development](#code-signing-for-local-development)
@@ -631,6 +638,14 @@ Then check which path actually executes and fix the right code.
 - `build_and_sign.sh` and `dev.sh` sign dev builds with a stable local identity (`Retrace Dev Local`) instead of ad-hoc (`--sign -`) so macOS Screen Recording/Accessibility grants (TCC) survive every rebuild. If signing fails, both scripts **fail the build** rather than silently falling back to ad-hoc.
 - **Do not "fix" a signing failure by reverting that identity to `--sign -` or otherwise making the fallback silent** — that reintroduces the exact permission-churn problem this setup exists to eliminate, and it won't be obvious until permissions start resetting again. The correct fix is `./scripts/setup_dev_signing_identity.sh` (or `--replace`), never a script change.
 - Full explanation and troubleshooting: see [Code Signing for Local Development](#code-signing-for-local-development) above.
+
+### 9. Rebuild the Installed App Before Live Testing
+
+- The app in `/Applications` only contains your changes after `./build_and_sign.sh` has run. `swift build` / `swift test` leave it untouched, so a live pass without a rebuild tests old code and can hide or invent bugs.
+- **Before any live run of the real app** (computer-use or other UI automation, manual smoke checks, screenshots of the running app, verifying a fix "in the app"), run `./build_and_sign.sh` first and confirm it succeeded. Quit any running Retrace so the new build is the one launched.
+- Offscreen/headless checks (unit tests, `swift test --filter RetraceTests.DesignSystemGalleryTests` snapshot rendering) don't need the installed app and don't need this rebuild.
+- `./dev.sh` is the debug alternative: it runs in place under a separate bundle ID (`io.retrace.app.dev`) with its own permission grants, and does not touch `/Applications`.
+- If signing fails, follow Rule 8 (run `./scripts/setup_dev_signing_identity.sh`); never switch to ad-hoc signing.
 
 ---
 
