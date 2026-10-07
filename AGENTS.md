@@ -202,6 +202,11 @@ retrace/
 │   ├── validate_sleep_wake_stability.sh # Sleep/wake soak validation workflow
 │   └── validate_darkwake_watchdog.sh # Automated darkwake watchdog regression validation
 │
+├── Sources/                     # Standalone executables
+│   ├── RetraceCLI/              # retrace-cli: AI search/indexing harness (search, ai-context, bench, index-bench, vector-status, ask); snapshot-DB only
+│   ├── QueryRewindApps/
+│   └── TestMostRecentFrame/
+│
 ├── Shared/                      # CRITICAL: Shared types and protocols
 │   ├── Logging.swift            # Central log utility (Log.debug/info/warning/error)
 │   ├── AppPaths.swift           # Application path configuration

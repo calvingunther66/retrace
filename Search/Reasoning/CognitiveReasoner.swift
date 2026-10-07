@@ -53,7 +53,8 @@ public actor CognitiveReasoner: CognitiveReasonerProtocol {
             offset: 0
         )) ?? []
 
-        var candidateFrameIDs = initialMatches.map { (m: FTSMatch) -> Int64 in m.frameID.value }
+        // Hop-1 direct FTS hits are the strongest evidence and must survive the final cut.
+        let directFrameIDs = initialMatches.map { (m: FTSMatch) -> Int64 in m.frameID.value }
 
         // Hop 2: Entity Graph Expansion
         // Check if query or individual tokens match known entities
@@ -67,27 +68,42 @@ public actor CognitiveReasoner: CognitiveReasonerProtocol {
             }
         }
 
+        var entityFrameIDs: [Int64] = []
         for ent in entityCandidates {
             let entityFrames = (try? await entityMesh.findFramesForEntity(normalizedValue: ent.normalizedValue, limit: 15)) ?? []
-            candidateFrameIDs.append(contentsOf: entityFrames)
+            entityFrameIDs.append(contentsOf: entityFrames)
         }
 
         // Hop 3: Temporal Neighborhood Expansion
         // For top candidate frames, pull surrounding keyframes (±60s) to capture causal context
-        var expandedFrameIDs = Set<Int64>(candidateFrameIDs)
-        for focalID in candidateFrameIDs.prefix(5) {
+        var neighborFrameIDs: [Int64] = []
+        for focalID in (directFrameIDs + entityFrameIDs).prefix(5) {
             if let focalFrame = try await database.getFrame(id: FrameID(value: focalID)) {
                 let startNeighbor = focalFrame.timestamp.addingTimeInterval(-60)
                 let endNeighbor = focalFrame.timestamp.addingTimeInterval(60)
 
                 let neighbors = (try? await database.getFrames(from: startNeighbor, to: endNeighbor, limit: 10)) ?? []
-                for n in neighbors {
-                    expandedFrameIDs.insert(n.id.value)
-                }
+                neighborFrameIDs.append(contentsOf: neighbors.map { $0.id.value })
             }
         }
 
-        let resolvedFrameIDs = Array(expandedFrameIDs.prefix(maxFrames))
+        // Ordered, de-duplicated selection. (This used to be `Array(Set(...).prefix(maxFrames))`,
+        // whose arbitrary iteration order dropped most of the direct FTS hits — on a 157k-frame
+        // DB only 1–9 of 20 survived into the final context.) Direct hits keep priority; the
+        // remaining slots alternate between entity-graph frames and temporal neighbors so neither
+        // hop starves the other.
+        var resolvedFrameIDs: [Int64] = []
+        var seen = Set<Int64>()
+        func take(_ id: Int64) {
+            guard resolvedFrameIDs.count < maxFrames, seen.insert(id).inserted else { return }
+            resolvedFrameIDs.append(id)
+        }
+        directFrameIDs.forEach(take)
+        for i in 0..<max(entityFrameIDs.count, neighborFrameIDs.count) {
+            if i < entityFrameIDs.count { take(entityFrameIDs[i]) }
+            if i < neighborFrameIDs.count { take(neighborFrameIDs[i]) }
+            if resolvedFrameIDs.count >= maxFrames { break }
+        }
 
         // Build Storyboard Frames
         var storyboardFrames: [CognitiveStoryboardFrame] = []
