@@ -28,7 +28,10 @@ Search/
 │   ├── AIEvidenceRetriever.swift  # Executes a plan: relaxing FTS tiers, progressive recency windows, episodes, keyword-in-context evidence
 │   ├── AISearchMemory.swift       # Persistent learned search hints (bundle IDs + phrases) in <storage>/ai_search_memory.json — structured only, never prompt text
 │   ├── AISearchLearning.swift     # Learns from cited, covering evidence after an answer; feedback/eviction for hints
+│   ├── AITimeResolver.swift       # Resolves "Resets in 4 hr" / "Resets Sat 12:00 PM" into absolute times against the capture time (in code, not by the model)
 │   └── AIQueryRefiner.swift       # Model-assisted query refinement for weak facets (sees question + stats, never screen text); evidence merging
+├── OnDevice/
+│   └── OnDeviceLanguageModel.swift # Apple FoundationModels provider: on-device (default) + Private Cloud Compute tier; token-budgeted prompts; OnDeviceTransport
 ├── OpenRouter/
 │   ├── OpenRouterClient.swift               # OpenRouter API client
 │   └── OpenRouterGranularSearchCoordinator.swift # OpenRouter-backed semantic indexing pipeline
@@ -37,6 +40,8 @@ Search/
     ├── AIQueryPlannerTests.swift
     ├── AISearchMemoryTests.swift
     ├── AIQueryRefinerTests.swift
+    ├── AITimeResolverTests.swift
+    ├── OnDeviceLanguageModelTests.swift
     ├── CognitiveMemorySystemTests.swift
     └── TestLogger.swift
 ```

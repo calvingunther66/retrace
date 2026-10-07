@@ -3462,28 +3462,35 @@ public actor AppCoordinator {
     /// rounds, 20s per call, and any failure returns the original pack unchanged.
     public nonisolated func refineAIEvidence(pack: AIEvidencePack, apps: [AIQueryApp], answerModel: String) async -> AIEvidencePack {
         let weakBefore = pack.weakFacets.count
-        guard weakBefore > 0, let apiKey = OpenRouterCredentialsManager.getAPIKey(), !apiKey.isEmpty else { return pack }
+        guard weakBefore > 0 else { return pack }
 
-        let defaults = UserDefaults.standard
-        let override = defaults.string(forKey: "aiRefinementModel")
-        let model = (override?.isEmpty == false) ? override! : answerModel
-
-        struct Transport: AIChatTransport {
-            let apiKey: String
-            let model: String
-            func complete(system: String, user: String, maxTokens: Int) async throws -> String {
-                try await OpenRouterClient().complete(system: system, user: user, apiKey: apiKey, model: model, maxTokens: maxTokens, timeout: 20)
+        // Refinement only needs search vocabulary (no screen text), which Apple's on-device model can produce for
+        // free and offline; fall back to OpenRouter only when on-device is unavailable or disabled.
+        let providerSetting = UserDefaults.standard.string(forKey: "aiAnswerProvider") ?? "auto"
+        let transport: any AIChatTransport
+        if providerSetting != "openrouter", OnDeviceLanguageModel.isAvailable {
+            transport = OnDeviceTransport()
+        } else if providerSetting != "onDevice", let apiKey = OpenRouterCredentialsManager.getAPIKey(), !apiKey.isEmpty {
+            struct CloudTransport: AIChatTransport {
+                let apiKey: String
+                let model: String
+                func complete(system: String, user: String, maxTokens: Int) async throws -> String {
+                    try await OpenRouterClient().complete(system: system, user: user, apiKey: apiKey, model: model, maxTokens: maxTokens, timeout: 20)
+                }
             }
+            let override = UserDefaults.standard.string(forKey: "aiRefinementModel")
+            transport = CloudTransport(apiKey: apiKey, model: (override?.isEmpty == false) ? override! : answerModel)
+        } else {
+            return pack
         }
+
         var names: [String: String] = [:]
         for app in apps { names[app.bundleID] = names[app.bundleID] ?? app.name }
         let retriever = AIEvidenceRetriever(database: services.database, ftsEngine: services.ftsEngine, appNames: names, memory: AISearchMemory.shared)
 
         let start = Date()
-        let refined = await AIQueryRefiner.refine(
-            pack: pack, retriever: retriever, transport: Transport(apiKey: apiKey, model: model), knownApps: apps, rounds: 2
-        )
-        let meta = "{\"weakBefore\":\(weakBefore),\"weakAfter\":\(refined.weakFacets.count),\"evidenceBefore\":\(pack.evidence.count),\"evidenceAfter\":\(refined.evidence.count),\"ms\":\(Int(Date().timeIntervalSince(start) * 1000))}"
+        let refined = await AIQueryRefiner.refine(pack: pack, retriever: retriever, transport: transport, knownApps: apps, rounds: 2)
+        let meta = "{\"weakBefore\":\(weakBefore),\"weakAfter\":\(refined.weakFacets.count),\"evidenceBefore\":\(pack.evidence.count),\"evidenceAfter\":\(refined.evidence.count),\"ms\":\(Int(Date().timeIntervalSince(start) * 1000)),\"onDevice\":\(transport is OnDeviceTransport)}"
         try? await services.database.recordMetricEvent(metricType: .aiSearchRefinement, metadata: meta)
         return refined
     }

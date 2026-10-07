@@ -389,6 +389,46 @@ func cmdMemory(_ o: Options) async throws {
     }
 }
 
+/// Full pipeline with NO network: plan → evidence → Apple's on-device model answers.
+func cmdAskLocal(_ o: Options) async throws {
+    guard let q = o.positional.first else { throw CLIError("usage: ask-local <question> --db <db>") }
+    let tier: OnDeviceLanguageModel.Tier = o.flags["tier"] == "pcc" ? .privateCloud : .onDevice
+    guard OnDeviceLanguageModel.isAvailable(tier) else { throw CLIError("Apple's \(tier.displayName) model is not available on this Mac") }
+    let stack = try await openStack(o)
+    var names: [String: String] = [:]
+    if let data = FileManager.default.contents(atPath: stack.storageDir + "/app_names.json"),
+       let dict = try? JSONSerialization.jsonObject(with: data) as? [String: String] { names = dict }
+    let known = names.map { AIQueryApp(name: $0.value, bundleID: $0.key) }
+    let memory = AISearchMemory(fileURL: URL(fileURLWithPath: stack.storageDir).appendingPathComponent("ai_search_memory.json"))
+    // The snapshot ends before "now"; --now lets the demo act as if asked right after the last captured frame.
+    var now = Date()
+    if let iso = o.flags["now"], let d = ISO8601DateFormatter().date(from: iso) { now = d }
+    let plan = AIQueryPlanner.plan(question: q, now: now, apps: known)
+    let retriever = AIEvidenceRetriever(database: stack.db, ftsEngine: stack.fts, appNames: names, memory: memory)
+    var pack = await retriever.retrieve(plan: plan)
+    out("plan: \(plan.summary) | evidence: \(pack.evidence.count) frames")
+
+    if o.has("refine"), !pack.weakFacets.isEmpty {
+        let t0 = Date()
+        pack = await AIQueryRefiner.refine(pack: pack, retriever: retriever, transport: OnDeviceTransport(tier: tier), knownApps: known, rounds: 2)
+        out(String(format: "on-device refinement: %.1fs, evidence now %d frames, plan %@", Date().timeIntervalSince(t0), pack.evidence.count, pack.plan.summary))
+    }
+
+    let ctx = await OnDeviceLanguageModel.contextTokens(tier)
+    let fitted = OnDeviceLanguageModel.fit(query: q, frames: pack.contextFrames(), preamble: pack.promptPreamble(), contextTokens: ctx)
+    out("context window: \(ctx) tokens; prompt chars: \(fitted.prompt.count); frames used: \(fitted.framesUsed)/\(pack.evidence.count)")
+    if o.has("show-prompt") { out("--- prompt ---\n" + fitted.prompt) }
+    let t0 = Date()
+    var answer = ""
+    var first: Double?
+    for try await tok in OnDeviceLanguageModel.stream(system: OnDeviceLanguageModel.systemPrompt, user: fitted.prompt, tier: tier) {
+        if first == nil { first = Date().timeIntervalSince(t0) }
+        answer += tok
+    }
+    out(String(format: "first token %.1fs, total %.1fs", first ?? -1, Date().timeIntervalSince(t0)))
+    out("--- answer ---\n" + answer)
+}
+
 func cmdAsk(_ o: Options) async throws {
     guard let q = o.positional.first else { throw CLIError("usage: ask <question> --db <db> --model <slug> --send") }
     let stack = try await openStack(o)
@@ -428,6 +468,7 @@ struct RetraceCLI {
             case "rebuild-vectors": try await cmdRebuildVectors(o)
             case "ask-plan": try await cmdAskPlan(o)
             case "memory": try await cmdMemory(o)
+            case "ask-local": try await cmdAskLocal(o)
             case "ask": try await cmdAsk(o)
             default:
                 out("""
@@ -440,6 +481,7 @@ struct RetraceCLI {
                   rebuild-vectors [--n 2000] [--queries f]   embed existing descriptions into the snapshot index; report similarity stats
                   memory [list|clear]        inspect/clear the learned search hints (snapshot dir only)
                   ask-plan <question> [--expect a,b] [--learn] [--no-memory]   new planner + evidence retriever (no network); prints what the LLM would see
+                  ask-local <question> [--tier pcc] [--refine] [--now ISO]   plan → evidence → Apple on-device model answers (fully offline)
                   ask <question> --model <slug> --send   OPT-IN: sends OCR text to OpenRouter (key via OPENROUTER_API_KEY)
                 """)
             }

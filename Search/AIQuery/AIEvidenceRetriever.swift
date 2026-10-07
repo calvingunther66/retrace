@@ -97,6 +97,18 @@ public actor AIEvidenceRetriever {
     private var termShare: [String: Double] = [:]
     private var totalDocuments: Int?
 
+    /// Retrace's own windows (the overlay the question is typed into) always "match" the question; they are never
+    /// evidence unless the user asked about Retrace itself.
+    private static let selfBundleIDs = ["io.retrace.app", "io.retrace.app.dev"]
+
+    private static func filters(for plan: AIQueryPlan, start: Date?, appBundleIDs: [String]?) -> SearchFilters {
+        let asksAboutRetrace = plan.apps.contains { selfBundleIDs.contains($0.bundleID) }
+        return SearchFilters(
+            startDate: start, endDate: plan.timeEnd, appBundleIDs: appBundleIDs,
+            excludedAppBundleIDs: asksAboutRetrace ? nil : selfBundleIDs
+        )
+    }
+
     private static let episodeGap: TimeInterval = 15 * 60
     private static let candidateLimit = 300
 
@@ -211,8 +223,10 @@ public actor AIEvidenceRetriever {
             for item in items {
                 let m = item.match
                 let text = await ocrText(frameID: m.frameID.value)
-                let (snippet, coverage) = Self.snippet(from: text, facet: facet)
-                guard !snippet.isEmpty else { continue }
+                let (rawSnippet, coverage) = Self.snippet(from: text, facet: facet)
+                guard !rawSnippet.isEmpty else { continue }
+                // Relative/partial times ("Resets in 4 hr", "Resets Sat 12:00 PM") are resolved here, in code.
+                let snippet = AITimeResolver.annotate(rawSnippet, capturedAt: m.timestamp, now: plan.now)
                 let bundle = m.appName
                 result.append(AIEvidence(
                     frameID: m.frameID.value, timestamp: m.timestamp, bundleID: bundle,
@@ -318,7 +332,7 @@ public actor AIEvidenceRetriever {
         var result: [(match: FTSMatch, tier: Int)] = []
         for span in spans {
             let start = span.map { (plan.timeEnd ?? plan.now).addingTimeInterval(-$0) } ?? plan.timeStart
-            let filters = SearchFilters(startDate: start, endDate: plan.timeEnd, appBundleIDs: appBundleIDs)
+            let filters = Self.filters(for: plan, start: start, appBundleIDs: appBundleIDs)
             result = await runTiers(queries: queries, filters: filters, hint: hint)
             if result.contains(where: { $0.tier == 0 }) { break }
         }

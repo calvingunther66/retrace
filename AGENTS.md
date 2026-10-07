@@ -203,7 +203,7 @@ retrace/
 │   └── validate_darkwake_watchdog.sh # Automated darkwake watchdog regression validation
 │
 ├── Sources/                     # Standalone executables
-│   ├── RetraceCLI/              # retrace-cli: AI search/indexing harness (search, ask-plan, memory, ai-context, bench, index-bench, rebuild-vectors, vector-status, ask); snapshot-DB only
+│   ├── RetraceCLI/              # retrace-cli: AI search/indexing harness (search, ask-plan, ask-local, memory, ai-context, bench, index-bench, rebuild-vectors, vector-status, ask); snapshot-DB only
 │   ├── QueryRewindApps/
 │   └── TestMostRecentFrame/
 │
@@ -294,6 +294,7 @@ retrace/
 │   ├── Episodic/                # CognitiveSessionizer: episodic clustering of frames
 │   ├── Reasoning/               # CognitiveReasoner: multi-hop reasoning over mesh + episodes
 │   ├── AIQuery/                 # Ask AI engine: AIQueryPlanner → AIEvidenceRetriever (+AISearchMemory learned hints, AIQueryRefiner model-assisted refinement) → passage-level evidence
+│   ├── OnDevice/                # OnDeviceLanguageModel: Apple FoundationModels provider for Ask AI answers + query refinement (fallback when the cloud model is unavailable)
 │   ├── OpenRouter/              # OpenRouter-backed semantic indexing pipeline
 │   └── Tests/
 │

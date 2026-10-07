@@ -110,7 +110,7 @@ PY
     [ -f "$SNAP_DIR/retrace.db" ] || { echo "no snapshot at $SNAP_DIR — run: $0 snapshot"; exit 1; }
     [ -x "$CLI_BIN_DIR/retrace-cli" ] || swift build -c "$CONFIG" --product retrace-cli >&2 || exit 1
     export DYLD_LIBRARY_PATH="$ROOT/Vendors/llama/lib:$ROOT/Vendors/whisper/lib"
-    "$CLI_BIN_DIR/retrace-cli" "$@" --db "$SNAP_DIR/retrace.db" --storage-dir "$SNAP_DIR" 2>&1 | grep --line-buffered '^»' | sed -u 's/^»//'
+    "$CLI_BIN_DIR/retrace-cli" "$@" --db "$SNAP_DIR/retrace.db" --storage-dir "$SNAP_DIR" 2>&1 | grep --line-buffered -E '^(»|error:)' | sed -u 's/^»//'
     ;;
   *)
     sed -n '2,/^set -uo/p' "$0" | sed 's/^# \{0,1\}//' | sed '$d'

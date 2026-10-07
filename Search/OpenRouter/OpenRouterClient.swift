@@ -137,7 +137,7 @@ public final class OpenRouterClient: Sendable {
     // MARK: - Granular Search & Q&A Synthesis
 
     /// System prompt shared by the one-shot and streaming answer paths.
-    static let answerSystemPrompt = """
+    public static let answerSystemPrompt = """
     You are Retrace AI, an intelligent personal memory assistant that helps users find and understand what they saw on their screen.
     You will be provided with timestamped OCR extracts and window contexts from the user's recorded screen history.
 
@@ -388,6 +388,11 @@ public final class OpenRouterClient: Sendable {
     // MARK: - Prompt Building
 
     private func buildPrompt(query: String, contextFrames: [OpenRouterContextFrame], preamble: String? = nil) -> String {
+        Self.makePrompt(query: query, contextFrames: contextFrames, preamble: preamble)
+    }
+
+    /// The user-message text for an answer request. Shared with the on-device provider.
+    public nonisolated static func makePrompt(query: String, contextFrames: [OpenRouterContextFrame], preamble: String? = nil, maxFrameChars: Int = 1500) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .medium
@@ -413,8 +418,8 @@ public final class OpenRouterClient: Sendable {
                 prompt += "URL: \(browserURL)\n"
             }
             // Truncate individual frame text if excessively long
-            let textPreview = frame.extractedText.count > 1500
-                ? String(frame.extractedText.prefix(1500)) + "..."
+            let textPreview = frame.extractedText.count > maxFrameChars
+                ? String(frame.extractedText.prefix(maxFrameChars)) + "..."
                 : frame.extractedText
             prompt += "Screen Text:\n\(textPreview)\n\n"
         }

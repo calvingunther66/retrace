@@ -2583,8 +2583,15 @@ public class SearchViewModel: ObservableObject {
         guard !question.isEmpty else { return }
         let startedAt = Date()
 
-        guard OpenRouterCredentialsManager.hasAPIKey() else {
-            aiError = "Please configure your OpenRouter API Key in Settings > AI & Models"
+        let provider = Self.configuredAnswerProvider()
+        let cloudKeyAvailable = OpenRouterCredentialsManager.hasAPIKey()
+        let localAvailable = OnDeviceLanguageModel.isAvailable
+        let cloudAllowed = provider != .onDevice && cloudKeyAvailable
+        let localAllowed = provider != .openrouter && localAvailable
+        guard cloudAllowed || localAllowed else {
+            aiError = provider == .onDevice
+                ? "Apple's on-device model is not available on this Mac (needs Apple Intelligence)."
+                : "Please configure your OpenRouter API Key in Settings > AI & Models"
             showAIAnswerPanel = true
             if exportResult {
                 AIAskResultExport.write(["status": "error", "question": question, "error": aiError ?? "", "startedAt": AIAskResultExport.iso(startedAt)])
@@ -2639,9 +2646,11 @@ public class SearchViewModel: ObservableObject {
         openRouterTask = Task { [weak self] in
             guard let self else { return }
 
-            // Check dedicated 100 requests/day search quota (separate from visual indexing)
+            // The dedicated 100 requests/day search budget only gates the cloud provider; the on-device model is free.
             let searchRequestsToday = await self.coordinator.getSearchRequestsTodayCount()
-            guard searchRequestsToday < SemanticIndexStatistics.defaultDailySearchBudget else {
+            let withinBudget = searchRequestsToday < SemanticIndexStatistics.defaultDailySearchBudget
+            let useCloud = cloudAllowed && withinBudget
+            guard useCloud || localAllowed else {
                 await MainActor.run {
                     self.isAIGenerating = false
                     self.aiError = "Daily AI search limit (\(SemanticIndexStatistics.defaultDailySearchBudget) requests/day) reached. Resets at UTC midnight."
@@ -2660,6 +2669,8 @@ public class SearchViewModel: ObservableObject {
                 evidencePack: resolved.pack,
                 model: config.model,
                 temperature: config.temperature,
+                useCloud: useCloud,
+                useOnDevice: localAllowed,
                 export: exportResult
                     ? AskExportContext(question: question, startedAt: startedAt, model: config.model, plan: resolved.planSummary, notes: resolved.notes, evidence: resolved.evidenceLines)
                     : nil
@@ -2803,7 +2814,17 @@ public class SearchViewModel: ObservableObject {
             .bundleID
     }
 
+    enum AnswerProvider: String { case auto, onDevice, openrouter }
+
+    /// `defaults write io.retrace.app aiAnswerProvider auto|onDevice|openrouter` (default: auto = cloud first,
+    /// Apple on-device as the fallback).
+    static func configuredAnswerProvider() -> AnswerProvider {
+        AnswerProvider(rawValue: UserDefaults.standard.string(forKey: "aiAnswerProvider") ?? "auto") ?? .auto
+    }
+
     /// The streaming AI-answer path used by `askOpenRouterAI`.
+    /// Tries providers in order — OpenRouter (when allowed), then Apple's on-device model — so a rate-limited or
+    /// offline cloud model degrades to a local answer instead of an error.
     private func runPlainStreamingAnswer(
         question: String,
         contextFrames: [OpenRouterContextFrame],
@@ -2811,26 +2832,19 @@ public class SearchViewModel: ObservableObject {
         evidencePack: AIEvidencePack? = nil,
         model: String,
         temperature: Double,
+        useCloud: Bool = true,
+        useOnDevice: Bool = false,
         export: AskExportContext? = nil
     ) async {
-        let requestID = await coordinator.recordSearchRequest(frameIDs: contextFrames.map(\.frameID))
-        let client = OpenRouterClient()
-        let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
-        let stream = client.streamAnswerQuery(
-            query: question,
-            contextFrames: contextFrames,
-            apiKey: apiKey,
-            model: model,
-            temperature: temperature,
-            preamble: preamble
-        )
+        enum Attempt { case cloud, onDevice }
+        let attempts: [Attempt] = (useCloud ? [.cloud] : []) + (useOnDevice ? [.onDevice] : [])
 
-        func exportState(status: String, answer: String?, citations: [OpenRouterCitation], error: String?) {
+        func exportState(status: String, answer: String?, citations: [OpenRouterCitation], error: String?, provider: String) {
             guard let export else { return }
             var payload: [String: Any] = [
                 "status": status,
                 "question": export.question,
-                "model": export.model,
+                "model": provider,
                 "startedAt": AIAskResultExport.iso(export.startedAt),
                 "finishedAt": AIAskResultExport.iso(Date()),
                 "elapsedMs": Int(Date().timeIntervalSince(export.startedAt) * 1000),
@@ -2844,50 +2858,84 @@ public class SearchViewModel: ObservableObject {
             AIAskResultExport.write(payload)
         }
 
-        do {
-            var accumulated = ""
-            for try await token in stream {
-                guard !Task.isCancelled else { break }
-                accumulated += token
-                await MainActor.run { [weak self] in
-                    self?.aiGeneratedAnswer = accumulated
-                }
+        var lastError: Error?
+        var cloudFailure: String?
+        for attempt in attempts {
+            var requestID: Int64?
+            let providerLabel: String
+            let stream: AsyncThrowingStream<String, Error>
+            var framesSent = contextFrames
+            switch attempt {
+            case .cloud:
+                providerLabel = model
+                requestID = await coordinator.recordSearchRequest(frameIDs: contextFrames.map(\.frameID))
+                stream = OpenRouterClient().streamAnswerQuery(
+                    query: question, contextFrames: contextFrames,
+                    apiKey: OpenRouterCredentialsManager.getAPIKey() ?? "", model: model,
+                    temperature: temperature, preamble: preamble
+                )
+            case .onDevice:
+                providerLabel = OnDeviceLanguageModel.displayName
+                let ctx = await OnDeviceLanguageModel.contextTokens()
+                let fitted = OnDeviceLanguageModel.fit(query: question, frames: contextFrames, preamble: preamble, contextTokens: ctx)
+                framesSent = Array(contextFrames.prefix(fitted.framesUsed))
+                stream = OnDeviceLanguageModel.stream(system: OnDeviceLanguageModel.systemPrompt, user: fitted.prompt)
             }
 
-            let citations = OpenRouterClient.extractCitations(from: accumulated, contextFrames: contextFrames)
-            if let requestID {
-                await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "success", httpStatus: 200, errorMessage: nil)
+            // Honest labelling when the fallback answers: small local models can mis-bind numbers to labels.
+            let prefix: String = {
+                guard attempt == .onDevice, let cloudFailure else { return "" }
+                return "_Cloud model unavailable (\(cloudFailure)). Answered by Apple's on-device model — double-check any numbers against the cited frames._\n\n"
+            }()
+
+            do {
+                var accumulated = ""
+                for try await token in stream {
+                    guard !Task.isCancelled else { break }
+                    accumulated += token
+                    let shown = prefix + accumulated
+                    await MainActor.run { [weak self] in self?.aiGeneratedAnswer = shown }
+                }
+                let finalText = prefix + accumulated
+                let citations = OpenRouterClient.extractCitations(from: accumulated, contextFrames: framesSent)
+                if let requestID {
+                    await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "success", httpStatus: 200, errorMessage: nil)
+                }
+                exportState(status: "done", answer: finalText, citations: citations, error: nil, provider: providerLabel)
+                if let evidencePack {
+                    await coordinator.learnFromAIAnswer(pack: evidencePack, citedFrameIDs: Set(citations.map(\.frameID)))
+                }
+                await coordinator.recordAIAnswerOutcome(
+                    outcome: contextFrames.isEmpty ? "no_evidence" : "success",
+                    cited: citations.count,
+                    source: (export == nil ? "ui" : "deeplink") + (attempt == .onDevice ? ":on_device" : ":cloud")
+                )
+                await MainActor.run { [weak self] in
+                    self?.isAIGenerating = false
+                    self?.aiCitations = citations
+                }
+                return
+            } catch {
+                if let requestID {
+                    let httpCode = (error as NSError).code
+                    await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "failed", httpStatus: httpCode > 0 ? httpCode : 500, errorMessage: error.localizedDescription)
+                }
+                // A cancelled task must not touch shared state (see git history: stale "cancelled" banners).
+                guard !Task.isCancelled else { return }
+                lastError = error
+                if attempt == .cloud {
+                    cloudFailure = String(error.localizedDescription.prefix(80))
+                    await MainActor.run { [weak self] in self?.aiGeneratedAnswer = "" }
+                }
             }
-            exportState(status: "done", answer: accumulated, citations: citations, error: nil)
-            if let evidencePack {
-                await coordinator.learnFromAIAnswer(pack: evidencePack, citedFrameIDs: Set(citations.map(\.frameID)))
-            }
-            await coordinator.recordAIAnswerOutcome(
-                outcome: contextFrames.isEmpty ? "no_evidence" : "success",
-                cited: citations.count,
-                source: export == nil ? "ui" : "deeplink"
-            )
-            await MainActor.run { [weak self] in
-                self?.isAIGenerating = false
-                self?.aiCitations = citations
-            }
-        } catch {
-            if let requestID {
-                let httpCode = (error as NSError).code
-                await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "failed", httpStatus: httpCode > 0 ? httpCode : 500, errorMessage: error.localizedDescription)
-            }
-            // A cancelled task must not touch shared state. Without this guard, a cancelled
-            // URLSession stream throwing `URLError(.cancelled)` after the user has already
-            // submitted a NEW query would overwrite that new task's fresh `isAIGenerating`/state
-            // with a stale "cancelled" error, flashing a bogus error banner and hiding the
-            // spinner mid-generation for the query that's actually running.
-            guard !Task.isCancelled else { return }
-            exportState(status: "error", answer: nil, citations: [], error: error.localizedDescription)
-            await coordinator.recordAIAnswerOutcome(outcome: "failed", cited: 0, source: export == nil ? "ui" : "deeplink")
-            await MainActor.run { [weak self] in
-                self?.isAIGenerating = false
-                self?.aiError = error.localizedDescription
-            }
+        }
+
+        let message = lastError?.localizedDescription ?? "No AI provider is available."
+        exportState(status: "error", answer: nil, citations: [], error: message, provider: "none")
+        await coordinator.recordAIAnswerOutcome(outcome: "failed", cited: 0, source: export == nil ? "ui" : "deeplink")
+        await MainActor.run { [weak self] in
+            self?.isAIGenerating = false
+            self?.aiError = message
         }
     }
 
