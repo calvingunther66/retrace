@@ -427,11 +427,19 @@ public protocol FTSProtocol: Actor {
         offset: Int
     ) async throws -> [FTSMatch]
 
+    /// Number of indexed OCR documents matching `query` (FTS only, no joins) — used to find words so common
+    /// (e.g. "window" in every macOS menu bar) that they carry no search signal. Nil if unsupported.
+    func documentFrequency(query: String) async throws -> Int?
+
     /// Rebuild the FTS index (maintenance operation)
     func rebuildIndex() async throws
 
     /// Optimize the FTS index
     func optimizeIndex() async throws
+}
+
+extension FTSProtocol {
+    public func documentFrequency(query: String) async throws -> Int? { nil }
 }
 
 // MARK: - Supporting Types

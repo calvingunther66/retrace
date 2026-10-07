@@ -87,6 +87,8 @@ public enum DailyMetricsQueries {
         case phraseLevelRedactionRulesUpdated = "phrase_level_redaction_rules_updated"
 
         // AI visual semantic indexing metrics
+        case aiSearchRetrieval = "ai_search_retrieval"  // metadata: JSON {planner, facets, evidenceFrames, scoped, memoryHit?, ms}
+        case aiSearchAnswer = "ai_search_answer"  // metadata: JSON {outcome: success|failed|no_evidence, cited, source: ui|deeplink}
         case semanticIndexBatchOutcome = "semantic_index_batch_outcome"  // metadata: JSON {outcome, lane?, count?}
         case semanticIndexingToggle = "semantic_indexing_toggle"  // metadata: JSON {enabled}
         case phraseLevelRedactionReveal = "phrase_level_redaction_reveal"

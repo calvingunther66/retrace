@@ -8339,6 +8339,16 @@ public class SimpleTimelineViewModel: ObservableObject {
         Log.info("[SearchDeeplink][\(deeplinkID)] submitted query='\(normalizedQuery)' app=\(normalizedAppBundleID ?? "nil")", category: .ui)
     }
 
+    /// Ask-AI deeplink: open the overlay, put the question in the box, and run the AI answer with result export.
+    public func applyAskDeeplink(question: String, source: String) {
+        openSearchOverlay()
+        searchViewModel.cancelSearch()
+        searchViewModel.clearAllFilters()
+        searchViewModel.searchQuery = question
+        searchViewModel.askOpenRouterAI(query: question, exportResult: true)
+        Log.info("[AskDeeplink] started Ask AI (source=\(source))", category: .ui)
+    }
+
     // MARK: - State Cache Methods
 
     /// Save search and filter state for app termination

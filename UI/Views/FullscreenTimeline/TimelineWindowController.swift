@@ -2067,6 +2067,26 @@ public class TimelineWindowController: NSObject {
         }
     }
 
+    /// `retrace://ask?q=…`: open the search overlay and run Ask AI on the question, exporting the result to
+    /// `ai_ask_last.json` for command-line tooling. Refused unless the user opted in via `allowAskDeeplink`.
+    public func showAsk(question: String, source: String = "unknown") {
+        guard AIAskResultExport.isDeeplinkEnabled else {
+            Log.warning("[AskDeeplink] Ignored: \(AIAskResultExport.enabledDefaultsKey) is off (source=\(source))", category: .ui)
+            AIAskResultExport.write([
+                "status": "error", "question": question,
+                "error": "The retrace://ask deeplink is disabled. Enable with: defaults write io.retrace.app \(AIAskResultExport.enabledDefaultsKey) -bool true"
+            ])
+            return
+        }
+        Log.info("[AskDeeplink] source=\(source) question length=\(question.count)", category: .ui)
+        show()
+        Task { @MainActor [weak self] in
+            guard let self, self.coordinator != nil else { return }
+            let viewModel = await self.awaitTimelineViewModelReady()
+            viewModel.applyAskDeeplink(question: question, source: source)
+        }
+    }
+
     /// Show the timeline and open the spotlight search overlay, preserving any existing search state.
     public func showSearchOverlay(
         source: String = "unknown",

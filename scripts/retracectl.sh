@@ -9,6 +9,9 @@
 #   quit | launch          graceful quit / open /Applications/Retrace.app
 #   deeplink <url>         open a retrace:// URL (routes that exist: search?q=&app=&t=, timeline?t=)
 #   search-ui <query>      shorthand: open the in-app search overlay on <query>
+#   ask-enable|ask-disable opt in/out of the retrace://ask deeplink (off by default; a web page could otherwise trigger it)
+#   ask "<question>"       run the in-app Ask AI on a question and print the answer + what evidence was used
+#                          (uses the app's own OpenRouter key; sends matched screen text to the configured model)
 #   screenshot [file]      screencapture of the main display (needs Screen Recording permission
 #                          for whatever process runs this; reports failure instead of hanging)
 #   logs [n]               tail the app's own log lines from the unified log
@@ -60,6 +63,36 @@ case "$cmd" in
     [ $# -ge 1 ] || { echo "usage: search-ui <query>"; exit 2; }
     q=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(" ".join(sys.argv[1:])))' "$@")
     open "retrace://search?q=$q" && echo "opened search for: $*"
+    ;;
+  ask-enable)  defaults write io.retrace.app allowAskDeeplink -bool true && echo "retrace://ask enabled" ;;
+  ask-disable) defaults write io.retrace.app allowAskDeeplink -bool false && echo "retrace://ask disabled" ;;
+  ask)
+    [ $# -ge 1 ] || { echo "usage: ask \"<question>\""; exit 2; }
+    [ "$(defaults read io.retrace.app allowAskDeeplink 2>/dev/null)" = "1" ] || { echo "ask deeplink is disabled; run: $0 ask-enable"; exit 1; }
+    pgrep -x "$APP_NAME" >/dev/null || { echo "Retrace is not running (use: $0 launch)"; exit 1; }
+    RESULT="$LIVE_DIR/ai_ask_last.json"; rm -f "$RESULT"
+    q=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(" ".join(sys.argv[1:]), safe=""))' "$@")
+    open "retrace://ask?q=$q"
+    for _ in $(seq 1 "${RETRACE_ASK_TIMEOUT:-150}"); do
+      sleep 1
+      [ -f "$RESULT" ] || continue
+      st=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("status",""))' "$RESULT" 2>/dev/null)
+      [ "$st" = "running" ] || [ -z "$st" ] || break
+    done
+    python3 - "$RESULT" <<'PY'
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception as e:
+    print("no result (timed out, or the app did not start the run):", e); sys.exit(1)
+print("status :", d.get("status"), "| model:", d.get("model", "?"), "| elapsed:", d.get("elapsedMs", "?"), "ms")
+print("plan   :", d.get("plan", ""))
+for n in d.get("notes", []): print("note   :", n)
+for e in d.get("evidence", []): print("evidence:", e)
+print("cited  :", d.get("citedFrameIDs", []))
+if d.get("error"): print("error  :", d["error"])
+print("\n" + (d.get("answer") or ""))
+PY
     ;;
   screenshot)
     out="${1:-${TMPDIR:-/tmp}/retrace-shot-$(date +%H%M%S).png}"

@@ -3433,6 +3433,35 @@ public actor AppCoordinator {
         try await services.search.searchForAIContext(question: question, filters: filters, limit: limit)
     }
 
+    /// Plans a natural-language question (scope + facets + recency) and retrieves compact evidence for it.
+    /// This is the primary context builder for "Ask AI"; the cognitive/OR-search paths remain as fallbacks.
+    public nonisolated func retrieveAIEvidence(question: String, apps: [AIQueryApp]) async -> AIEvidencePack {
+        var names: [String: String] = [:]
+        for app in apps { names[app.bundleID] = names[app.bundleID] ?? app.name }
+        let plan = AIQueryPlanner.plan(question: question, now: Date(), apps: apps)
+        let retriever = AIEvidenceRetriever(database: services.database, ftsEngine: services.ftsEngine, appNames: names)
+        let pack = await retriever.retrieve(plan: plan)
+
+        let meta: [String: Any] = [
+            "planner": plan.planner,
+            "facets": plan.facets.count,
+            "evidenceFrames": pack.evidence.count,
+            "scoped": !plan.apps.isEmpty,
+            "recency": plan.recency == .latest ? "latest" : "any",
+            "ms": Int(pack.timingsMs["total"] ?? 0)
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: meta), let json = String(data: data, encoding: .utf8) {
+            try? await services.database.recordMetricEvent(metricType: .aiSearchRetrieval, metadata: json)
+        }
+        return pack
+    }
+
+    /// Records the outcome of an Ask-AI answer (see `MetricType.aiSearchAnswer`).
+    public nonisolated func recordAIAnswerOutcome(outcome: String, cited: Int, source: String) async {
+        let meta = "{\"outcome\":\"\(outcome)\",\"cited\":\(cited),\"source\":\"\(source)\"}"
+        try? await services.database.recordMetricEvent(metricType: .aiSearchAnswer, metadata: meta)
+    }
+
     /// Plans and retrieves structured episodic storyboard context via the Cognitive Memory System
     public nonisolated func planAndRetrieveCognitiveContext(question: String, limit: Int = 30) async throws -> CognitiveStoryboardContext {
         let reasoner = CognitiveReasoner(

@@ -23,11 +23,15 @@ Search/
 │   └── CognitiveSessionizer.swift # Clusters frames into episodic sessions
 ├── Reasoning/
 │   └── CognitiveReasoner.swift    # Multi-hop reasoning over the entity mesh + episodic sessions
+├── AIQuery/
+│   ├── AIQueryPlanner.swift       # Deterministic question planner: facets, app scope, recency, time range
+│   └── AIEvidenceRetriever.swift  # Executes a plan: relaxing FTS tiers, episodes, keyword-in-context evidence
 ├── OpenRouter/
 │   ├── OpenRouterClient.swift               # OpenRouter API client
 │   └── OpenRouterGranularSearchCoordinator.swift # OpenRouter-backed semantic indexing pipeline
 └── Tests/
     ├── QueryParserTests.swift
+    ├── AIQueryPlannerTests.swift
     ├── CognitiveMemorySystemTests.swift
     └── TestLogger.swift
 ```

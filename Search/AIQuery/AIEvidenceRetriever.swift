@@ -89,9 +89,13 @@ public actor AIEvidenceRetriever {
     private let ftsEngine: any FTSProtocol
     private let appNames: [String: String]
 
+    /// Words present in more than this share of all documents carry no signal ("window" is in ~94% of frames).
+    private static let commonTermShare = 0.15
+    private var termShare: [String: Double] = [:]
+    private var totalDocuments: Int?
+
     private static let episodeGap: TimeInterval = 15 * 60
     private static let candidateLimit = 300
-    private static let minRelevantEpisodeScore = 0.4
 
     public init(database: any DatabaseProtocol, ftsEngine: any FTSProtocol, appNames: [String: String] = [:]) {
         self.database = database
@@ -156,11 +160,11 @@ public actor AIEvidenceRetriever {
         }
 
         let scopedIDs = plan.apps.map(\.bundleID)
-        var scopedMatches: [FTSMatch] = []
+        var scopedMatches: [(match: FTSMatch, tier: Int)] = []
         if !scopedIDs.isEmpty {
             scopedMatches = await search(facet: facet, plan: plan, appBundleIDs: scopedIDs)
         }
-        var globalMatches: [FTSMatch] = []
+        var globalMatches: [(match: FTSMatch, tier: Int)] = []
         if scopedMatches.count < 5 {
             globalMatches = await search(facet: facet, plan: plan, appBundleIDs: nil)
             if !scopedIDs.isEmpty {
@@ -171,13 +175,17 @@ public actor AIEvidenceRetriever {
         }
 
         // Merge by frame, boosting scoped hits.
-        var merged: [Int64: (match: FTSMatch, relevance: Double, scoped: Bool)] = [:]
+        var merged: [Int64: Candidate] = [:]
         for (list, scoped) in [(scopedMatches, true), (globalMatches, false)] {
-            let rels = Self.normalizedRelevance(list)
-            for (m, r) in zip(list, rels) {
+            let rels = Self.normalizedRelevance(list.map(\.match))
+            for (entry, r) in zip(list, rels) {
                 let score = min(1, r + (scoped ? 0.15 : 0))
-                if let old = merged[m.frameID.value], old.relevance >= score { continue }
-                merged[m.frameID.value] = (m, score, scoped)
+                let key = entry.match.frameID.value
+                if let old = merged[key] {
+                    merged[key] = (old.match, max(old.relevance, score), old.scoped || scoped, min(old.tier, entry.tier))
+                } else {
+                    merged[key] = (entry.match, score, scoped, entry.tier)
+                }
             }
         }
         guard !merged.isEmpty else {
@@ -227,39 +235,40 @@ public actor AIEvidenceRetriever {
     }
 
     /// Chooses which candidate frames deserve an OCR read.
-    private typealias Candidate = (match: FTSMatch, relevance: Double, scoped: Bool)
+    private typealias Candidate = (match: FTSMatch, relevance: Double, scoped: Bool, tier: Int)
 
     /// `primary` is always read; `secondary` (an older fallback episode for "latest" questions) only when the
     /// primary doesn't fully answer the facet — otherwise stale values would sit next to current ones.
     private func selectPool(_ items: [Candidate], recency: AIQueryRecency) -> (primary: [Candidate], secondary: [Candidate]) {
         let sorted = items.sorted { $0.match.timestamp > $1.match.timestamp }
         // Cluster into episodes (consecutive frames less than `episodeGap` apart).
-        var episodes: [[(match: FTSMatch, relevance: Double, scoped: Bool)]] = []
+        var episodes: [[Candidate]] = []
         for item in sorted {
-            if var last = episodes.last, let lastItem = last.last,
+            if let lastItem = episodes.last?.last,
                lastItem.match.timestamp.timeIntervalSince(item.match.timestamp) <= Self.episodeGap {
-                last.append(item)
-                episodes[episodes.count - 1] = last
+                episodes[episodes.count - 1].append(item)
             } else {
                 episodes.append([item])
             }
         }
-        func best(_ e: [(match: FTSMatch, relevance: Double, scoped: Bool)]) -> Double { e.map(\.relevance).max() ?? 0 }
-        func top(_ e: [(match: FTSMatch, relevance: Double, scoped: Bool)], _ n: Int) -> [(match: FTSMatch, relevance: Double, scoped: Bool)] {
-            Array(e.sorted { $0.relevance > $1.relevance }.prefix(n))
+        func bestRel(_ e: [Candidate]) -> Double { e.map(\.relevance).max() ?? 0 }
+        func minTier(_ e: [Candidate]) -> Int { e.map(\.tier).min() ?? Int.max }
+        func top(_ e: [Candidate], _ n: Int) -> [Candidate] {
+            Array(e.sorted { ($0.tier, -$0.relevance) < ($1.tier, -$1.relevance) }.prefix(n))
         }
+
+        // Match *strength* (which relaxation tier produced the hit) decides what qualifies — never a rank
+        // normalised against whatever else happens to be in this pool.
+        let strongest = items.map(\.tier).min() ?? 0
 
         switch recency {
         case .latest:
-            // Newest episode that matches well; failing that, the best-matching episode overall.
-            let chosen = episodes.first { best($0) >= Self.minRelevantEpisodeScore }
-                ?? episodes.max { best($0) < best($1) }
-            // Also keep the next-newest good episode as a fallback in case the newest lacks the actual figure.
-            let second = episodes.drop { $0.first?.match.frameID == chosen?.first?.match.frameID }
-                .first { best($0) >= Self.minRelevantEpisodeScore }
+            let qualifying = episodes.filter { minTier($0) == strongest }
+            let chosen = qualifying.first ?? episodes.first
+            let second = qualifying.dropFirst().first
             return (chosen.map { top($0, 10) } ?? [], second.map { top($0, 4) } ?? [])
         case .any:
-            let ranked = episodes.sorted { best($0) > best($1) }.prefix(5)
+            let ranked = episodes.sorted { (minTier($0), -bestRel($0)) < (minTier($1), -bestRel($1)) }.prefix(5)
             return (ranked.flatMap { top($0, 2) }, [])
         }
     }
@@ -283,18 +292,37 @@ public actor AIEvidenceRetriever {
 
     // MARK: Search helpers
 
-    private func search(facet: AIQueryFacet, plan: AIQueryPlan, appBundleIDs: [String]?) async -> [FTSMatch] {
+    private func search(facet: AIQueryFacet, plan: AIQueryPlan, appBundleIDs: [String]?) async -> [(match: FTSMatch, tier: Int)] {
         let filters = SearchFilters(startDate: plan.timeStart, endDate: plan.timeEnd, appBundleIDs: appBundleIDs)
-        var best: [FTSMatch] = []
-        for query in Self.relaxingQueries(for: facet) {
-            if let matches = try? await ftsEngine.search(query: query, filters: filters, limit: Self.candidateLimit, offset: 0),
-               !matches.isEmpty {
-                // Keep the first tier that yields a healthy pool; otherwise accumulate and try looser.
-                if matches.count >= 8 { return matches }
-                if matches.count > best.count { best = matches }
-            }
+        let usable = await signalTerms(for: facet)
+        var seen = Set<Int64>()
+        var collected: [(match: FTSMatch, tier: Int)] = []
+        for (tier, query) in Self.relaxingQueries(for: AIQueryFacet(label: facet.label, terms: usable)).enumerated() {
+            guard let matches = try? await ftsEngine.search(query: query, filters: filters, limit: Self.candidateLimit, offset: 0) else { continue }
+            for m in matches where seen.insert(m.frameID.value).inserted { collected.append((m, tier)) }
+            // A healthy pool from a strict tier is enough; otherwise relax further.
+            if collected.count >= 8 { break }
         }
-        return best
+        return collected
+    }
+
+    /// The facet's terms minus words that appear in most frames. Never drops everything.
+    private func signalTerms(for facet: AIQueryFacet) async -> [String] {
+        if totalDocuments == nil { totalDocuments = (try? await database.getFrameCount()) }
+        guard let total = totalDocuments, total > 0 else { return facet.terms }
+        var kept: [String] = []
+        for term in facet.terms {
+            let clean = Self.clean(term)
+            guard !clean.isEmpty else { continue }
+            if termShare[clean] == nil {
+                let q = "((text:(\(clean)*)) OR (otherText:(\(clean)*)))"
+                if let df = try? await ftsEngine.documentFrequency(query: q) {
+                    termShare[clean] = Double(df) / Double(total)
+                }
+            }
+            if (termShare[clean] ?? 0) <= Self.commonTermShare { kept.append(term) }
+        }
+        return kept.isEmpty ? facet.terms : kept
     }
 
     /// Strict → loose FTS5 queries for one facet. Each original term is a group of itself + synonyms (prefix-matched).

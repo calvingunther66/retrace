@@ -215,6 +215,9 @@ public struct ContentView: View {
                 source: "ContentView.onOpenURL"
             )
 
+        case .ask(let question):
+            TimelineWindowController.shared.showAsk(question: question, source: "ContentView.onOpenURL")
+
         case .timeline(let timestamp):
             // Open fullscreen timeline at specific timestamp
             if let timestamp = timestamp {

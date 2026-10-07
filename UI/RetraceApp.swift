@@ -2698,6 +2698,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         switch route {
+        case let .ask(question):
+            TimelineWindowController.shared.showAsk(question: question, source: "AppDelegate.openURLs")
+
         case let .timeline(timestamp):
             Log.info("[AppDelegate] Opening timeline deeplink at timestamp: \(String(describing: timestamp))", category: .app)
             if let timestamp {

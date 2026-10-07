@@ -2578,14 +2578,21 @@ public class SearchViewModel: ObservableObject {
 
     private var openRouterTask: Task<Void, Never>?
 
-    public func askOpenRouterAI(query: String? = nil) {
+    public func askOpenRouterAI(query: String? = nil, exportResult: Bool = false) {
         let question = (query ?? searchQuery).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
+        let startedAt = Date()
 
         guard OpenRouterCredentialsManager.hasAPIKey() else {
             aiError = "Please configure your OpenRouter API Key in Settings > AI & Models"
             showAIAnswerPanel = true
+            if exportResult {
+                AIAskResultExport.write(["status": "error", "question": question, "error": aiError ?? "", "startedAt": AIAskResultExport.iso(startedAt)])
+            }
             return
+        }
+        if exportResult {
+            AIAskResultExport.write(["status": "running", "question": question, "startedAt": AIAskResultExport.iso(startedAt)])
         }
 
         openRouterTask?.cancel()
@@ -2638,19 +2645,23 @@ public class SearchViewModel: ObservableObject {
                 await MainActor.run {
                     self.isAIGenerating = false
                     self.aiError = "Daily AI search limit (\(SemanticIndexStatistics.defaultDailySearchBudget) requests/day) reached. Resets at UTC midnight."
+                    if exportResult {
+                        AIAskResultExport.write(["status": "error", "question": question, "error": self.aiError ?? "", "startedAt": AIAskResultExport.iso(startedAt)])
+                    }
                 }
                 return
             }
 
-            let contextFrames = await self.resolveContextFrames(
-                initial: initialContextFrames,
-                question: question
-            )
+            let resolved = await self.resolveAIContext(initial: initialContextFrames, question: question)
             await self.runPlainStreamingAnswer(
                 question: question,
-                contextFrames: contextFrames,
+                contextFrames: resolved.frames,
+                preamble: resolved.preamble,
                 model: config.model,
-                temperature: config.temperature
+                temperature: config.temperature,
+                export: exportResult
+                    ? AskExportContext(question: question, startedAt: startedAt, model: config.model, plan: resolved.planSummary, notes: resolved.notes, evidence: resolved.evidenceLines)
+                    : nil
             )
         }
     }
@@ -2667,6 +2678,46 @@ public class SearchViewModel: ObservableObject {
                 extractedText: r.snippet.isEmpty ? r.matchedText : r.snippet
             )
         }
+    }
+
+    /// Everything the answer step needs from retrieval.
+    struct ResolvedAIContext {
+        var frames: [OpenRouterContextFrame]
+        var preamble: String?
+        var planSummary: String?
+        var notes: [String] = []
+        var evidenceLines: [String] = []
+    }
+
+    struct AskExportContext: Sendable {
+        let question: String
+        let startedAt: Date
+        let model: String
+        let plan: String?
+        let notes: [String]
+        let evidence: [String]
+    }
+
+    /// Primary context builder: plan the question (scope / facets / recency), retrieve passage-level evidence,
+    /// and fall back to the older cognitive / OR-search paths only when that finds nothing.
+    private func resolveAIContext(initial: [OpenRouterContextFrame], question: String) async -> ResolvedAIContext {
+        let apps = availableApps.map { AIQueryApp(name: $0.name, bundleID: $0.bundleID) }
+        let pack = await coordinator.retrieveAIEvidence(question: question, apps: apps)
+        if !pack.isEmpty {
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            Log.info("[SearchViewModel] AI evidence planner: \(pack.plan.summary) → \(pack.evidence.count) frames in \(Int(pack.timingsMs["total"] ?? 0))ms", category: .search)
+            return ResolvedAIContext(
+                frames: pack.contextFrames(),
+                preamble: pack.promptPreamble(),
+                planSummary: pack.plan.summary,
+                notes: pack.notes,
+                evidenceLines: pack.evidence.map { "#\($0.frameID) \(df.string(from: $0.timestamp)) \($0.appName) coverage=\(String(format: "%.2f", $0.coverage))" }
+            )
+        }
+        Log.info("[SearchViewModel] AI evidence planner found nothing (\(pack.plan.summary)); using legacy context paths", category: .search)
+        let legacy = await resolveContextFrames(initial: initial, question: question)
+        return ResolvedAIContext(frames: legacy, preamble: nil, planSummary: pack.plan.summary + " (legacy fallback)", notes: pack.notes)
     }
 
     /// `askOpenRouterAI`'s `initialContextFrames` come from whatever's currently in the search
@@ -2745,8 +2796,10 @@ public class SearchViewModel: ObservableObject {
     private func runPlainStreamingAnswer(
         question: String,
         contextFrames: [OpenRouterContextFrame],
+        preamble: String? = nil,
         model: String,
-        temperature: Double
+        temperature: Double,
+        export: AskExportContext? = nil
     ) async {
         let requestID = await coordinator.recordSearchRequest(frameIDs: contextFrames.map(\.frameID))
         let client = OpenRouterClient()
@@ -2756,8 +2809,28 @@ public class SearchViewModel: ObservableObject {
             contextFrames: contextFrames,
             apiKey: apiKey,
             model: model,
-            temperature: temperature
+            temperature: temperature,
+            preamble: preamble
         )
+
+        func exportState(status: String, answer: String?, citations: [OpenRouterCitation], error: String?) {
+            guard let export else { return }
+            var payload: [String: Any] = [
+                "status": status,
+                "question": export.question,
+                "model": export.model,
+                "startedAt": AIAskResultExport.iso(export.startedAt),
+                "finishedAt": AIAskResultExport.iso(Date()),
+                "elapsedMs": Int(Date().timeIntervalSince(export.startedAt) * 1000),
+                "plan": export.plan ?? "",
+                "notes": export.notes,
+                "evidence": export.evidence,
+                "answer": answer ?? "",
+                "citedFrameIDs": citations.map { $0.frameID }
+            ]
+            if let error { payload["error"] = error }
+            AIAskResultExport.write(payload)
+        }
 
         do {
             var accumulated = ""
@@ -2773,6 +2846,12 @@ public class SearchViewModel: ObservableObject {
             if let requestID {
                 await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "success", httpStatus: 200, errorMessage: nil)
             }
+            exportState(status: "done", answer: accumulated, citations: citations, error: nil)
+            await coordinator.recordAIAnswerOutcome(
+                outcome: contextFrames.isEmpty ? "no_evidence" : "success",
+                cited: citations.count,
+                source: export == nil ? "ui" : "deeplink"
+            )
             await MainActor.run { [weak self] in
                 self?.isAIGenerating = false
                 self?.aiCitations = citations
@@ -2788,6 +2867,8 @@ public class SearchViewModel: ObservableObject {
             // with a stale "cancelled" error, flashing a bogus error banner and hiding the
             // spinner mid-generation for the query that's actually running.
             guard !Task.isCancelled else { return }
+            exportState(status: "error", answer: nil, citations: [], error: error.localizedDescription)
+            await coordinator.recordAIAnswerOutcome(outcome: "failed", cited: 0, source: export == nil ? "ui" : "deeplink")
             await MainActor.run { [weak self] in
                 self?.isAIGenerating = false
                 self?.aiError = error.localizedDescription

@@ -293,6 +293,7 @@ retrace/
 │   ├── EntityMesh/              # EntityMeshManager: knowledge graph over extracted entities
 │   ├── Episodic/                # CognitiveSessionizer: episodic clustering of frames
 │   ├── Reasoning/               # CognitiveReasoner: multi-hop reasoning over mesh + episodes
+│   ├── AIQuery/                 # AIQueryPlanner + AIEvidenceRetriever: question → facets/scope/recency → passage-level evidence for Ask AI
 │   ├── OpenRouter/              # OpenRouter-backed semantic indexing pipeline
 │   └── Tests/
 │
@@ -330,6 +331,7 @@ retrace/
     ├── LaunchAgents/            # Embedded SMAppService launch-agent plists
     ├── Components/              # Reusable UI components (MenuBarManager, HotkeyManager, etc.)
     │   ├── AppTheme.swift       # Linen/Dusk tokens (adaptive colors), type scale, spacing/radius, elevation, button + card styles
+    │   ├── AIAskResultExport.swift # Exports retrace://ask run state/result to ai_ask_last.json (opt-in deeplink, used by retracectl)
     │   ├── RetraceIcon.swift    # Code-drawn icon set, SF Symbol → Retrace icon table, RetraceSymbol, mark/wordmark, NSImage helpers
     │   ├── RetraceComponents.swift # Badge, Meter, Switch, Field, Tile, SectionHeader
     │   ├── RetraceFontRegistry.swift # One-time registration of bundled fonts

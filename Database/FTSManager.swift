@@ -284,6 +284,21 @@ public actor FTSManager: FTSProtocol {
         return sql
     }
 
+    public func documentFrequency(query: String) async throws -> Int? {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "FTS database not initialized")
+        }
+        let sql = "SELECT COUNT(*) FROM searchRanking WHERE searchRanking MATCH ?"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        sqlite3_bind_text(statement, 1, query, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+        return Int(sqlite3_column_int64(statement, 0))
+    }
+
     public func getMatchCount(query: String, filters: SearchFilters) async throws -> Int {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "FTS database not initialized")
