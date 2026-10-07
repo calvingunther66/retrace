@@ -341,8 +341,10 @@ func cmdAskPlan(_ o: Options) async throws {
     let plan = AIQueryPlanner.plan(question: q, now: Date(), apps: known)
     out("plan: \(plan.summary)")
     for f in plan.facets { out("  facet: \(f.terms.joined(separator: " ")) | expanded: \(AIQueryPlanner.expandedTerms(for: f).joined(separator: " "))") }
-    let retriever = AIEvidenceRetriever(database: stack.db, ftsEngine: stack.fts, appNames: names)
+    let memory = AISearchMemory(fileURL: URL(fileURLWithPath: stack.storageDir).appendingPathComponent("ai_search_memory.json"))
+    let retriever = AIEvidenceRetriever(database: stack.db, ftsEngine: stack.fts, appNames: names, memory: o.has("no-memory") ? nil : memory)
     let pack = await retriever.retrieve(plan: plan)
+    out("memory hints used: \(pack.usedHints.count)")
     out("evidence: \(pack.evidence.count) frames, anchors: \(pack.anchors.count)")
     out("timings ms: " + pack.timingsMs.sorted { $0.key < $1.key }.map { "\($0.key)=\(String(format: "%.0f", $0.value))" }.joined(separator: " "))
     out("--- preamble ---\n" + pack.promptPreamble())
@@ -359,6 +361,32 @@ func cmdAskPlan(_ o: Options) async throws {
         }
     }
     out("context chars ≈ \(pack.evidence.map { $0.snippet.count }.reduce(0, +))")
+    if o.has("learn") {
+        // Stand-in for "the model cited this evidence": every frame with usable coverage counts as cited.
+        let cited = Set(pack.evidence.filter { $0.coverage >= 0.7 }.map(\.frameID))
+        let total = try? await stack.db.getFrameCount()
+        let n = await memory.learn(from: pack, citedFrameIDs: cited, ftsEngine: stack.fts, totalDocuments: total)
+        out("learned from \(n) facet(s); memory now holds \(await memory.list().count) recipe(s)")
+    }
+}
+
+func cmdMemory(_ o: Options) async throws {
+    guard let dbPath = o.flags["db"] else { throw CLIError("--db required") }
+    let dir = o.flags["storage-dir"] ?? URL(fileURLWithPath: dbPath).deletingLastPathComponent().path
+    let live = AppPaths.defaultStorageRoot
+    if URL(fileURLWithPath: dir).resolvingSymlinksInPath().path == URL(fileURLWithPath: live).resolvingSymlinksInPath().path, !o.has("allow-live") {
+        throw CLIError("refusing to touch the live memory file; pass --allow-live")
+    }
+    let memory = AISearchMemory(fileURL: URL(fileURLWithPath: dir).appendingPathComponent("ai_search_memory.json"))
+    switch o.positional.first ?? "list" {
+    case "clear": await memory.clear(); out("memory cleared")
+    default:
+        let recipes = await memory.list()
+        out("\(recipes.count) recipe(s)")
+        for r in recipes {
+            out("- terms=\(r.terms.joined(separator: ",")) apps=\(r.bundleIDs.joined(separator: ",")) phrases=\(r.phrases) hits=\(r.hits) misses=\(r.misses)")
+        }
+    }
 }
 
 func cmdAsk(_ o: Options) async throws {
@@ -399,6 +427,7 @@ struct RetraceCLI {
             case "index-bench": try await cmdIndexBench(o)
             case "rebuild-vectors": try await cmdRebuildVectors(o)
             case "ask-plan": try await cmdAskPlan(o)
+            case "memory": try await cmdMemory(o)
             case "ask": try await cmdAsk(o)
             default:
                 out("""
@@ -409,7 +438,8 @@ struct RetraceCLI {
                   bench --queries <file>     p50/p95 across many queries
                   index-bench [--n 20]       time each step of the baseline indexing stage
                   rebuild-vectors [--n 2000] [--queries f]   embed existing descriptions into the snapshot index; report similarity stats
-                  ask-plan <question> [--expect a,b]   new planner + evidence retriever (no network); prints what the LLM would see
+                  memory [list|clear]        inspect/clear the learned search hints (snapshot dir only)
+                  ask-plan <question> [--expect a,b] [--learn] [--no-memory]   new planner + evidence retriever (no network); prints what the LLM would see
                   ask <question> --model <slug> --send   OPT-IN: sends OCR text to OpenRouter (key via OPENROUTER_API_KEY)
                 """)
             }

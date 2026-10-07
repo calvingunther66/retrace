@@ -149,7 +149,9 @@ public enum AIQueryPlanner {
     static func detectRecency(in lowered: String) -> AIQueryRecency {
         let markers = [
             "last time", "most recent", "most recently", "latest", "when i last", "when was the last",
-            "when did i last", "just now", "right now", "currently", "at the moment", "the last "
+            "when did i last", "just now", "right now", "currently", "at the moment", "the last ",
+            // Present-tense status questions want the current value, not the best match from any month.
+            "how much", "how many", "current", "remaining", "what is my", "what's my", "what are my", "used up"
         ]
         return markers.contains { lowered.contains($0) } ? .latest : .any
     }

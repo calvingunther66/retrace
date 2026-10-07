@@ -35,6 +35,8 @@ public struct AIEvidencePack: Sendable {
     /// Retrieval decisions worth telling the model (and the user): widened scope, nothing found, …
     public let notes: [String]
     public let timingsMs: [String: Double]
+    /// facet label → id of the learned recipe that was applied to it (for outcome feedback).
+    public let usedHints: [String: String]
 
     public var isEmpty: Bool { evidence.isEmpty }
 
@@ -88,6 +90,7 @@ public actor AIEvidenceRetriever {
     private let database: any DatabaseProtocol
     private let ftsEngine: any FTSProtocol
     private let appNames: [String: String]
+    private let memory: AISearchMemory?
 
     /// Words present in more than this share of all documents carry no signal ("window" is in ~94% of frames).
     private static let commonTermShare = 0.15
@@ -97,10 +100,11 @@ public actor AIEvidenceRetriever {
     private static let episodeGap: TimeInterval = 15 * 60
     private static let candidateLimit = 300
 
-    public init(database: any DatabaseProtocol, ftsEngine: any FTSProtocol, appNames: [String: String] = [:]) {
+    public init(database: any DatabaseProtocol, ftsEngine: any FTSProtocol, appNames: [String: String] = [:], memory: AISearchMemory? = nil) {
         self.database = database
         self.ftsEngine = ftsEngine
         self.appNames = appNames
+        self.memory = memory
     }
 
     public func retrieve(plan: AIQueryPlan, maxEvidence: Int = 12) async -> AIEvidencePack {
@@ -120,9 +124,11 @@ public actor AIEvidenceRetriever {
         // Evidence per facet, deduped across facets.
         var byFrame: [Int64: AIEvidence] = [:]
         var order: [Int64] = []
+        var usedHints: [String: String] = [:]
         for facet in plan.facets {
             let t0 = clock.now
-            let (found, facetNotes) = await evidence(for: facet, plan: plan)
+            let (found, facetNotes, recipeID) = await evidence(for: facet, plan: plan)
+            if let recipeID { usedHints[facet.label] = recipeID }
             timings["facet:" + (facet.terms.first ?? "scope")] = Self.ms(t0.duration(to: clock.now))
             notes.append(contentsOf: facetNotes)
             for e in found {
@@ -146,27 +152,33 @@ public actor AIEvidenceRetriever {
         if plan.recency == .latest { evidence.sort { $0.timestamp > $1.timestamp } }
         evidence = Array(evidence.prefix(maxEvidence))
         timings["total"] = Self.ms(start.duration(to: clock.now))
-        return AIEvidencePack(plan: plan, evidence: evidence, anchors: anchors, notes: notes, timingsMs: timings)
+        return AIEvidencePack(plan: plan, evidence: evidence, anchors: anchors, notes: notes, timingsMs: timings, usedHints: usedHints)
     }
 
     // MARK: Per-facet retrieval
 
-    private func evidence(for facet: AIQueryFacet, plan: AIQueryPlan) async -> ([AIEvidence], [String]) {
+    private func evidence(for facet: AIQueryFacet, plan: AIQueryPlan) async -> ([AIEvidence], [String], String?) {
         var notes: [String] = []
 
         // Scope-only facet ("what was I doing in Xcode yesterday?"): latest activity in the scoped apps/time window.
         if facet.terms.isEmpty {
-            return (await scopeOnlyEvidence(label: facet.label, plan: plan), notes)
+            return (await scopeOnlyEvidence(label: facet.label, plan: plan), notes, nil)
         }
 
-        let scopedIDs = plan.apps.map(\.bundleID)
+        // Learned hint: where/with which phrases this kind of question was answered before.
+        let hint = await memory?.recall(facetTerms: facet.terms)
+        var scopedIDs = plan.apps.map(\.bundleID)
+        if let hint {
+            for b in hint.bundleIDs where !scopedIDs.contains(b) { scopedIDs.append(b) }
+            notes.append("A learned search hint was applied for \"\(facet.label)\".")
+        }
         var scopedMatches: [(match: FTSMatch, tier: Int)] = []
         if !scopedIDs.isEmpty {
-            scopedMatches = await search(facet: facet, plan: plan, appBundleIDs: scopedIDs)
+            scopedMatches = await search(facet: facet, plan: plan, appBundleIDs: scopedIDs, hint: hint)
         }
         var globalMatches: [(match: FTSMatch, tier: Int)] = []
         if scopedMatches.count < 5 {
-            globalMatches = await search(facet: facet, plan: plan, appBundleIDs: nil)
+            globalMatches = await search(facet: facet, plan: plan, appBundleIDs: nil, hint: hint)
             if !scopedIDs.isEmpty {
                 notes.append(scopedMatches.isEmpty
                     ? "No captured text in \(plan.apps.map(\.name).joined(separator: "/")) matched \"\(facet.label)\"; the search was widened to all apps."
@@ -190,7 +202,7 @@ public actor AIEvidenceRetriever {
         }
         guard !merged.isEmpty else {
             notes.append("Nothing in the captured history matched \"\(facet.label)\".")
-            return ([], notes)
+            return ([], notes, hint?.recipeID)
         }
 
         let pool = selectPool(Array(merged.values), recency: plan.recency)
@@ -231,7 +243,7 @@ public actor AIEvidenceRetriever {
             distinct.append(e)
         }
         let keep = plan.recency == .latest ? 2 : 3
-        return (Array(distinct.prefix(keep)), notes)
+        return (Array(distinct.prefix(keep)), notes, hint?.recipeID)
     }
 
     /// Chooses which candidate frames deserve an OCR read.
@@ -292,14 +304,50 @@ public actor AIEvidenceRetriever {
 
     // MARK: Search helpers
 
-    private func search(facet: AIQueryFacet, plan: AIQueryPlan, appBundleIDs: [String]?) async -> [(match: FTSMatch, tier: Int)] {
-        let filters = SearchFilters(startDate: plan.timeStart, endDate: plan.timeEnd, appBundleIDs: appBundleIDs)
+    private func search(facet: AIQueryFacet, plan: AIQueryPlan, appBundleIDs: [String]?, hint: AISearchHint?) async -> [(match: FTSMatch, tier: Int)] {
         let usable = await signalTerms(for: facet)
+        let queries = Self.relaxingQueries(for: AIQueryFacet(label: facet.label, terms: usable))
+
+        // "Latest" questions: FTS returns the best-RANKED rows, not the newest. A screen that is open all day
+        // (a usage panel) matches in thousands of near-identical frames, so a plain top-N sample can miss the
+        // newest ones entirely. Search progressively wider recent windows and stop at the first one that holds a
+        // strong (tier-0) match, which guarantees the newest strong matches are in the pool.
+        let day: TimeInterval = 86_400
+        let spans: [TimeInterval?] = (plan.recency == .latest && plan.timeStart == nil)
+            ? [day, 3 * day, 7 * day, 30 * day, nil] : [nil]
+        var result: [(match: FTSMatch, tier: Int)] = []
+        for span in spans {
+            let start = span.map { (plan.timeEnd ?? plan.now).addingTimeInterval(-$0) } ?? plan.timeStart
+            let filters = SearchFilters(startDate: start, endDate: plan.timeEnd, appBundleIDs: appBundleIDs)
+            result = await runTiers(queries: queries, filters: filters, hint: hint)
+            if result.contains(where: { $0.tier == 0 }) { break }
+        }
+        return result
+    }
+
+    private func runTiers(queries: [String], filters: SearchFilters, hint: AISearchHint?) async -> [(match: FTSMatch, tier: Int)] {
         var seen = Set<Int64>()
         var collected: [(match: FTSMatch, tier: Int)] = []
-        for (tier, query) in Self.relaxingQueries(for: AIQueryFacet(label: facet.label, terms: usable)).enumerated() {
+
+        // Learned phrases WIDEN the candidate pool (tagged tier 1, upgraded to 0 if the normal strict query also
+        // matches them) but never define what counts as "strongest": the newest frames may word things
+        // differently. Stored phrases are letters/digits/spaces only, so they are safe in an FTS5 phrase query.
+        if let phrases = hint?.phrases.filter({ $0.allSatisfy { $0.isLetter || $0.isNumber || $0 == " " } }), !phrases.isEmpty {
+            let expr = phrases.map { "\"\($0)\"" }.joined(separator: " OR ")
+            let q = "((text:(\(expr))) OR (otherText:(\(expr))))"
+            if let matches = try? await ftsEngine.search(query: q, filters: filters, limit: Self.candidateLimit, offset: 0) {
+                for m in matches where seen.insert(m.frameID.value).inserted { collected.append((m, 1)) }
+            }
+        }
+        for (tier, query) in queries.enumerated() {
             guard let matches = try? await ftsEngine.search(query: query, filters: filters, limit: Self.candidateLimit, offset: 0) else { continue }
-            for m in matches where seen.insert(m.frameID.value).inserted { collected.append((m, tier)) }
+            for m in matches {
+                if seen.insert(m.frameID.value).inserted {
+                    collected.append((m, tier))
+                } else if let i = collected.firstIndex(where: { $0.match.frameID == m.frameID }), collected[i].tier > tier {
+                    collected[i].tier = tier   // matched a stricter normal tier too
+                }
+            }
             // A healthy pool from a strict tier is enough; otherwise relax further.
             if collected.count >= 8 { break }
         }

@@ -2652,11 +2652,12 @@ public class SearchViewModel: ObservableObject {
                 return
             }
 
-            let resolved = await self.resolveAIContext(initial: initialContextFrames, question: question)
+            let resolved = await self.resolveAIContext(initial: initialContextFrames, question: question, answerModel: config.model)
             await self.runPlainStreamingAnswer(
                 question: question,
                 contextFrames: resolved.frames,
                 preamble: resolved.preamble,
+                evidencePack: resolved.pack,
                 model: config.model,
                 temperature: config.temperature,
                 export: exportResult
@@ -2687,6 +2688,7 @@ public class SearchViewModel: ObservableObject {
         var planSummary: String?
         var notes: [String] = []
         var evidenceLines: [String] = []
+        var pack: AIEvidencePack? = nil
     }
 
     struct AskExportContext: Sendable {
@@ -2700,9 +2702,17 @@ public class SearchViewModel: ObservableObject {
 
     /// Primary context builder: plan the question (scope / facets / recency), retrieve passage-level evidence,
     /// and fall back to the older cognitive / OR-search paths only when that finds nothing.
-    private func resolveAIContext(initial: [OpenRouterContextFrame], question: String) async -> ResolvedAIContext {
+    private func resolveAIContext(initial: [OpenRouterContextFrame], question: String, answerModel: String) async -> ResolvedAIContext {
         let apps = availableApps.map { AIQueryApp(name: $0.name, bundleID: $0.bundleID) }
-        let pack = await coordinator.retrieveAIEvidence(question: question, apps: apps)
+        var pack = await coordinator.retrieveAIEvidence(question: question, apps: apps)
+
+        // Deep search: if any part of the question matched weakly, let the model suggest better on-screen wording.
+        let deepSearchOn = (UserDefaults.standard.object(forKey: "aiDeepSearchEnabled") as? Bool) ?? true
+        if deepSearchOn, !pack.weakFacets.isEmpty {
+            await MainActor.run { [weak self] in self?.aiGeneratedAnswer = "Searching deeper…" }
+            pack = await coordinator.refineAIEvidence(pack: pack, apps: apps, answerModel: answerModel)
+            await MainActor.run { [weak self] in self?.aiGeneratedAnswer = "" }
+        }
         if !pack.isEmpty {
             let df = DateFormatter()
             df.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -2712,7 +2722,8 @@ public class SearchViewModel: ObservableObject {
                 preamble: pack.promptPreamble(),
                 planSummary: pack.plan.summary,
                 notes: pack.notes,
-                evidenceLines: pack.evidence.map { "#\($0.frameID) \(df.string(from: $0.timestamp)) \($0.appName) coverage=\(String(format: "%.2f", $0.coverage))" }
+                evidenceLines: pack.evidence.map { "#\($0.frameID) \(df.string(from: $0.timestamp)) \($0.appName) coverage=\(String(format: "%.2f", $0.coverage))" },
+                pack: pack
             )
         }
         Log.info("[SearchViewModel] AI evidence planner found nothing (\(pack.plan.summary)); using legacy context paths", category: .search)
@@ -2797,6 +2808,7 @@ public class SearchViewModel: ObservableObject {
         question: String,
         contextFrames: [OpenRouterContextFrame],
         preamble: String? = nil,
+        evidencePack: AIEvidencePack? = nil,
         model: String,
         temperature: Double,
         export: AskExportContext? = nil
@@ -2847,6 +2859,9 @@ public class SearchViewModel: ObservableObject {
                 await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "success", httpStatus: 200, errorMessage: nil)
             }
             exportState(status: "done", answer: accumulated, citations: citations, error: nil)
+            if let evidencePack {
+                await coordinator.learnFromAIAnswer(pack: evidencePack, citedFrameIDs: Set(citations.map(\.frameID)))
+            }
             await coordinator.recordAIAnswerOutcome(
                 outcome: contextFrames.isEmpty ? "no_evidence" : "success",
                 cited: citations.count,
