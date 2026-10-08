@@ -5,6 +5,7 @@ import Shared
 /// Handles deeplink URL routing for Retrace
 /// Supports: retrace://search?q={query}&t={unix_ms}&app={bundle_id}
 ///           retrace://timeline?t={unix_ms}
+///           retrace://ask?q={question}   (opt-in via the `allowAskDeeplink` default; runs Ask AI and exports the result)
 ///           (legacy timestamp key `timestamp` is also accepted)
 @MainActor
 public class DeeplinkHandler: ObservableObject {
@@ -24,6 +25,8 @@ public class DeeplinkHandler: ObservableObject {
             Log.info("[DeeplinkHandler] Navigating to search: query=\(query ?? "nil"), timestamp=\(String(describing: timestamp)), app=\(appBundleID ?? "nil")", category: .ui)
         case let .timeline(timestamp):
             Log.info("[DeeplinkHandler] Navigating to timeline: timestamp=\(String(describing: timestamp))", category: .ui)
+        case .ask:
+            Log.info("[DeeplinkHandler] Ask-AI deeplink received", category: .ui)
         }
     }
 
@@ -51,6 +54,10 @@ public class DeeplinkHandler: ObservableObject {
         case "timeline":
             let timestamp = parseTimestamp(queryParams: queryParams)
             return .timeline(timestamp: timestamp)
+
+        case "ask":
+            guard let question = queryParams["q"].flatMap({ $0.trimmedOrNil }) else { return nil }
+            return .ask(question: question)
 
         default:
             Log.warning("[DeeplinkHandler] Unknown route: \(host)", category: .ui)
@@ -126,6 +133,7 @@ public class DeeplinkHandler: ObservableObject {
 public enum DeeplinkRoute: Equatable {
     case search(query: String?, timestamp: Date?, appBundleID: String?)
     case timeline(timestamp: Date?)
+    case ask(question: String)
 
     public static func == (lhs: DeeplinkRoute, rhs: DeeplinkRoute) -> Bool {
         switch (lhs, rhs) {
@@ -133,6 +141,8 @@ public enum DeeplinkRoute: Equatable {
             return q1 == q2 && t1 == t2 && a1 == a2
         case let (.timeline(t1), .timeline(t2)):
             return t1 == t2
+        case let (.ask(q1), .ask(q2)):
+            return q1 == q2
         default:
             return false
         }

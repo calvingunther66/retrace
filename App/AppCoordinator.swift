@@ -3433,6 +3433,85 @@ public actor AppCoordinator {
         try await services.search.searchForAIContext(question: question, filters: filters, limit: limit)
     }
 
+    /// Plans a natural-language question (scope + facets + recency) and retrieves compact evidence for it.
+    /// This is the primary context builder for "Ask AI"; the cognitive/OR-search paths remain as fallbacks.
+    public nonisolated func retrieveAIEvidence(question: String, apps: [AIQueryApp]) async -> AIEvidencePack {
+        var names: [String: String] = [:]
+        for app in apps { names[app.bundleID] = names[app.bundleID] ?? app.name }
+        let plan = AIQueryPlanner.plan(question: question, now: Date(), apps: apps)
+        let retriever = AIEvidenceRetriever(database: services.database, ftsEngine: services.ftsEngine, appNames: names, memory: AISearchMemory.shared)
+        let pack = await retriever.retrieve(plan: plan)
+
+        let meta: [String: Any] = [
+            "planner": plan.planner,
+            "facets": plan.facets.count,
+            "evidenceFrames": pack.evidence.count,
+            "scoped": !plan.apps.isEmpty,
+            "memoryHits": pack.usedHints.count,
+            "recency": plan.recency == .latest ? "latest" : "any",
+            "ms": Int(pack.timingsMs["total"] ?? 0)
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: meta), let json = String(data: data, encoding: .utf8) {
+            try? await services.database.recordMetricEvent(metricType: .aiSearchRetrieval, metadata: json)
+        }
+        return pack
+    }
+
+    /// When the first retrieval pass matched a part of the question weakly, ask the model for better search
+    /// vocabulary (it sees the question + statistics, never screen text) and retrieve again. Bounded: at most 2
+    /// rounds, 20s per call, and any failure returns the original pack unchanged.
+    public nonisolated func refineAIEvidence(pack: AIEvidencePack, apps: [AIQueryApp], answerModel: String) async -> AIEvidencePack {
+        let weakBefore = pack.weakFacets.count
+        guard weakBefore > 0 else { return pack }
+
+        // Refinement only needs search vocabulary (no screen text), which Apple's on-device model can produce for
+        // free and offline; fall back to OpenRouter only when on-device is unavailable or disabled.
+        let providerSetting = UserDefaults.standard.string(forKey: "aiAnswerProvider") ?? "auto"
+        let transport: any AIChatTransport
+        if providerSetting != "openrouter", OnDeviceLanguageModel.isAvailable {
+            transport = OnDeviceTransport()
+        } else if providerSetting != "onDevice", let apiKey = OpenRouterCredentialsManager.getAPIKey(), !apiKey.isEmpty {
+            struct CloudTransport: AIChatTransport {
+                let apiKey: String
+                let model: String
+                func complete(system: String, user: String, maxTokens: Int) async throws -> String {
+                    try await OpenRouterClient().complete(system: system, user: user, apiKey: apiKey, model: model, maxTokens: maxTokens, timeout: 20)
+                }
+            }
+            let override = UserDefaults.standard.string(forKey: "aiRefinementModel")
+            transport = CloudTransport(apiKey: apiKey, model: (override?.isEmpty == false) ? override! : answerModel)
+        } else {
+            return pack
+        }
+
+        var names: [String: String] = [:]
+        for app in apps { names[app.bundleID] = names[app.bundleID] ?? app.name }
+        let retriever = AIEvidenceRetriever(database: services.database, ftsEngine: services.ftsEngine, appNames: names, memory: AISearchMemory.shared)
+
+        let start = Date()
+        let refined = await AIQueryRefiner.refine(pack: pack, retriever: retriever, transport: transport, knownApps: apps, rounds: 2)
+        let meta = "{\"weakBefore\":\(weakBefore),\"weakAfter\":\(refined.weakFacets.count),\"evidenceBefore\":\(pack.evidence.count),\"evidenceAfter\":\(refined.evidence.count),\"ms\":\(Int(Date().timeIntervalSince(start) * 1000)),\"onDevice\":\(transport is OnDeviceTransport)}"
+        try? await services.database.recordMetricEvent(metricType: .aiSearchRefinement, metadata: meta)
+        return refined
+    }
+
+    /// After an answer: learn "where/with which words this kind of question gets answered" from the frames the model
+    /// actually cited (and that covered the facet), and give feedback to any learned hint that was applied.
+    public nonisolated func learnFromAIAnswer(pack: AIEvidencePack, citedFrameIDs: Set<Int64>) async {
+        let total = try? await services.database.getFrameCount()
+        let learned = await AISearchMemory.shared.learn(
+            from: pack, citedFrameIDs: citedFrameIDs, ftsEngine: services.ftsEngine, totalDocuments: total
+        )
+        let meta = "{\"facetsLearned\":\(learned),\"citedFrames\":\(citedFrameIDs.count)}"
+        try? await services.database.recordMetricEvent(metricType: .aiSearchMemoryUpdate, metadata: meta)
+    }
+
+    /// Records the outcome of an Ask-AI answer (see `MetricType.aiSearchAnswer`).
+    public nonisolated func recordAIAnswerOutcome(outcome: String, cited: Int, source: String) async {
+        let meta = "{\"outcome\":\"\(outcome)\",\"cited\":\(cited),\"source\":\"\(source)\"}"
+        try? await services.database.recordMetricEvent(metricType: .aiSearchAnswer, metadata: meta)
+    }
+
     /// Plans and retrieves structured episodic storyboard context via the Cognitive Memory System
     public nonisolated func planAndRetrieveCognitiveContext(question: String, limit: Int = 30) async throws -> CognitiveStoryboardContext {
         let reasoner = CognitiveReasoner(

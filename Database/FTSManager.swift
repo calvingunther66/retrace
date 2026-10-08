@@ -284,6 +284,21 @@ public actor FTSManager: FTSProtocol {
         return sql
     }
 
+    public func documentFrequency(query: String) async throws -> Int? {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "FTS database not initialized")
+        }
+        let sql = "SELECT COUNT(*) FROM searchRanking WHERE searchRanking MATCH ?"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        sqlite3_bind_text(statement, 1, query, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+        return Int(sqlite3_column_int64(statement, 0))
+    }
+
     public func getMatchCount(query: String, filters: SearchFilters) async throws -> Int {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "FTS database not initialized")
@@ -408,7 +423,12 @@ public actor FTSManager: FTSProtocol {
     // MARK: - Private Helpers
 
     private func buildSearchQuery(filters: SearchFilters) -> String {
-        // Rewind-compatible join pattern: searchRanking → doc_segment → frame → segment
+        // Rewind-compatible join pattern: searchRanking → doc_segment → frame → segment.
+        // PERF: FTS5 must drive this join. The previous form joined a derived table
+        // `(SELECT frameId, MAX(docid) FROM doc_segment GROUP BY frameId)` first, which made SQLite
+        // scan every frame and do one FTS5 rowid+MATCH lookup per row (~35s on a 157k-frame DB for
+        // a query matching 3.5k rows). Keeping "latest doc per frame" as a correlated filter lets
+        // MATCH produce the candidates first (~0.1s).
         // FTS table stores content directly (no external content table needed for search)
         var sql = """
             SELECT
@@ -417,14 +437,11 @@ public actor FTSManager: FTSProtocol {
                 f.videoId, f.videoFrameIndex,
                 snippet(searchRanking, -1, '<mark>', '</mark>', '...', 16) AS snippet
             FROM searchRanking
-            JOIN (
-                SELECT frameId, MAX(docid) AS docid
-                FROM doc_segment
-                GROUP BY frameId
-            ) ds ON searchRanking.rowid = ds.docid
+            JOIN doc_segment ds ON ds.docid = searchRanking.rowid
             JOIN frame f ON ds.frameId = f.id
             JOIN segment s ON f.segmentId = s.id
             WHERE searchRanking MATCH ?
+              AND ds.docid = (SELECT MAX(d2.docid) FROM doc_segment d2 WHERE d2.frameId = ds.frameId)
             """
 
         // Add time filters (using frame.createdAt)
@@ -465,14 +482,11 @@ public actor FTSManager: FTSProtocol {
         var sql = """
             SELECT COUNT(*)
             FROM searchRanking
-            JOIN (
-                SELECT frameId, MAX(docid) AS docid
-                FROM doc_segment
-                GROUP BY frameId
-            ) ds ON searchRanking.rowid = ds.docid
+            JOIN doc_segment ds ON ds.docid = searchRanking.rowid
             JOIN frame f ON ds.frameId = f.id
             JOIN segment s ON f.segmentId = s.id
             WHERE searchRanking MATCH ?
+              AND ds.docid = (SELECT MAX(d2.docid) FROM doc_segment d2 WHERE d2.frameId = ds.frameId)
             """
 
         if filters.startDate != nil {

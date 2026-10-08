@@ -202,6 +202,11 @@ retrace/
 │   ├── validate_sleep_wake_stability.sh # Sleep/wake soak validation workflow
 │   └── validate_darkwake_watchdog.sh # Automated darkwake watchdog regression validation
 │
+├── Sources/                     # Standalone executables
+│   ├── RetraceCLI/              # retrace-cli: AI search/indexing harness (search, ask-plan, ask-local, memory, ai-context, bench, index-bench, rebuild-vectors, vector-status, ask); snapshot-DB only
+│   ├── QueryRewindApps/
+│   └── TestMostRecentFrame/
+│
 ├── Shared/                      # CRITICAL: Shared types and protocols
 │   ├── Logging.swift            # Central log utility (Log.debug/info/warning/error)
 │   ├── AppPaths.swift           # Application path configuration
@@ -288,6 +293,8 @@ retrace/
 │   ├── EntityMesh/              # EntityMeshManager: knowledge graph over extracted entities
 │   ├── Episodic/                # CognitiveSessionizer: episodic clustering of frames
 │   ├── Reasoning/               # CognitiveReasoner: multi-hop reasoning over mesh + episodes
+│   ├── AIQuery/                 # Ask AI engine: AIQueryPlanner → AIEvidenceRetriever (+AISearchMemory learned hints, AIQueryRefiner model-assisted refinement) → passage-level evidence
+│   ├── OnDevice/                # OnDeviceLanguageModel: Apple FoundationModels provider for Ask AI answers + query refinement (fallback when the cloud model is unavailable)
 │   ├── OpenRouter/              # OpenRouter-backed semantic indexing pipeline
 │   └── Tests/
 │
@@ -325,6 +332,7 @@ retrace/
     ├── LaunchAgents/            # Embedded SMAppService launch-agent plists
     ├── Components/              # Reusable UI components (MenuBarManager, HotkeyManager, etc.)
     │   ├── AppTheme.swift       # Linen/Dusk tokens (adaptive colors), type scale, spacing/radius, elevation, button + card styles
+    │   ├── AIAskResultExport.swift # Exports retrace://ask run state/result to ai_ask_last.json (opt-in deeplink, used by retracectl)
     │   ├── RetraceIcon.swift    # Code-drawn icon set, SF Symbol → Retrace icon table, RetraceSymbol, mark/wordmark, NSImage helpers
     │   ├── RetraceComponents.swift # Badge, Meter, Switch, Field, Tile, SectionHeader
     │   ├── RetraceFontRegistry.swift # One-time registration of bundled fonts

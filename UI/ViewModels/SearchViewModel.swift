@@ -2578,14 +2578,28 @@ public class SearchViewModel: ObservableObject {
 
     private var openRouterTask: Task<Void, Never>?
 
-    public func askOpenRouterAI(query: String? = nil) {
+    public func askOpenRouterAI(query: String? = nil, exportResult: Bool = false) {
         let question = (query ?? searchQuery).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
+        let startedAt = Date()
 
-        guard OpenRouterCredentialsManager.hasAPIKey() else {
-            aiError = "Please configure your OpenRouter API Key in Settings > AI & Models"
+        let provider = Self.configuredAnswerProvider()
+        let cloudKeyAvailable = OpenRouterCredentialsManager.hasAPIKey()
+        let localAvailable = OnDeviceLanguageModel.isAvailable
+        let cloudAllowed = provider != .onDevice && cloudKeyAvailable
+        let localAllowed = provider != .openrouter && localAvailable
+        guard cloudAllowed || localAllowed else {
+            aiError = provider == .onDevice
+                ? "Apple's on-device model is not available: \(OnDeviceLanguageModel.availabilityDescription())"
+                : "Please configure your OpenRouter API Key in Settings > AI & Models (Apple on-device fallback unavailable: \(OnDeviceLanguageModel.availabilityDescription()))"
             showAIAnswerPanel = true
+            if exportResult {
+                AIAskResultExport.write(["status": "error", "question": question, "error": aiError ?? "", "startedAt": AIAskResultExport.iso(startedAt)])
+            }
             return
+        }
+        if exportResult {
+            AIAskResultExport.write(["status": "running", "question": question, "startedAt": AIAskResultExport.iso(startedAt)])
         }
 
         openRouterTask?.cancel()
@@ -2632,25 +2646,34 @@ public class SearchViewModel: ObservableObject {
         openRouterTask = Task { [weak self] in
             guard let self else { return }
 
-            // Check dedicated 100 requests/day search quota (separate from visual indexing)
+            // The dedicated 100 requests/day search budget only gates the cloud provider; the on-device model is free.
             let searchRequestsToday = await self.coordinator.getSearchRequestsTodayCount()
-            guard searchRequestsToday < SemanticIndexStatistics.defaultDailySearchBudget else {
+            let withinBudget = searchRequestsToday < SemanticIndexStatistics.defaultDailySearchBudget
+            let useCloud = cloudAllowed && withinBudget
+            guard useCloud || localAllowed else {
                 await MainActor.run {
                     self.isAIGenerating = false
                     self.aiError = "Daily AI search limit (\(SemanticIndexStatistics.defaultDailySearchBudget) requests/day) reached. Resets at UTC midnight."
+                    if exportResult {
+                        AIAskResultExport.write(["status": "error", "question": question, "error": self.aiError ?? "", "startedAt": AIAskResultExport.iso(startedAt)])
+                    }
                 }
                 return
             }
 
-            let contextFrames = await self.resolveContextFrames(
-                initial: initialContextFrames,
-                question: question
-            )
+            let resolved = await self.resolveAIContext(initial: initialContextFrames, question: question, answerModel: config.model)
             await self.runPlainStreamingAnswer(
                 question: question,
-                contextFrames: contextFrames,
+                contextFrames: resolved.frames,
+                preamble: resolved.preamble,
+                evidencePack: resolved.pack,
                 model: config.model,
-                temperature: config.temperature
+                temperature: config.temperature,
+                useCloud: useCloud,
+                useOnDevice: localAllowed,
+                export: exportResult
+                    ? AskExportContext(question: question, startedAt: startedAt, model: config.model, plan: resolved.planSummary, notes: resolved.notes, evidence: resolved.evidenceLines)
+                    : nil
             )
         }
     }
@@ -2667,6 +2690,56 @@ public class SearchViewModel: ObservableObject {
                 extractedText: r.snippet.isEmpty ? r.matchedText : r.snippet
             )
         }
+    }
+
+    /// Everything the answer step needs from retrieval.
+    struct ResolvedAIContext {
+        var frames: [OpenRouterContextFrame]
+        var preamble: String?
+        var planSummary: String?
+        var notes: [String] = []
+        var evidenceLines: [String] = []
+        var pack: AIEvidencePack? = nil
+    }
+
+    struct AskExportContext: Sendable {
+        let question: String
+        let startedAt: Date
+        let model: String
+        let plan: String?
+        let notes: [String]
+        let evidence: [String]
+    }
+
+    /// Primary context builder: plan the question (scope / facets / recency), retrieve passage-level evidence,
+    /// and fall back to the older cognitive / OR-search paths only when that finds nothing.
+    private func resolveAIContext(initial: [OpenRouterContextFrame], question: String, answerModel: String) async -> ResolvedAIContext {
+        let apps = availableApps.map { AIQueryApp(name: $0.name, bundleID: $0.bundleID) }
+        var pack = await coordinator.retrieveAIEvidence(question: question, apps: apps)
+
+        // Deep search: if any part of the question matched weakly, let the model suggest better on-screen wording.
+        let deepSearchOn = (UserDefaults.standard.object(forKey: "aiDeepSearchEnabled") as? Bool) ?? true
+        if deepSearchOn, !pack.weakFacets.isEmpty {
+            await MainActor.run { [weak self] in self?.aiGeneratedAnswer = "Searching deeper…" }
+            pack = await coordinator.refineAIEvidence(pack: pack, apps: apps, answerModel: answerModel)
+            await MainActor.run { [weak self] in self?.aiGeneratedAnswer = "" }
+        }
+        if !pack.isEmpty {
+            let df = DateFormatter()
+            df.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            Log.info("[SearchViewModel] AI evidence planner: \(pack.plan.summary) → \(pack.evidence.count) frames in \(Int(pack.timingsMs["total"] ?? 0))ms", category: .search)
+            return ResolvedAIContext(
+                frames: pack.contextFrames(),
+                preamble: pack.promptPreamble(),
+                planSummary: pack.plan.summary,
+                notes: pack.notes,
+                evidenceLines: pack.evidence.map { "#\($0.frameID) \(df.string(from: $0.timestamp)) \($0.appName) coverage=\(String(format: "%.2f", $0.coverage))" },
+                pack: pack
+            )
+        }
+        Log.info("[SearchViewModel] AI evidence planner found nothing (\(pack.plan.summary)); using legacy context paths", category: .search)
+        let legacy = await resolveContextFrames(initial: initial, question: question)
+        return ResolvedAIContext(frames: legacy, preamble: nil, planSummary: pack.plan.summary + " (legacy fallback)", notes: pack.notes)
     }
 
     /// `askOpenRouterAI`'s `initialContextFrames` come from whatever's currently in the search
@@ -2741,57 +2814,128 @@ public class SearchViewModel: ObservableObject {
             .bundleID
     }
 
+    enum AnswerProvider: String { case auto, onDevice, openrouter }
+
+    /// `defaults write io.retrace.app aiAnswerProvider auto|onDevice|openrouter` (default: auto = cloud first,
+    /// Apple on-device as the fallback).
+    static func configuredAnswerProvider() -> AnswerProvider {
+        AnswerProvider(rawValue: UserDefaults.standard.string(forKey: "aiAnswerProvider") ?? "auto") ?? .auto
+    }
+
     /// The streaming AI-answer path used by `askOpenRouterAI`.
+    /// Tries providers in order — OpenRouter (when allowed), then Apple's on-device model — so a rate-limited or
+    /// offline cloud model degrades to a local answer instead of an error.
     private func runPlainStreamingAnswer(
         question: String,
         contextFrames: [OpenRouterContextFrame],
+        preamble: String? = nil,
+        evidencePack: AIEvidencePack? = nil,
         model: String,
-        temperature: Double
+        temperature: Double,
+        useCloud: Bool = true,
+        useOnDevice: Bool = false,
+        export: AskExportContext? = nil
     ) async {
-        let requestID = await coordinator.recordSearchRequest(frameIDs: contextFrames.map(\.frameID))
-        let client = OpenRouterClient()
-        let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
-        let stream = client.streamAnswerQuery(
-            query: question,
-            contextFrames: contextFrames,
-            apiKey: apiKey,
-            model: model,
-            temperature: temperature
-        )
+        enum Attempt { case cloud, onDevice }
+        let attempts: [Attempt] = (useCloud ? [.cloud] : []) + (useOnDevice ? [.onDevice] : [])
 
-        do {
-            var accumulated = ""
-            for try await token in stream {
-                guard !Task.isCancelled else { break }
-                accumulated += token
+        func exportState(status: String, answer: String?, citations: [OpenRouterCitation], error: String?, provider: String) {
+            guard let export else { return }
+            var payload: [String: Any] = [
+                "status": status,
+                "question": export.question,
+                "model": provider,
+                "startedAt": AIAskResultExport.iso(export.startedAt),
+                "finishedAt": AIAskResultExport.iso(Date()),
+                "elapsedMs": Int(Date().timeIntervalSince(export.startedAt) * 1000),
+                "plan": export.plan ?? "",
+                "notes": export.notes,
+                "evidence": export.evidence,
+                "answer": answer ?? "",
+                "citedFrameIDs": citations.map { $0.frameID }
+            ]
+            if let error { payload["error"] = error }
+            AIAskResultExport.write(payload)
+        }
+
+        var lastError: Error?
+        var cloudFailure: String?
+        for attempt in attempts {
+            var requestID: Int64?
+            let providerLabel: String
+            let stream: AsyncThrowingStream<String, Error>
+            var framesSent = contextFrames
+            switch attempt {
+            case .cloud:
+                providerLabel = model
+                requestID = await coordinator.recordSearchRequest(frameIDs: contextFrames.map(\.frameID))
+                stream = OpenRouterClient().streamAnswerQuery(
+                    query: question, contextFrames: contextFrames,
+                    apiKey: OpenRouterCredentialsManager.getAPIKey() ?? "", model: model,
+                    temperature: temperature, preamble: preamble
+                )
+            case .onDevice:
+                providerLabel = OnDeviceLanguageModel.displayName
+                let ctx = await OnDeviceLanguageModel.contextTokens()
+                let fitted = OnDeviceLanguageModel.fit(query: question, frames: contextFrames, preamble: preamble, contextTokens: ctx)
+                framesSent = Array(contextFrames.prefix(fitted.framesUsed))
+                stream = OnDeviceLanguageModel.stream(system: OnDeviceLanguageModel.systemPrompt, user: fitted.prompt)
+            }
+
+            // Honest labelling when the fallback answers: small local models can mis-bind numbers to labels.
+            let prefix: String = {
+                guard attempt == .onDevice, let cloudFailure else { return "" }
+                return "_Cloud model unavailable (\(cloudFailure)). Answered by Apple's on-device model — double-check any numbers against the cited frames._\n\n"
+            }()
+
+            do {
+                var accumulated = ""
+                for try await token in stream {
+                    guard !Task.isCancelled else { break }
+                    accumulated += token
+                    let shown = prefix + accumulated
+                    await MainActor.run { [weak self] in self?.aiGeneratedAnswer = shown }
+                }
+                let finalText = prefix + accumulated
+                let citations = OpenRouterClient.extractCitations(from: accumulated, contextFrames: framesSent)
+                if let requestID {
+                    await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "success", httpStatus: 200, errorMessage: nil)
+                }
+                exportState(status: "done", answer: finalText, citations: citations, error: nil, provider: providerLabel)
+                if let evidencePack {
+                    await coordinator.learnFromAIAnswer(pack: evidencePack, citedFrameIDs: Set(citations.map(\.frameID)))
+                }
+                await coordinator.recordAIAnswerOutcome(
+                    outcome: contextFrames.isEmpty ? "no_evidence" : "success",
+                    cited: citations.count,
+                    source: (export == nil ? "ui" : "deeplink") + (attempt == .onDevice ? ":on_device" : ":cloud")
+                )
                 await MainActor.run { [weak self] in
-                    self?.aiGeneratedAnswer = accumulated
+                    self?.isAIGenerating = false
+                    self?.aiCitations = citations
+                }
+                return
+            } catch {
+                if let requestID {
+                    let httpCode = (error as NSError).code
+                    await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "failed", httpStatus: httpCode > 0 ? httpCode : 500, errorMessage: error.localizedDescription)
+                }
+                // A cancelled task must not touch shared state (see git history: stale "cancelled" banners).
+                guard !Task.isCancelled else { return }
+                lastError = error
+                if attempt == .cloud {
+                    cloudFailure = String(error.localizedDescription.prefix(80))
+                    await MainActor.run { [weak self] in self?.aiGeneratedAnswer = "" }
                 }
             }
+        }
 
-            let citations = OpenRouterClient.extractCitations(from: accumulated, contextFrames: contextFrames)
-            if let requestID {
-                await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "success", httpStatus: 200, errorMessage: nil)
-            }
-            await MainActor.run { [weak self] in
-                self?.isAIGenerating = false
-                self?.aiCitations = citations
-            }
-        } catch {
-            if let requestID {
-                let httpCode = (error as NSError).code
-                await coordinator.updateSearchRequestOutcome(requestID: requestID, status: "failed", httpStatus: httpCode > 0 ? httpCode : 500, errorMessage: error.localizedDescription)
-            }
-            // A cancelled task must not touch shared state. Without this guard, a cancelled
-            // URLSession stream throwing `URLError(.cancelled)` after the user has already
-            // submitted a NEW query would overwrite that new task's fresh `isAIGenerating`/state
-            // with a stale "cancelled" error, flashing a bogus error banner and hiding the
-            // spinner mid-generation for the query that's actually running.
-            guard !Task.isCancelled else { return }
-            await MainActor.run { [weak self] in
-                self?.isAIGenerating = false
-                self?.aiError = error.localizedDescription
-            }
+        let message = lastError?.localizedDescription ?? "No AI provider is available."
+        exportState(status: "error", answer: nil, citations: [], error: message, provider: "none")
+        await coordinator.recordAIAnswerOutcome(outcome: "failed", cited: 0, source: export == nil ? "ui" : "deeplink")
+        await MainActor.run { [weak self] in
+            self?.isAIGenerating = false
+            self?.aiError = message
         }
     }
 

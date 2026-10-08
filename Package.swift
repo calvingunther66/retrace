@@ -33,6 +33,7 @@ let package = Package(
         .executable(name: "RetraceAppleScriptHelper", targets: ["RetraceAppleScriptHelper"]),
         .executable(name: "TestMostRecentFrame", targets: ["TestMostRecentFrame"]),
         .executable(name: "QueryRewindApps", targets: ["QueryRewindApps"]),
+        .executable(name: "retrace-cli", targets: ["RetraceCLI"]),
     ],
     dependencies: [
         // SQLCipher for reading encrypted Rewind database and encrypted storage
@@ -371,6 +372,18 @@ let package = Package(
                 "App"
             ],
             path: "Sources/TestMostRecentFrame"
+        ),
+
+        // MARK: - AI search / indexing command-line harness (operates on a snapshot DB)
+        .executableTarget(
+            name: "RetraceCLI",
+            dependencies: [
+                "Shared",
+                "Database",
+                "Search",
+                "Processing"
+            ],
+            path: "Sources/RetraceCLI"
         ),
 
         // MARK: - Query Rewind apps utility

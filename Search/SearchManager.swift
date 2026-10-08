@@ -408,7 +408,7 @@ public actor SearchManager: SearchProtocol {
     /// Build an FTS query that searches OCR columns and applies exclusions globally.
     /// Example: `haseab -wave` becomes:
     /// `((text:(haseab*)) OR (otherText:(haseab*))) NOT ((text:(wave)) OR (otherText:(wave)))`
-    static func buildScopedFTSQuery(for parsed: ParsedQuery, matchAny: Bool = false) -> String {
+    public static func buildScopedFTSQuery(for parsed: ParsedQuery, matchAny: Bool = false) -> String {
         let includeQuery = buildIncludeFTSQuery(for: parsed, matchAny: matchAny)
         let trimmedInclude = includeQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedInclude.isEmpty else { return includeQuery }
@@ -428,7 +428,7 @@ public actor SearchManager: SearchProtocol {
     /// `buildScopedFTSQuery`, this is NOT column-scoped — `semanticRanking` has a single
     /// `description` column, so a `text:`/`otherText:` prefix (valid only on the OCR table)
     /// would be a malformed FTS5 column reference here.
-    static func buildSemanticFTSQuery(for parsed: ParsedQuery, matchAny: Bool = false) -> String {
+    public static func buildSemanticFTSQuery(for parsed: ParsedQuery, matchAny: Bool = false) -> String {
         let includeQuery = buildIncludeFTSQuery(for: parsed, matchAny: matchAny)
         let trimmedInclude = includeQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedInclude.isEmpty else { return includeQuery }
