@@ -2590,8 +2590,8 @@ public class SearchViewModel: ObservableObject {
         let localAllowed = provider != .openrouter && localAvailable
         guard cloudAllowed || localAllowed else {
             aiError = provider == .onDevice
-                ? "Apple's on-device model is not available on this Mac (needs Apple Intelligence)."
-                : "Please configure your OpenRouter API Key in Settings > AI & Models"
+                ? "Apple's on-device model is not available: \(OnDeviceLanguageModel.availabilityDescription())"
+                : "Please configure your OpenRouter API Key in Settings > AI & Models (Apple on-device fallback unavailable: \(OnDeviceLanguageModel.availabilityDescription()))"
             showAIAnswerPanel = true
             if exportResult {
                 AIAskResultExport.write(["status": "error", "question": question, "error": aiError ?? "", "startedAt": AIAskResultExport.iso(startedAt)])

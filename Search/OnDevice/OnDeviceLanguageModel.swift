@@ -54,6 +54,19 @@ public enum OnDeviceLanguageModel {
 
     public static var isAvailable: Bool { isAvailable(.onDevice) }
 
+    /// Human-readable availability, so failures say *why* (Apple Intelligence off, model still downloading, …).
+    public static func availabilityDescription(_ tier: Tier = .onDevice) -> String {
+        #if canImport(FoundationModels)
+        switch tier {
+        case .onDevice:
+            if #available(macOS 26.0, *) { return String(describing: SystemLanguageModel.default.availability) }
+        case .privateCloud:
+            if #available(macOS 27.0, *) { return String(describing: PrivateCloudComputeLanguageModel().availability) }
+        }
+        #endif
+        return "FoundationModels is not available on this macOS version"
+    }
+
     public static func isAvailable(_ tier: Tier) -> Bool {
         #if canImport(FoundationModels)
         switch tier {
