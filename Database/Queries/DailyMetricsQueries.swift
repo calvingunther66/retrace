@@ -91,7 +91,9 @@ public enum DailyMetricsQueries {
         case aiSearchRefinement = "ai_search_refinement"  // metadata: JSON {weakBefore, weakAfter, evidenceBefore, evidenceAfter, ms}
         case aiSearchMemoryUpdate = "ai_search_memory_update"  // metadata: JSON {facetsLearned, citedFrames}
         case aiSearchAnswer = "ai_search_answer"  // metadata: JSON {outcome: success|failed|no_evidence, cited, source: ui|deeplink}
-        case semanticIndexBatchOutcome = "semantic_index_batch_outcome"  // metadata: JSON {outcome, lane?, count?}
+        case semanticIndexBatchOutcome = "semantic_index_batch_outcome"  // metadata: JSON {outcome, lane?, count?, n?, parsed?, finish?, truncated?, errorKind?, arm?}
+        case semanticIndexBatchSizeChange = "semantic_index_batch_size_change"  // metadata: JSON {from, to, reason}
+        case semanticIndexQuotaStop = "semantic_index_quota_stop"  // metadata: JSON {kind: daily_429, resumeAtUtc}
         case semanticIndexingToggle = "semantic_indexing_toggle"  // metadata: JSON {enabled}
         case phraseLevelRedactionReveal = "phrase_level_redaction_reveal"
         case phraseLevelRedactionQueuedHover = "phrase_level_redaction_queued_hover"  // metadata: JSON {nodeID, frameID, processingStatus}

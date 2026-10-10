@@ -32,7 +32,8 @@ Capture/
     ├── AccessibilityInspectorTest.swift
     ├── BrowserURLAppleScriptCoordinatorTests.swift
     ├── CaptureTriggerSchedulingTests.swift
-    └── DeduplicationTests.swift
+    ├── DeduplicationTests.swift
+    └── DisplaySwitchAXRegistryTests.swift   # AX callback token registry: stale/garbage refcons are inert (regression for the use-after-free crash)
 ```
 
 ## System Requirements

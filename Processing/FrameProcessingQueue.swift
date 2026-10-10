@@ -718,7 +718,9 @@ public actor FrameProcessingQueue {
     }
 
     /// Adjust the number of running workers to the desired count
-    private func adjustWorkerCount(to desired: Int) {
+    private func adjustWorkerCount(to requested: Int) {
+        // A negative request would make the scale-down loop below call removeLast() more times than there are workers.
+        let desired = max(0, requested)
         let current = workers.count
         if desired > current {
             // Spawn additional workers

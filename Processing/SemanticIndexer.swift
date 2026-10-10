@@ -13,12 +13,15 @@ import Search
 /// Runs a single serial polling loop (like `RetentionManager`, not `FrameProcessingQueue`'s
 /// worker pool — a daily request budget serializes throughput regardless of concurrency).
 ///
-/// Two independent lanes, each with its own budget:
-///  - **Fresh lane**: frames captured within the last 72 hours. Uncapped by the daily counter,
-///    naturally bounded by actual capture volume.
-///  - **Backfill lane**: everything older. Capped at `dailyBackfillBudget` (default 600)
-///    requests/day, tracked via the `semantic_index_requests` table (a DB row, not
-///    UserDefaults, so a crash mid-request still counts against the day's budget).
+/// Two lanes, ordered by priority but sharing ONE daily attempt budget:
+///  - **Fresh lane**: frames captured within the last 72 hours, selected before any backlog.
+///  - **Backfill lane**: everything older.
+///  Both are capped by `dailyBackfillBudget` (default 600) request *attempts*/day — failed attempts count — tracked
+///  via the `semantic_index_requests` table (a DB row, not UserDefaults, so a crash mid-request still counts
+///  against the day's budget).
+///
+/// How many frames each request carries is decided by `SemanticBatchController` (5 → 8 → 12 behind a permanent
+/// N=5 control arm); see that type for why larger batches are the lever and how they are kept safe.
 public actor SemanticIndexer {
     private let database: DatabaseManager
     private let storage: StorageManager
@@ -54,7 +57,11 @@ public actor SemanticIndexer {
         return defaults.bool(forKey: OpenRouterCredentialsManager.semanticIndexingEnabledDefaultsKey)
     }
 
-    private let batchSize = 5
+    /// Defaults key for the largest batch the controller may ramp to (clamped to the controller's steps; default 12).
+    public static let batchCeilingDefaultsKey = "semanticIndexBatchCeiling"
+    private static let batchControllerSnapshotKey = "semanticIndexBatchControllerSnapshot"
+    private var batchController: SemanticBatchController
+    private var batchControllerCeiling: Int
     /// Single source of truth for the backfill request budget — also read by
     /// `AppCoordinator.getSemanticIndexStatistics()` for the System Monitor readout, so that
     /// display can never drift from what actually governs throttling here.
@@ -80,6 +87,15 @@ public actor SemanticIndexer {
         self.entityMesh = entityMesh
         self.cognitiveSessionizer = cognitiveSessionizer
         self.vectorEngine = vectorEngine
+        let ceiling = Self.readBatchCeiling()
+        var config = SemanticBatchController.Config()
+        config.ceiling = ceiling
+        self.batchControllerCeiling = ceiling
+        self.batchController = SemanticBatchController(
+            config: config,
+            restoring: Self.loadBatchControllerSnapshot(),
+            nowMs: Int64(Date().timeIntervalSince1970 * 1000)
+        )
     }
 
     // MARK: - Lifecycle
@@ -107,6 +123,9 @@ public actor SemanticIndexer {
                     delay = self.idlePollInterval
                 case .pausedForPressure:
                     delay = self.idlePollInterval
+                case .quotaExhausted(let until):
+                    // Sleep toward the reset in bounded slices so stop() and the Settings toggle still take effect.
+                    delay = .seconds(min(900, max(30, Int(until.timeIntervalSinceNow))))
                 }
                 try? await Task.sleep(for: delay, clock: .continuous)
             }
@@ -180,6 +199,8 @@ public actor SemanticIndexer {
         case rateLimited(retryAfterSeconds: Int)
         case error(String)
         case pausedForPressure
+        /// Provider's daily free-model quota is exhausted; nothing can succeed until `until`.
+        case quotaExhausted(until: Date)
     }
 
     private let appleFoundationModelService = AppleFoundationModelService.shared
@@ -241,8 +262,10 @@ public actor SemanticIndexer {
                 return .budgetExhausted
             }
 
+            refreshBatchControllerCeiling(nowMs: nowMs)
+            let plan = batchController.plan(nowMs: nowMs)
             let candidates = try await database.selectPendingSemanticFrames(
-                limit: batchSize * 2, // headroom in case some get filtered out below
+                limit: batchController.maxN * 3 / 2, // headroom in case some get filtered out below
                 freshCutoffMs: freshCutoffMs
             )
 
@@ -269,7 +292,7 @@ public actor SemanticIndexer {
 
                 lane = candidateLane
                 batch.append(candidate)
-                if batch.count >= batchSize { break }
+                if batch.count >= plan.targetN { break }
             }
 
             guard let resolvedLane = lane, !batch.isEmpty else {
@@ -285,7 +308,7 @@ public actor SemanticIndexer {
             currentStatus = .running
             currentStatusMessage = "Deep indexing \(sortedBatch.count) frames..."
 
-            return await dispatch(batch: sortedBatch, lane: resolvedLane, model: model, apiKey: apiKey)
+            return await dispatch(batch: sortedBatch, lane: resolvedLane, model: model, apiKey: apiKey, plan: plan)
         } catch {
             currentStatus = .error
             currentStatusMessage = error.localizedDescription
@@ -371,7 +394,8 @@ public actor SemanticIndexer {
         batch: [SemanticIndexQueries.PendingFrame],
         lane: String,
         model: String,
-        apiKey: String
+        apiKey: String,
+        plan: SemanticBatchController.Plan
     ) async -> BatchOutcome {
         var frameInputs: [OpenRouterClient.SemanticFrameInput] = []
         let baseTimeMs = batch.first?.createdAtMs ?? 0
@@ -406,7 +430,9 @@ public actor SemanticIndexer {
             requestRowID = try await database.recordSemanticIndexDispatch(
                 frameIDs: frameInputs.map(\.frameID),
                 lane: lane,
-                requestedAtMs: requestedAtMs
+                requestedAtMs: requestedAtMs,
+                batchTarget: plan.targetN,
+                arm: plan.arm
             )
         } catch {
             currentStatus = .error
@@ -420,11 +446,12 @@ public actor SemanticIndexer {
         // reconsiders the frames that never got written — see the catch block.
         var writtenFrameIDs: [Int64] = []
         do {
-            let (parsed, unparsedFrameIDs) = try await openRouterClient.describeFrames(
+            let outcome = try await openRouterClient.describeFramesDetailed(
                 frames: frameInputs,
                 apiKey: apiKey,
                 model: model
             )
+            let parsed = outcome.parsed
 
             let indexedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
             for result in parsed {
@@ -439,9 +466,21 @@ public actor SemanticIndexer {
                 let deepVec = await vectorEngine.embedTextOnDevice(result.description)
                 try? await vectorEngine.addVector(frameID: FrameID(value: result.frameID), vector: deepVec)
             }
-            if !unparsedFrameIDs.isEmpty {
-                try await database.markSemanticFramesRetryPending(unparsedFrameIDs)
+
+            // Frames the reply did not describe: a reply cut off by the output limit that still produced entries
+            // says the REQUEST was too big, so those frames go back without spending a retry strike.
+            let decision = SemanticOutcomePolicy.classify(
+                parsedCount: parsed.count,
+                unparsedFrameIDs: outcome.unparsedFrameIDs,
+                truncated: outcome.truncated
+            )
+            if !decision.transientFrameIDs.isEmpty {
+                try await database.markSemanticFramesTransientRetry(decision.transientFrameIDs)
             }
+            if !decision.strikeFrameIDs.isEmpty {
+                try await database.markSemanticFramesRetryPending(decision.strikeFrameIDs)
+            }
+            let unparsedFrameIDs = outcome.unparsedFrameIDs
 
             let outcomeStatus = unparsedFrameIDs.isEmpty ? "success" : "partial"
             try await database.updateSemanticIndexRequestOutcome(
@@ -449,6 +488,23 @@ public actor SemanticIndexer {
                 status: outcomeStatus,
                 httpStatus: 200,
                 errorMessage: nil
+            )
+            try? await database.updateSemanticIndexRequestTelemetry(
+                requestRowID: requestRowID,
+                telemetry: SemanticIndexQueries.RequestTelemetry(
+                    bodyBytes: outcome.bodyBytes,
+                    promptTokens: outcome.promptTokens,
+                    completionTokens: outcome.completionTokens,
+                    finishReason: outcome.finishReason,
+                    latencyMs: outcome.latencyMs,
+                    parsedCount: parsed.count,
+                    contentEmpty: outcome.contentWasEmpty
+                )
+            )
+            let meanChars: Double? = parsed.isEmpty ? nil : Double(parsed.reduce(0) { $0 + $1.description.count }) / Double(parsed.count)
+            await recordBatchOutcome(
+                .completed(sent: frameInputs.count, parsed: parsed.count, truncated: outcome.truncated, meanChars: meanChars),
+                plan: plan
             )
 
             currentStatus = .running
@@ -460,7 +516,7 @@ public actor SemanticIndexer {
             )
             try? await database.recordMetricEvent(
                 metricType: .semanticIndexBatchOutcome,
-                metadata: "{\"outcome\":\"\(outcomeStatus)\",\"lane\":\"\(lane)\",\"count\":\(parsed.count)}"
+                metadata: "{\"outcome\":\"\(outcomeStatus)\",\"lane\":\"\(lane)\",\"count\":\(parsed.count),\"n\":\(frameInputs.count),\"arm\":\"\(plan.arm)\",\"finish\":\"\(outcome.finishReason ?? "none")\",\"truncated\":\(outcome.truncated)}"
             )
             return .processed(count: parsed.count)
         } catch {
@@ -508,28 +564,130 @@ public actor SemanticIndexer {
                 httpStatus: nsError.code,
                 errorMessage: nsError.localizedDescription
             )
+            let errorKind = Self.errorKind(of: nsError)
+            try? await database.updateSemanticIndexRequestTelemetry(
+                requestRowID: requestRowID,
+                telemetry: SemanticIndexQueries.RequestTelemetry(
+                    bodyBytes: nsError.userInfo[OpenRouterClient.requestBytesKey] as? Int,
+                    errorKind: errorKind
+                )
+            )
             try? await database.recordMetricEvent(
                 metricType: .semanticIndexBatchOutcome,
-                metadata: "{\"outcome\":\"failed\",\"lane\":\"\(lane)\",\"transient\":\(isTransient)}"
+                metadata: "{\"outcome\":\"failed\",\"lane\":\"\(lane)\",\"transient\":\(isTransient),\"n\":\(frameInputs.count),\"arm\":\"\(plan.arm)\",\"errorKind\":\"\(errorKind)\"}"
             )
+            // Only API/transport errors are evidence about batch size; a local DB failure is not.
+            if let controllerOutcome = Self.controllerOutcome(for: nsError, sent: frameInputs.count) {
+                await recordBatchOutcome(controllerOutcome, plan: plan)
+            }
 
             if nsError.code == 429 {
                 let desc = nsError.localizedDescription
                 let isDailyQuota = desc.contains("free-models-per-day") || desc.contains("per-day") || desc.contains("quota")
-                let retrySeconds = isDailyQuota ? 300 : 30
+                if isDailyQuota {
+                    // Every retry before the reset is a doomed request that still counts against the budget:
+                    // wait for 00:00 UTC instead of probing every few minutes.
+                    let resumeAt = SemanticQuotaTime.nextUTCMidnight(after: Date())
+                    currentStatus = .rateLimited
+                    currentStatusMessage = "OpenRouter free model daily limit reached · Resumes at UTC midnight. Switch model in Settings to continue sooner."
+                    Log.warning("[SemanticIndexer] Daily quota exhausted — pausing until \(resumeAt): \(desc)", category: .processing)
+                    try? await database.recordMetricEvent(
+                        metricType: .semanticIndexQuotaStop,
+                        metadata: "{\"kind\":\"daily_429\",\"resumeAtUtc\":\"\(ISO8601DateFormatter().string(from: resumeAt))\"}"
+                    )
+                    return .quotaExhausted(until: resumeAt)
+                }
+                let retryAfter = (nsError.userInfo[OpenRouterClient.retryAfterKey] as? Double).map { Int($0.rounded(.up)) } ?? 30
                 currentStatus = .rateLimited
-                currentStatusMessage = isDailyQuota
-                    ? "OpenRouter free model daily limit reached. Switch model in Settings or wait."
-                    : "Rate limited by OpenRouter (429). Retrying shortly..."
-
-                Log.warning("[SemanticIndexer] Rate limited (\(isDailyQuota ? "daily quota" : "burst")): \(desc)", category: .processing)
-                return .rateLimited(retryAfterSeconds: retrySeconds)
+                currentStatusMessage = "Rate limited by OpenRouter (429). Retrying shortly..."
+                Log.warning("[SemanticIndexer] Rate limited (burst): \(desc)", category: .processing)
+                return .rateLimited(retryAfterSeconds: min(max(retryAfter, 30), 300))
             }
 
             currentStatus = .error
             currentStatusMessage = nsError.localizedDescription
             Log.error("[SemanticIndexer] Dispatch failed: \(nsError.localizedDescription)", category: .processing)
             return .error(nsError.localizedDescription)
+        }
+    }
+
+    // MARK: - Batch-size controller plumbing
+
+    private func recordBatchOutcome(_ outcome: SemanticBatchController.Outcome, plan: SemanticBatchController.Plan) async {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let transition = batchController.record(outcome, plan: plan, nowMs: nowMs)
+        Self.saveBatchControllerSnapshot(batchController.snapshot)
+        switch transition {
+        case .none:
+            return
+        case let .steppedUp(from, to):
+            Log.info("[SemanticIndexer] Batch size stepped up \(from) -> \(to)", category: .processing)
+            try? await database.recordMetricEvent(
+                metricType: .semanticIndexBatchSizeChange,
+                metadata: "{\"from\":\(from),\"to\":\(to),\"reason\":\"promoted\"}"
+            )
+        case let .reverted(from, to, reason):
+            Log.warning("[SemanticIndexer] Batch size reverted \(from) -> \(to) (\(reason))", category: .processing)
+            try? await database.recordMetricEvent(
+                metricType: .semanticIndexBatchSizeChange,
+                metadata: "{\"from\":\(from),\"to\":\(to),\"reason\":\"\(reason)\"}"
+            )
+        }
+    }
+
+    /// Rebuilds the controller if the ceiling default changed, keeping its persisted step/cap.
+    private func refreshBatchControllerCeiling(nowMs: Int64) {
+        let ceiling = Self.readBatchCeiling()
+        guard ceiling != batchControllerCeiling else { return }
+        var config = SemanticBatchController.Config()
+        config.ceiling = ceiling
+        batchControllerCeiling = ceiling
+        batchController = SemanticBatchController(config: config, restoring: batchController.snapshot, nowMs: nowMs)
+        Self.saveBatchControllerSnapshot(batchController.snapshot)
+        Log.info("[SemanticIndexer] Batch ceiling set to \(ceiling)", category: .processing)
+    }
+
+    private static func readBatchCeiling() -> Int {
+        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
+        let stored = defaults.integer(forKey: batchCeilingDefaultsKey)
+        return stored >= 5 ? min(stored, 12) : 12
+    }
+
+    private static func loadBatchControllerSnapshot() -> SemanticBatchController.Snapshot? {
+        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
+        guard let data = defaults.data(forKey: batchControllerSnapshotKey) else { return nil }
+        return try? JSONDecoder().decode(SemanticBatchController.Snapshot.self, from: data)
+    }
+
+    private static func saveBatchControllerSnapshot(_ snapshot: SemanticBatchController.Snapshot) {
+        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
+        if let data = try? JSONEncoder().encode(snapshot) { defaults.set(data, forKey: batchControllerSnapshotKey) }
+    }
+
+    private static func errorKind(of error: NSError) -> String {
+        if let kind = error.userInfo[OpenRouterClient.errorKindKey] as? String { return kind }
+        return error.domain == NSURLErrorDomain ? (error.code == NSURLErrorTimedOut ? "timeout" : "transport") : "other"
+    }
+
+    /// Maps a thrown error to what it says about batch size. Returns nil for errors that say nothing about it.
+    static func controllerOutcome(for error: NSError, sent: Int) -> SemanticBatchController.Outcome? {
+        if error.domain == NSURLErrorDomain {
+            switch error.code {
+            case NSURLErrorCancelled: return nil
+            case NSURLErrorTimedOut: return .timedOut(sent: sent)
+            default: return .availabilityFailure(sent: sent)
+            }
+        }
+        guard error.domain == "OpenRouterClient" else { return nil }
+        switch error.code {
+        case 400, 413, 422:
+            let message = error.localizedDescription.lowercased()
+            let sizeWords = ["image", "payload", "too large", "too many", "request size", "body", "exceed"]
+            return sizeWords.contains(where: message.contains) ? .sizeRejected(sent: sent) : .ignored
+        case 401, 402, 403:
+            return .ignored
+        default:
+            return .availabilityFailure(sent: sent)   // 408/429/5xx and embedded-200 errors
         }
     }
 

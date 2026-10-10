@@ -383,7 +383,16 @@ let package = Package(
                 "Search",
                 "Processing"
             ],
-            path: "Sources/RetraceCLI"
+            path: "Sources/RetraceCLI",
+            linkerSettings: [
+                // Processing links libllama/libwhisper via @rpath. Without these the CLI aborts in dyld
+                // ("Library not loaded: @rpath/libllama.0.dylib") unless DYLD_LIBRARY_PATH happens to be set,
+                // which killed it three times when launched outside scripts/retracectl.sh.
+                .unsafeFlags([
+                    "-Xlinker", "-rpath", "-Xlinker", Context.packageDirectory + "/Vendors/llama/lib",
+                    "-Xlinker", "-rpath", "-Xlinker", Context.packageDirectory + "/Vendors/whisper/lib"
+                ])
+            ]
         ),
 
         // MARK: - Query Rewind apps utility

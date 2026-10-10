@@ -33,7 +33,8 @@ Search/
 ├── OnDevice/
 │   └── OnDeviceLanguageModel.swift # Apple FoundationModels provider: on-device (default) + Private Cloud Compute tier; token-budgeted prompts; OnDeviceTransport
 ├── OpenRouter/
-│   ├── OpenRouterClient.swift               # OpenRouter API client
+│   ├── OpenRouterClient.swift               # OpenRouter API client (describeFramesDetailed returns finish_reason/usage/bytes/latency; max_tokens scales with batch size)
+│   ├── DescriptionSalvageParser.swift       # Per-entry tolerant parser for batched vision replies (keeps every complete entry; never indexes a half-written one)
 │   └── OpenRouterGranularSearchCoordinator.swift # OpenRouter-backed semantic indexing pipeline
 └── Tests/
     ├── QueryParserTests.swift
@@ -42,6 +43,7 @@ Search/
     ├── AIQueryRefinerTests.swift
     ├── AITimeResolverTests.swift
     ├── OnDeviceLanguageModelTests.swift
+    ├── DescriptionSalvageParserTests.swift
     ├── CognitiveMemorySystemTests.swift
     └── TestLogger.swift
 ```

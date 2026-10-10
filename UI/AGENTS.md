@@ -142,6 +142,7 @@ UI/
     ├── BuildInfoAndUpdaterTests.swift    # Build metadata formatting + updater version fallback tests
     ├── CommentComposerTargetContextTests.swift # Comment-target utilities and quick-comment persisted-preview source coverage
     ├── CrashRecoverySupportTests.swift   # Crash-recovery bundle resolution and registration policy coverage
+    ├── CrashRecoveryRegistrationGuardTests.swift # Registration preflight, helper-aware build identity, crash-loop quarantine (real temp .app bundles)
     ├── CrashReportSupportTests.swift     # Dashboard crash/WAL report discovery and launch-context coverage
     ├── CumulativeScreenTimeTrackerTests.swift # Persisted screen-time reconciliation coverage for milestone/reminder thresholds
     ├── QuitConfirmationPresentationTests.swift # Quit alert anchor-window selection + system power-off bypass coverage
