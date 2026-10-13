@@ -279,6 +279,7 @@ retrace/
 │   ├── URLExtractor.swift       # URL extraction from OCR text
 │   ├── SemanticIndexer.swift    # OpenRouter-backed CMS semantic indexing actor
 │   ├── SemanticBatchController.swift # Pure batch-size controller (5→8→12, permanent N=5 control arm, size-signal hard stops, yield stop-loss) + SemanticOutcomePolicy + SemanticQuotaTime
+│   ├── SemanticFrameGrouper.swift # Pure near-duplicate grouping (one representative per unchanged screen; description is copied to its run) + SemanticFailureBackoff (spaces retries during provider outages)
 │   ├── OCR/                     # Vision framework OCR
 │   ├── Accessibility/           # Accessibility API integration
 │   ├── TextMerger/              # Text merging utilities

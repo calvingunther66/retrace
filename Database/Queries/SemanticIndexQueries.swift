@@ -15,6 +15,7 @@ public enum SemanticIndexQueries {
         public let bundleID: String?
         public let windowName: String?
         public let browserUrl: String?
+        public let segmentID: Int64
 
         public init(
             frameID: Int64,
@@ -23,7 +24,8 @@ public enum SemanticIndexQueries {
             createdAtMs: Int64,
             bundleID: String?,
             windowName: String? = nil,
-            browserUrl: String? = nil
+            browserUrl: String? = nil,
+            segmentID: Int64 = 0
         ) {
             self.frameID = frameID
             self.videoID = videoID
@@ -32,6 +34,7 @@ public enum SemanticIndexQueries {
             self.bundleID = bundleID
             self.windowName = windowName
             self.browserUrl = browserUrl
+            self.segmentID = segmentID
         }
     }
 
@@ -47,7 +50,7 @@ public enum SemanticIndexQueries {
         freshCutoffMs: Int64
     ) throws -> [PendingFrame] {
         let sql = """
-            SELECT f.id, f.videoId, f.videoFrameIndex, f.createdAt, s.bundleID, s.windowName, s.browserUrl
+            SELECT f.id, f.videoId, f.videoFrameIndex, f.createdAt, s.bundleID, s.windowName, s.browserUrl, f.segmentId
             FROM frame f
             JOIN segment s ON f.segmentId = s.id
             WHERE f.semanticStatus IN (0, 3, 5)
@@ -81,6 +84,7 @@ public enum SemanticIndexQueries {
             let bundleID = sqlite3_column_text(statement, 4).map { String(cString: $0) }
             let windowName = sqlite3_column_text(statement, 5).map { String(cString: $0) }
             let browserUrl = sqlite3_column_text(statement, 6).map { String(cString: $0) }
+            let segmentID = sqlite3_column_int64(statement, 7)
             results.append(PendingFrame(
                 frameID: frameID,
                 videoID: videoID,
@@ -88,7 +92,8 @@ public enum SemanticIndexQueries {
                 createdAtMs: createdAt,
                 bundleID: bundleID,
                 windowName: windowName,
-                browserUrl: browserUrl
+                browserUrl: browserUrl,
+                segmentID: segmentID
             ))
         }
         return results
