@@ -12,6 +12,7 @@ import Foundation
 /// visual layer — is what the run shares).
 ///
 /// Deliberately conservative — a frame only joins a group when ALL of these hold:
+///  * not from an app in `excludedBundleIDs`;
 ///  * same segment, or same app + window + URL;
 ///  * ≥ `minTokens` OCR tokens on both sides. Text-light frames (video, photos, canvases) can look identical to
 ///    OCR while differing visually, so they are never grouped;
@@ -30,11 +31,17 @@ struct SemanticFrameGrouper: Sendable {
         /// completely different main pane (seen with chat apps); a ticking value or cursor changes only a few tokens.
         var maxChangedTokens: Int = 12
         var maxGroupSize: Int = 40
+        /// Apps whose OCR text does not track what is on screen, so identical text proves nothing. Auditing 32
+        /// merged pairs from the described backlog, Claude desktop (28% of all merges) merged different screens
+        /// (e.g. a chat view into a Safari window shown in its side pane) in roughly one pair in four; no other
+        /// app showed more than isolated misses.
+        var excludedBundleIDs: Set<String> = ["com.anthropic.claudefordesktop"]
     }
 
     struct Frame: Sendable, Equatable {
         let frameID: Int64
         let segmentID: Int64
+        let bundleID: String?
         /// `bundleID|windowName|browserURL`, so a context that re-opens as a new segment can still group.
         let contextKey: String
         let createdAtMs: Int64
@@ -117,6 +124,7 @@ struct SemanticFrameGrouper: Sendable {
 
     private func canJoin(_ frame: Frame, anchor: Frame, previous: Frame, size: Int) -> Bool {
         guard size < config.maxGroupSize,
+              !(frame.bundleID.map(config.excludedBundleIDs.contains) ?? false),
               frame.segmentID == anchor.segmentID || frame.contextKey == anchor.contextKey,
               frame.createdAtMs - previous.createdAtMs <= config.maxGapMs,
               frame.createdAtMs - anchor.createdAtMs <= config.maxSpanMs,

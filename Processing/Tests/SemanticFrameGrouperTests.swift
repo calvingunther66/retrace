@@ -13,9 +13,10 @@ final class SemanticFrameGrouperTests: XCTestCase {
         Keyboard shortcuts Advanced Quit
         """
 
-    private func frame(_ id: Int64, atSec: Int64, text: String?, segment: Int64 = 1, context: String = "app|General|") -> SemanticFrameGrouper.Frame {
+    private func frame(_ id: Int64, atSec: Int64, text: String?, segment: Int64 = 1, context: String = "app|General|",
+                       bundle: String? = "app") -> SemanticFrameGrouper.Frame {
         SemanticFrameGrouper.Frame(
-            frameID: id, segmentID: segment, contextKey: context, createdAtMs: atSec * 1000,
+            frameID: id, segmentID: segment, bundleID: bundle, contextKey: context, createdAtMs: atSec * 1000,
             tokens: text.map(SemanticFrameGrouper.tokens(from:))
         )
     }
@@ -52,6 +53,12 @@ final class SemanticFrameGrouperTests: XCTestCase {
         let frames = [frame(1, atSec: 0, text: chrome + " " + paneA), frame(2, atSec: 4, text: chrome + " " + paneB)]
         XCTAssertGreaterThanOrEqual(SemanticFrameGrouper.jaccard(frames[0].tokens!, frames[1].tokens!), 0.9)
         XCTAssertEqual(grouper.group(frames).count, 2)
+    }
+
+    func testExcludedAppsAreNeverGroupedEvenWithIdenticalText() {
+        let claude = "com.anthropic.claudefordesktop"
+        let frames = (0..<3).map { frame(Int64($0 + 1), atSec: Int64($0 * 2), text: settingsScreen, bundle: claude) }
+        XCTAssertEqual(grouper.group(frames).count, 3)
     }
 
     func testTextLightFramesAreNeverGrouped() {

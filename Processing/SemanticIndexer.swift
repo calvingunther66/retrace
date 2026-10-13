@@ -694,6 +694,7 @@ public actor SemanticIndexer {
             frames.append(SemanticFrameGrouper.Frame(
                 frameID: frame.frameID,
                 segmentID: frame.segmentID,
+                bundleID: frame.bundleID,
                 contextKey: [frame.bundleID, frame.windowName, frame.browserUrl].map { $0 ?? "" }.joined(separator: "|"),
                 createdAtMs: frame.createdAtMs,
                 tokens: tokens
