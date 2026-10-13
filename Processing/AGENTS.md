@@ -12,6 +12,8 @@ Processing/
 ├── ExtractRequestInstrumentation.swift # Request wrapper that drives extract-stage residual accounting
 ├── ProcessingManager.swift        # Main ProcessingProtocol implementation
 ├── FrameProcessingQueue.swift     # OCR pipeline orchestration + queue telemetry
+├── SemanticIndexer.swift          # Cloud-vision deep indexing actor (OpenRouter); budget, lanes, dispatch, telemetry
+├── SemanticBatchController.swift  # Pure batch-size controller + outcome policy + UTC-midnight helper (see file header for the safety model)
 ├── URLExtractor.swift             # URL extraction from OCR text
 ├── OCR/
 │   ├── VisionOCR.swift            # Vision framework OCR implementation
@@ -41,6 +43,7 @@ Processing/
     ├── PhraseLevelRedactionTests.swift        # Manual + automatic OCR phrase-level redaction coverage
     ├── VisionOCRWarmUpTests.swift             # Warm-up gate single-flight/reset semantics + breaker trip
     ├── RewriteRetryPolicyTests.swift          # Bounded automatic rewrite retry coverage
+    ├── SemanticBatchControllerTests.swift     # Batch controller invariants on the real 600-request failure history
     ├── TestLogger.swift                       # Shared processing test logging helpers
     └── _future/
         ├── AccessibilityTests.swift

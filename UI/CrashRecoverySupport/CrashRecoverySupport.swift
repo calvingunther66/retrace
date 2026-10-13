@@ -230,12 +230,99 @@ public enum CrashRecoverySupport {
         return RelaunchSource(rawValue: arguments[sourceIndex]) ?? .unknown
     }
 
+    /// Path of the helper executable inside the app bundle (matches `BundleProgram` in the launch-agent plist).
+    public static let helperBundleRelativePath = "Contents/Library/Helpers/RetraceCrashRecoveryHelper"
+
+    /// `CFBundleVersion`, plus a fingerprint of the helper binary when it can be read.
+    ///
+    /// `CFBundleVersion` alone is constant across dev rebuilds (every build is 0.8.7 (11)), but each rebuild re-copies
+    /// and re-signs the helper. launchd keeps the registration it made for the OLD binary, then kills the new one at
+    /// launch with "Launch Constraint Violation / Code Signature Invalid" (seen 2026-10-07). Folding the helper's size
+    /// and modification time into the identity makes `shouldRefreshRegistration` re-register after any rebuild.
     public static func currentBuildIdentifier(bundle: Bundle = .main) -> String {
-        if let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
-           !build.isEmpty {
-            return build
+        let version: String
+        if let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String, !build.isEmpty {
+            version = build
+        } else {
+            version = "unknown"
         }
-        return "unknown"
+        guard let fingerprint = helperFingerprint(bundle: bundle) else { return version }
+        return "\(version)+\(fingerprint)"
+    }
+
+    public static func helperFingerprint(bundle: Bundle = .main, fileManager: FileManager = .default) -> String? {
+        let url = bundle.bundleURL.appendingPathComponent(helperBundleRelativePath)
+        guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
+              let size = (attributes[.size] as? NSNumber)?.int64Value,
+              let modified = attributes[.modificationDate] as? Date else { return nil }
+        return "\(size)-\(Int64(modified.timeIntervalSince1970 * 1000))"
+    }
+
+    // MARK: - Registration safety
+
+    public enum RegistrationGuardError: Error, LocalizedError, Equatable {
+        case notAnAppBundle(String)
+        case launchAgentPlistMissing(String)
+        case launchAgentPlistInvalid(String)
+        case helperMissing(String)
+        case helperNotExecutable(String)
+        case quarantined(build: String, sinceEpochSeconds: Int64)
+
+        public var errorDescription: String? {
+            switch self {
+            case .notAnAppBundle(let path): return "Not running from an app bundle: \(path)"
+            case .launchAgentPlistMissing(let path): return "Launch agent plist missing: \(path)"
+            case .launchAgentPlistInvalid(let why): return "Launch agent plist invalid: \(why)"
+            case .helperMissing(let path): return "Crash recovery helper missing: \(path)"
+            case .helperNotExecutable(let path): return "Crash recovery helper is not executable: \(path)"
+            case .quarantined(let build, let since):
+                return "Skipping launch agent registration: a previous attempt for build \(build) never finished (started at \(since)), which means it crashed inside ServiceManagement"
+            }
+        }
+    }
+
+    /// Verifies everything `SMAppService.register()` will read, BEFORE calling it. ServiceManagement dereferences what it
+    /// reads from the bundle without checking (a NULL string crashed the app in `_load_plist_from_bundle` on 2026-10-07),
+    /// and a native crash cannot be caught — so a bad bundle has to be refused up front.
+    public static func preflightLaunchAgentRegistration(bundle: Bundle = .main, fileManager: FileManager = .default) throws {
+        let root = bundle.bundleURL
+        guard root.pathExtension == "app" else { throw RegistrationGuardError.notAnAppBundle(root.path) }
+
+        let plistURL = root.appendingPathComponent("Contents/Library/LaunchAgents").appendingPathComponent(launchAgentPlistName)
+        guard fileManager.fileExists(atPath: plistURL.path) else { throw RegistrationGuardError.launchAgentPlistMissing(plistURL.path) }
+        guard let data = fileManager.contents(atPath: plistURL.path),
+              let plist = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any] else {
+            throw RegistrationGuardError.launchAgentPlistInvalid("unreadable or not a dictionary")
+        }
+        guard let label = plist["Label"] as? String, !label.isEmpty else { throw RegistrationGuardError.launchAgentPlistInvalid("missing Label") }
+        guard let program = plist["BundleProgram"] as? String, !program.isEmpty else { throw RegistrationGuardError.launchAgentPlistInvalid("missing BundleProgram") }
+
+        let helperURL = root.appendingPathComponent(program)
+        guard fileManager.fileExists(atPath: helperURL.path) else { throw RegistrationGuardError.helperMissing(helperURL.path) }
+        guard fileManager.isExecutableFile(atPath: helperURL.path) else { throw RegistrationGuardError.helperNotExecutable(helperURL.path) }
+    }
+
+    public static let registrationAttemptKey = "crashRecoveryRegistrationAttempt"
+    /// How long a build stays quarantined after a registration attempt that never finished.
+    public static let registrationQuarantineSeconds: Int64 = 24 * 3600
+
+    /// Marks "a registration attempt for `build` is in flight". Throws `.quarantined` when a previous attempt for the
+    /// same build never called `endRegistrationAttempt` — i.e. the process died inside the attempt — so a
+    /// deterministic native crash in ServiceManagement cannot turn into a crash on every launch.
+    public static func beginRegistrationAttempt(build: String, nowEpochSeconds: Int64, defaults: UserDefaults = .standard) throws {
+        if let marker = defaults.string(forKey: registrationAttemptKey),
+           let separator = marker.lastIndex(of: "|"),
+           let started = Int64(marker[marker.index(after: separator)...]) {
+            let markedBuild = String(marker[..<separator])
+            if markedBuild == build, nowEpochSeconds - started < registrationQuarantineSeconds {
+                throw RegistrationGuardError.quarantined(build: build, sinceEpochSeconds: started)
+            }
+        }
+        defaults.set("\(build)|\(nowEpochSeconds)", forKey: registrationAttemptKey)
+    }
+
+    public static func endRegistrationAttempt(defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: registrationAttemptKey)
     }
 
     public static func shouldRefreshRegistration(

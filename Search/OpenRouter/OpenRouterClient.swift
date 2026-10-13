@@ -41,14 +41,16 @@ public final class OpenRouterClient: Sendable {
             let message = errorObj["message"] as? String
             let friendly = friendlyError(statusCode: code, parsedMessage: message, model: model)
             return NSError(domain: "OpenRouterClient", code: code, userInfo: [
-                NSLocalizedDescriptionKey: friendly
+                NSLocalizedDescriptionKey: friendly,
+                errorKindKey: "embedded200"
             ])
         }
 
         let bodyPreview = String(data: data.prefix(500), encoding: .utf8) ?? "<non-utf8 body, \(data.count) bytes>"
         Log.warning("[OpenRouterClient] Unparseable completion response (HTTP 200): \(bodyPreview)", category: .search)
         return NSError(domain: "OpenRouterClient", code: 500, userInfo: [
-            NSLocalizedDescriptionKey: "Failed to parse OpenRouter completion response"
+            NSLocalizedDescriptionKey: "Failed to parse OpenRouter completion response",
+            errorKindKey: "embedded200"
         ])
     }
 
@@ -508,14 +510,48 @@ public final class OpenRouterClient: Sendable {
         return try await describeFrames(frames: frameInputs, apiKey: apiKey, model: model, temperature: temperature)
     }
 
-    /// Sends a chronological batch of screenshots to a vision model with multi-layer cross-referencing instructions:
-    /// analyzing visual structure, workflow transitions between frames, and key entities/intent.
+    /// Everything a single batched vision request produced, including the signals the caller needs to decide
+    /// whether a missing description is the frame's fault (clean finish, still missing) or the request's
+    /// (output cut off by `max_tokens`).
+    public struct DescribeOutcome: Sendable {
+        public let parsed: [SemanticDescriptionResult]
+        public let unparsedFrameIDs: [Int64]
+        /// `finish_reason == "length"` or the text ended inside an unfinished entry.
+        public let truncated: Bool
+        public let finishReason: String?
+        public let promptTokens: Int?
+        public let completionTokens: Int?
+        public let bodyBytes: Int
+        public let latencyMs: Int
+        /// `content` was missing/blank (the reasoning fallback, if any, produced the text).
+        public let contentWasEmpty: Bool
+    }
+
+    /// Output-token budget for a batch of `frameCount` images. The old fixed 1200 truncated mid-array once a batch
+    /// grew past ~10 frames, and the old parser then lost the whole batch.
+    public static func maxCompletionTokens(forFrameCount frameCount: Int) -> Int {
+        min(8192, 1024 + 160 * max(1, frameCount))
+    }
+
+    /// Compatibility wrapper around `describeFramesDetailed`.
     public func describeFrames(
         frames: [SemanticFrameInput],
         apiKey: String,
         model: String,
         temperature: Double = 0.2
     ) async throws -> (parsed: [SemanticDescriptionResult], unparsedFrameIDs: [Int64]) {
+        let outcome = try await describeFramesDetailed(frames: frames, apiKey: apiKey, model: model, temperature: temperature)
+        return (parsed: outcome.parsed, unparsedFrameIDs: outcome.unparsedFrameIDs)
+    }
+
+    /// Sends a chronological batch of screenshots to a vision model with multi-layer cross-referencing instructions:
+    /// analyzing visual structure, workflow transitions between frames, and key entities/intent.
+    public func describeFramesDetailed(
+        frames: [SemanticFrameInput],
+        apiKey: String,
+        model: String,
+        temperature: Double = 0.2
+    ) async throws -> DescribeOutcome {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else {
             throw NSError(domain: "OpenRouterClient", code: 401, userInfo: [
@@ -523,7 +559,10 @@ public final class OpenRouterClient: Sendable {
             ])
         }
         guard !frames.isEmpty else {
-            return (parsed: [], unparsedFrameIDs: [])
+            return DescribeOutcome(
+                parsed: [], unparsedFrameIDs: [], truncated: false, finishReason: nil,
+                promptTokens: nil, completionTokens: nil, bodyBytes: 0, latencyMs: 0, contentWasEmpty: false
+            )
         }
 
         var request = URLRequest(url: baseURL)
@@ -577,132 +616,80 @@ public final class OpenRouterClient: Sendable {
                 ["role": "user", "content": contentParts]
             ],
             "temperature": temperature,
-            "max_tokens": 1200,
+            "max_tokens": Self.maxCompletionTokens(forFrameCount: frames.count),
             // Disable reasoning to avoid exhausting completion tokens
             "reasoning": ["enabled": false]
         ]
 
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        request.httpBody = body
 
+        let startedAt = ContinuousClock.now
         let (data, response) = try await session.data(for: request)
+        let latencyMs = Int((ContinuousClock.now - startedAt) / .milliseconds(1))
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NSError(domain: "OpenRouterClient", code: 500, userInfo: [
-                NSLocalizedDescriptionKey: "Invalid network response from OpenRouter"
+                NSLocalizedDescriptionKey: "Invalid network response from OpenRouter",
+                Self.errorKindKey: "transport"
             ])
         }
 
         guard httpResponse.statusCode == 200 else {
             let parsedMessage = Self.parseErrorMessage(from: data)
             let friendly = Self.friendlyError(statusCode: httpResponse.statusCode, parsedMessage: parsedMessage, model: model)
-            throw NSError(domain: "OpenRouterClient", code: httpResponse.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: friendly
-            ])
+            var userInfo: [String: Any] = [
+                NSLocalizedDescriptionKey: friendly,
+                Self.errorKindKey: "http",
+                Self.requestBytesKey: body.count
+            ]
+            if let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After").flatMap({ Double($0) }) {
+                userInfo[Self.retryAfterKey] = retryAfter
+            }
+            throw NSError(domain: "OpenRouterClient", code: httpResponse.statusCode, userInfo: userInfo)
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any] else {
+              let firstChoice = choices.first,
+              let message = firstChoice["message"] as? [String: Any] else {
             throw Self.unparseableCompletionError(data: data, model: model)
         }
 
-        let rawContent = (message["content"] as? String) ?? (message["reasoning"] as? String) ?? ""
-        let descriptionsByPosition = Self.parseDescriptions(from: rawContent)
+        // An empty-string `content` must fall through to `reasoning` the same way a missing one does.
+        let content = message["content"] as? String
+        let contentWasEmpty = content?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+        let rawContent = (contentWasEmpty ? nil : content) ?? (message["reasoning"] as? String) ?? ""
+        let finishReason = firstChoice["finish_reason"] as? String
+        let usage = json["usage"] as? [String: Any]
+
+        let salvaged = DescriptionSalvageParser.parse(rawContent, expectedCount: frames.count)
 
         var parsed: [SemanticDescriptionResult] = []
         var unparsedFrameIDs: [Int64] = []
         for (index, frame) in frames.enumerated() {
             let position = index + 1
-            if let description = descriptionsByPosition[position], !description.isEmpty {
+            if let description = salvaged.byPosition[position], !description.isEmpty {
                 parsed.append(SemanticDescriptionResult(frameID: frame.frameID, description: description))
             } else {
                 unparsedFrameIDs.append(frame.frameID)
             }
         }
 
-        return (parsed: parsed, unparsedFrameIDs: unparsedFrameIDs)
+        return DescribeOutcome(
+            parsed: parsed,
+            unparsedFrameIDs: unparsedFrameIDs,
+            truncated: finishReason == "length" || salvaged.diagnostics.truncatedTail,
+            finishReason: finishReason,
+            promptTokens: usage?["prompt_tokens"] as? Int,
+            completionTokens: usage?["completion_tokens"] as? Int,
+            bodyBytes: body.count,
+            latencyMs: latencyMs,
+            contentWasEmpty: contentWasEmpty
+        )
     }
 
-    /// Strips reasoning-model `<think>` traces, then finds the LAST balanced-bracket JSON
-    /// array in the text (reasoning models "think out loud" before their final answer, so
-    /// the last well-formed array is more reliable than the first).
-    private static func parseDescriptions(from rawContent: String) -> [Int: String] {
-        var text = rawContent
-        if let thinkRange = text.range(of: "<think>"),
-           let thinkEndRange = text.range(of: "</think>", range: thinkRange.upperBound..<text.endIndex) {
-            text.removeSubrange(thinkRange.lowerBound..<thinkEndRange.upperBound)
-        }
-
-        // Strip markdown code fences if wrapped
-        text = text.replacingOccurrences(of: "```json", with: "")
-        text = text.replacingOccurrences(of: "```", with: "")
-
-        guard let arrayText = lastBalancedJSONArray(in: text),
-              let data = arrayText.data(using: .utf8),
-              let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            return [:]
-        }
-
-        var result: [Int: String] = [:]
-        for entry in entries {
-            let imageNum: Int? = (entry["image"] as? Int) ?? (Int(entry["image"] as? String ?? ""))
-            guard let image = imageNum,
-                  let description = entry["description"] as? String,
-                  !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                continue
-            }
-            result[image] = description.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return result
-    }
-
-    /// Scans for the last top-level `[...]` array with balanced brackets, ignoring brackets
-    /// inside string literals so a description containing `[` or `]` doesn't break scanning.
-    private static func lastBalancedJSONArray(in text: String) -> String? {
-        let chars = Array(text)
-        var lastMatch: String?
-        var index = 0
-
-        while index < chars.count {
-            if chars[index] == "[" {
-                var depth = 0
-                var inString = false
-                var escaped = false
-                var end: Int?
-
-                var scan = index
-                while scan < chars.count {
-                    let c = chars[scan]
-                    if inString {
-                        if escaped {
-                            escaped = false
-                        } else if c == "\\" {
-                            escaped = true
-                        } else if c == "\"" {
-                            inString = false
-                        }
-                    } else {
-                        if c == "\"" { inString = true }
-                        else if c == "[" { depth += 1 }
-                        else if c == "]" {
-                            depth -= 1
-                            if depth == 0 {
-                                end = scan
-                                break
-                            }
-                        }
-                    }
-                    scan += 1
-                }
-
-                if let end {
-                    lastMatch = String(chars[index...end])
-                    index = end + 1
-                    continue
-                }
-            }
-            index += 1
-        }
-
-        return lastMatch
-    }
+    // NSError userInfo keys that classify a failure without string-matching the message.
+    public static let errorKindKey = "retrace.errorKind"        // "http" | "embedded200" | "transport"
+    public static let retryAfterKey = "retrace.retryAfterSeconds"
+    public static let requestBytesKey = "retrace.requestBytes"
 }

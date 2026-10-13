@@ -278,6 +278,7 @@ retrace/
 │   ├── FrameProcessingQueue.swift # Async frame processing queue
 │   ├── URLExtractor.swift       # URL extraction from OCR text
 │   ├── SemanticIndexer.swift    # OpenRouter-backed CMS semantic indexing actor
+│   ├── SemanticBatchController.swift # Pure batch-size controller (5→8→12, permanent N=5 control arm, size-signal hard stops, yield stop-loss) + SemanticOutcomePolicy + SemanticQuotaTime
 │   ├── OCR/                     # Vision framework OCR
 │   ├── Accessibility/           # Accessibility API integration
 │   ├── TextMerger/              # Text merging utilities
@@ -295,7 +296,7 @@ retrace/
 │   ├── Reasoning/               # CognitiveReasoner: multi-hop reasoning over mesh + episodes
 │   ├── AIQuery/                 # Ask AI engine: AIQueryPlanner → AIEvidenceRetriever (+AISearchMemory learned hints, AIQueryRefiner model-assisted refinement) → passage-level evidence
 │   ├── OnDevice/                # OnDeviceLanguageModel: Apple FoundationModels provider for Ask AI answers + query refinement (fallback when the cloud model is unavailable)
-│   ├── OpenRouter/              # OpenRouter-backed semantic indexing pipeline
+│   ├── OpenRouter/              # OpenRouter-backed semantic indexing pipeline (OpenRouterClient, DescriptionSalvageParser: tolerant per-entry parser for truncated/odd vision replies)
 │   └── Tests/
 │
 ├── Migration/                   # Import from other apps

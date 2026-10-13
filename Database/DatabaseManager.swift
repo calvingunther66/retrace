@@ -3517,11 +3517,40 @@ public actor DatabaseManager: DatabaseProtocol {
         try SemanticIndexQueries.deleteDescriptions(db: db, frameIDs: frameIDs)
     }
 
-    public func recordSemanticIndexDispatch(frameIDs: [Int64], lane: String, requestedAtMs: Int64) async throws -> Int64 {
+    public func recordSemanticIndexDispatch(
+        frameIDs: [Int64],
+        lane: String,
+        requestedAtMs: Int64,
+        batchTarget: Int? = nil,
+        arm: String? = nil
+    ) async throws -> Int64 {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")
         }
-        return try SemanticIndexQueries.recordDispatch(db: db, frameIDs: frameIDs, lane: lane, requestedAtMs: requestedAtMs)
+        return try SemanticIndexQueries.recordDispatch(
+            db: db, frameIDs: frameIDs, lane: lane, requestedAtMs: requestedAtMs, batchTarget: batchTarget, arm: arm
+        )
+    }
+
+    public func updateSemanticIndexRequestTelemetry(requestRowID: Int64, telemetry: SemanticIndexQueries.RequestTelemetry) async throws {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        try SemanticIndexQueries.updateRequestTelemetry(db: db, requestRowID: requestRowID, telemetry: telemetry)
+    }
+
+    public func recentArmedSemanticRequests(limit: Int) async throws -> [SemanticIndexQueries.RecentRequestOutcome] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.recentArmedRequests(db: db, limit: limit)
+    }
+
+    public func countVisualIndexingSemanticCompletionsToday(utcDayStartMs: Int64) async throws -> Int {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        return try SemanticIndexQueries.countVisualIndexingCompletionsToday(db: db, utcDayStartMs: utcDayStartMs)
     }
 
     public func updateSemanticIndexRequestOutcome(requestRowID: Int64, status: String, httpStatus: Int?, errorMessage: String?) async throws {

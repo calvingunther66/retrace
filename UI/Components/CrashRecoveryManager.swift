@@ -377,6 +377,19 @@ private actor CrashRecoveryWorker {
         return refreshStatus()
     }
 
+    /// `service.register()` behind the preflight and the crash-loop quarantine (see `CrashRecoverySupport`).
+    private func registerLaunchAgentGuarded() throws {
+        try CrashRecoverySupport.preflightLaunchAgentRegistration()
+        try CrashRecoverySupport.beginRegistrationAttempt(
+            build: CrashRecoverySupport.currentBuildIdentifier(),
+            nowEpochSeconds: Int64(Date().timeIntervalSince1970)
+        )
+        // Cleared on every normal exit (success or thrown error). If the process dies inside register(), the marker
+        // survives and the next launch of the same build skips registration instead of crashing again.
+        defer { CrashRecoverySupport.endRegistrationAttempt() }
+        try service.register()
+    }
+
     private func ensureServiceRegistered(for launchTarget: CrashRecoverySupport.LaunchTarget) throws {
         let defaults = UserDefaults.standard
         let currentBuild = CrashRecoverySupport.currentBuildIdentifier()
@@ -410,7 +423,7 @@ private actor CrashRecoveryWorker {
             }
 
             do {
-                try service.register()
+                try registerLaunchAgentGuarded()
                 Log.info(
                     crashRecoveryTagged("[CrashRecovery] Launch agent register succeeded serviceStatus=\(crashRecoveryServiceStatusDescription(service.status)) launchTarget=\(currentLaunchTargetPath)"),
                     category: .app
@@ -495,7 +508,7 @@ private actor CrashRecoveryWorker {
             }
         }
 
-        try service.register()
+        try registerLaunchAgentGuarded()
         Log.info(
             crashRecoveryTagged("[CrashRecovery] Forced launch agent registration succeeded serviceStatus=\(crashRecoveryServiceStatusDescription(service.status)) launchTarget=\(currentLaunchTargetPath)"),
             category: .app

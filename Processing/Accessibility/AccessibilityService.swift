@@ -176,12 +176,15 @@ public actor AccessibilityService: AccessibilityProtocol {
     private func getWindowTitle(from appRef: AXUIElement) -> String? {
         var windowValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appRef, kAXFocusedWindowAttribute as CFString, &windowValue) == .success,
-              let window = windowValue else {
+              let window = windowValue,
+              // Third-party apps decide what they return here; `as!` on a CF type traps when the type is wrong.
+              CFGetTypeID(window) == AXUIElementGetTypeID() else {
             return nil
         }
+        let windowElement = unsafeBitCast(window, to: AXUIElement.self)
 
         var titleValue: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(window as! AXUIElement, kAXTitleAttribute as CFString, &titleValue) == .success,
+        guard AXUIElementCopyAttributeValue(windowElement, kAXTitleAttribute as CFString, &titleValue) == .success,
               let title = titleValue as? String else {
             return nil
         }

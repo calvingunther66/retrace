@@ -33,7 +33,8 @@ Database/
 │   ├── V16_ProcessingQueueFrameIDIndex.swift
 │   ├── V17_FrameCaptureTrigger.swift
 │   ├── V18_DailyMetricsRecencyIndex.swift
-│   └── V19_FrameEncodedAt.swift
+│   ├── V19_FrameEncodedAt.swift
+│   └── V23_SemanticRequestTelemetry.swift  # nullable per-request telemetry columns on semantic_index_requests (V20-V22 not listed above)
 ├── Queries/
 │   ├── FrameQueries.swift     # Frame CRUD operations
 │   ├── SegmentQueries.swift   # Segment CRUD operations
@@ -47,6 +48,7 @@ Database/
     ├── MigrationTests.swift
     ├── OCRPipelineTests.swift
     ├── QueryBuilderTests.swift
+    ├── SemanticIndexRetryStatusTests.swift  # status-5 restore after failed attempts + V23 telemetry round-trip on a real SQLite
     └── TestLogger.swift
 ```
 

@@ -186,7 +186,19 @@ public enum SemanticIndexQueries {
     /// through the 3-attempt cap on failures that have nothing to do with the frame itself,
     /// permanently stranding frames that just had the bad luck to be in-flight during a blip.
     public static func markTransientRetry(db: OpaquePointer, frameIDs: [Int64]) throws {
-        try updateStatus(db: db, frameIDs: frameIDs, status: 0, incrementRetry: false)
+        guard !frameIDs.isEmpty else { return }
+        let placeholders = frameIDs.map { _ in "?" }.joined(separator: ",")
+        // Frames that already hold a baseline description go back to 5, not 0. Status 0 sends them through
+        // `processBaselineStage` again (Apple FM call, entity harvest, sessionizer, embedding) and overwrites the
+        // baseline row — pure waste, and it happened for every frame of every failed request.
+        let sql = """
+            UPDATE frame
+            SET semanticStatus = CASE
+                WHEN EXISTS (SELECT 1 FROM semantic_doc_frame d WHERE d.frameId = frame.id) THEN 5
+                ELSE 0 END
+            WHERE id IN (\(placeholders));
+            """
+        try execute(db: db, sql: sql, int64Params: frameIDs)
     }
 
     /// Resets a frame back to pending (e.g. an unparsed image in an otherwise-successful batch)
@@ -200,7 +212,10 @@ public enum SemanticIndexQueries {
         let sql = """
             UPDATE frame
             SET semanticRetryCount = semanticRetryCount + 1,
-                semanticStatus = CASE WHEN semanticRetryCount + 1 >= 3 THEN 8 ELSE 0 END
+                semanticStatus = CASE
+                    WHEN semanticRetryCount + 1 >= 3 THEN 8
+                    WHEN EXISTS (SELECT 1 FROM semantic_doc_frame d WHERE d.frameId = frame.id) THEN 5
+                    ELSE 0 END
             WHERE id IN (\(placeholders));
             """
 
@@ -447,11 +462,13 @@ public enum SemanticIndexQueries {
         db: OpaquePointer,
         frameIDs: [Int64],
         lane: String,
-        requestedAtMs: Int64
+        requestedAtMs: Int64,
+        batchTarget: Int? = nil,
+        arm: String? = nil
     ) throws -> Int64 {
         let sql = """
-            INSERT INTO semantic_index_requests (requestedAt, frameIds, frameCount, lane, status)
-            VALUES (?, ?, ?, ?, 'dispatched');
+            INSERT INTO semantic_index_requests (requestedAt, frameIds, frameCount, lane, status, batchTarget, arm)
+            VALUES (?, ?, ?, ?, 'dispatched', ?, ?);
             """
         var statement: OpaquePointer?
         defer { sqlite3_finalize(statement) }
@@ -467,11 +484,140 @@ public enum SemanticIndexQueries {
         sqlite3_bind_text(statement, 2, frameIdsJSON, -1, SQLITE_TRANSIENT)
         sqlite3_bind_int(statement, 3, Int32(frameIDs.count))
         sqlite3_bind_text(statement, 4, lane, -1, SQLITE_TRANSIENT)
+        if let batchTarget {
+            sqlite3_bind_int(statement, 5, Int32(batchTarget))
+        } else {
+            sqlite3_bind_null(statement, 5)
+        }
+        bindTextOrNull(statement, 6, arm)
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
         }
         return sqlite3_last_insert_rowid(db)
+    }
+
+    /// Per-request telemetry written alongside the outcome (all optional, best-effort).
+    public struct RequestTelemetry: Sendable {
+        public var bodyBytes: Int?
+        public var promptTokens: Int?
+        public var completionTokens: Int?
+        public var finishReason: String?
+        public var latencyMs: Int?
+        public var parsedCount: Int?
+        public var contentEmpty: Bool?
+        public var errorKind: String?
+
+        public init(
+            bodyBytes: Int? = nil, promptTokens: Int? = nil, completionTokens: Int? = nil,
+            finishReason: String? = nil, latencyMs: Int? = nil, parsedCount: Int? = nil,
+            contentEmpty: Bool? = nil, errorKind: String? = nil
+        ) {
+            self.bodyBytes = bodyBytes
+            self.promptTokens = promptTokens
+            self.completionTokens = completionTokens
+            self.finishReason = finishReason
+            self.latencyMs = latencyMs
+            self.parsedCount = parsedCount
+            self.contentEmpty = contentEmpty
+            self.errorKind = errorKind
+        }
+    }
+
+    public static func updateRequestTelemetry(
+        db: OpaquePointer,
+        requestRowID: Int64,
+        telemetry: RequestTelemetry
+    ) throws {
+        let sql = """
+            UPDATE semantic_index_requests
+            SET bodyBytes = ?, promptTokens = ?, completionTokens = ?, finishReason = ?,
+                latencyMs = ?, parsedCount = ?, contentEmpty = ?, errorKind = ?
+            WHERE id = ?;
+            """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        func bindInt(_ index: Int32, _ value: Int?) {
+            if let value { sqlite3_bind_int64(statement, index, Int64(value)) } else { sqlite3_bind_null(statement, index) }
+        }
+        bindInt(1, telemetry.bodyBytes)
+        bindInt(2, telemetry.promptTokens)
+        bindInt(3, telemetry.completionTokens)
+        bindTextOrNull(statement, 4, telemetry.finishReason)
+        bindInt(5, telemetry.latencyMs)
+        bindInt(6, telemetry.parsedCount)
+        bindInt(7, telemetry.contentEmpty.map { $0 ? 1 : 0 })
+        bindTextOrNull(statement, 8, telemetry.errorKind)
+        sqlite3_bind_int64(statement, 9, requestRowID)
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+    }
+
+    /// One finished visual-indexing request, as the batch-size controller needs it when it reseeds after a restart.
+    public struct RecentRequestOutcome: Sendable {
+        public let requestedAtMs: Int64
+        public let status: String
+        public let frameCount: Int
+        public let batchTarget: Int?
+        public let arm: String?
+        public let finishReason: String?
+        public let parsedCount: Int?
+        public let httpStatus: Int?
+        public let errorKind: String?
+    }
+
+    /// Newest-first finished (non-cancelled, non-dispatched) visual-indexing requests that carry an `arm`.
+    public static func recentArmedRequests(db: OpaquePointer, limit: Int) throws -> [RecentRequestOutcome] {
+        let sql = """
+            SELECT requestedAt, status, frameCount, batchTarget, arm, finishReason, parsedCount, httpStatus, errorKind
+            FROM semantic_index_requests
+            WHERE lane != 'search' AND arm IS NOT NULL AND status NOT IN ('cancelled', 'dispatched')
+            ORDER BY id DESC
+            LIMIT ?;
+            """
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        sqlite3_bind_int(statement, 1, Int32(limit))
+        func optInt(_ i: Int32) -> Int? { sqlite3_column_type(statement, i) == SQLITE_NULL ? nil : Int(sqlite3_column_int64(statement, i)) }
+        func optText(_ i: Int32) -> String? { sqlite3_column_text(statement, i).map { String(cString: $0) } }
+        var rows: [RecentRequestOutcome] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            rows.append(RecentRequestOutcome(
+                requestedAtMs: sqlite3_column_int64(statement, 0),
+                status: optText(1) ?? "",
+                frameCount: Int(sqlite3_column_int64(statement, 2)),
+                batchTarget: optInt(3),
+                arm: optText(4),
+                finishReason: optText(5),
+                parsedCount: optInt(6),
+                httpStatus: optInt(7),
+                errorKind: optText(8)
+            ))
+        }
+        return rows
+    }
+
+    /// Completed (HTTP 200) visual-indexing requests today. Shown next to the attempt count so the effect of
+    /// failed attempts on the shared provider allowance can be seen.
+    public static func countVisualIndexingCompletionsToday(db: OpaquePointer, utcDayStartMs: Int64) throws -> Int {
+        let sql = "SELECT COUNT(*) FROM semantic_index_requests WHERE requestedAt >= ? AND lane != 'search' AND status IN ('success', 'partial');"
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
+        }
+        sqlite3_bind_int64(statement, 1, utcDayStartMs)
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw DatabaseError.queryFailed(query: sql, underlying: "No result row")
+        }
+        return Int(sqlite3_column_int64(statement, 0))
     }
 
     public static func updateRequestOutcome(

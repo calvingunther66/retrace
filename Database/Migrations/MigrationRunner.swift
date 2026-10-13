@@ -109,7 +109,8 @@ actor MigrationRunner {
             V19_FrameEncodedAt(),
             V20_SemanticIndex(),
             V21_CognitiveMemorySystem(),
-            V22_MemoryEntityTypeScopedUniqueness()
+            V22_MemoryEntityTypeScopedUniqueness(),
+            V23_SemanticRequestTelemetry()
         ]
     }
 

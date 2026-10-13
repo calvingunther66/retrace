@@ -15,13 +15,6 @@ public enum ReversibleOCRScrambler {
         MasterKeyManager.currentScrambleSecret()
     }
 
-    public static func appWideSecret() -> String {
-        guard let masterKeySecret = currentAppWideSecret() else {
-            preconditionFailure("Master key must exist before OCR scrambling is used.")
-        }
-        return masterKeySecret
-    }
-
     public static func scramblePatchBGRA(
         _ patch: inout Data,
         width: Int,
