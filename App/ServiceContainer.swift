@@ -394,9 +394,8 @@ public actor ServiceContainer {
         await retentionManager.start()
         Log.info("✓ Retention manager started", category: .app)
 
-        // 10b. Start semantic indexer (opt-in; polls but no-ops unless enabled in Settings)
-        await semanticIndexer.start()
-        Log.info("✓ Semantic indexer started", category: .app)
+        // 10b. AI visual semantic indexing is retired (unreliable provider, rate caps, never read by Ask AI):
+        // the indexer is intentionally not started. Existing descriptions stay in the database.
 
         // Capture is initialized when startCapture() is called
 

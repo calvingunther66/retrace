@@ -89,6 +89,7 @@ public enum DailyMetricsQueries {
         // AI visual semantic indexing metrics
         case aiSearchRetrieval = "ai_search_retrieval"  // metadata: JSON {planner, facets, evidenceFrames, scoped, memoryHit?, ms}
         case aiSearchRefinement = "ai_search_refinement"  // metadata: JSON {weakBefore, weakAfter, evidenceBefore, evidenceAfter, ms}
+        case aiSearchAgent = "ai_search_agent"  // metadata: JSON {outcome: success|failed, toolCalls, modelCalls, framesShown, ms}
         case aiSearchMemoryUpdate = "ai_search_memory_update"  // metadata: JSON {facetsLearned, citedFrames}
         case aiSearchAnswer = "ai_search_answer"  // metadata: JSON {outcome: success|failed|no_evidence, cited, source: ui|deeplink}
         case semanticIndexBatchOutcome = "semantic_index_batch_outcome"  // metadata: JSON {outcome, lane?, count?, n?, parsed?, finish?, truncated?, errorKind?, arm?}

@@ -294,7 +294,7 @@ retrace/
 │   ├── EntityMesh/              # EntityMeshManager: knowledge graph over extracted entities
 │   ├── Episodic/                # CognitiveSessionizer: episodic clustering of frames
 │   ├── Reasoning/               # CognitiveReasoner: multi-hop reasoning over mesh + episodes
-│   ├── AIQuery/                 # Ask AI engine: AIQueryPlanner → AIEvidenceRetriever (+AISearchMemory learned hints, AIQueryRefiner model-assisted refinement) → passage-level evidence
+│   ├── AIQuery/                 # Ask AI engine: AIScreenAgent + AIAgentTools (tool-use: isolate app → search words; preferred cloud path) with fallback AIQueryPlanner → AIEvidenceRetriever (+AISearchMemory learned hints, AIQueryRefiner model-assisted refinement) → passage-level evidence
 │   ├── OnDevice/                # OnDeviceLanguageModel: Apple FoundationModels provider for Ask AI answers + query refinement (fallback when the cloud model is unavailable)
 │   ├── OpenRouter/              # OpenRouter-backed semantic indexing pipeline (OpenRouterClient, DescriptionSalvageParser: tolerant per-entry parser for truncated/odd vision replies)
 │   └── Tests/

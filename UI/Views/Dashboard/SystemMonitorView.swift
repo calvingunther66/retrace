@@ -50,8 +50,6 @@ public struct SystemMonitorView: View {
                         VStack(alignment: .leading, spacing: 20) {
                             processingPipelinesSection(isCompactLayout: isCompactLayout)
 
-                            semanticIndexingSection
-
                             processResourceSummarySection(isCompactLayout: isCompactLayout)
 
                             // Future sections placeholder

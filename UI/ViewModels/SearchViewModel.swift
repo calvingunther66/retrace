@@ -2661,6 +2661,50 @@ public class SearchViewModel: ObservableObject {
                 return
             }
 
+            // Preferred path: the model drives the search itself with tools (isolate app → search words → read).
+            // Cloud only (needs function calling); any failure falls through to the planner/retriever pipeline.
+            let agentOn = (UserDefaults.standard.object(forKey: "aiAgentSearchEnabled") as? Bool) ?? true
+            if useCloud, agentOn, let key = OpenRouterCredentialsManager.getAPIKey(), !key.isEmpty {
+                let apps = self.availableApps.map { AIQueryApp(name: $0.name, bundleID: $0.bundleID) }
+                let requestID = await self.coordinator.recordSearchRequest(frameIDs: [])
+                do {
+                    let result = try await self.coordinator.runAIAgent(
+                        question: question, apps: apps, apiKey: key, model: config.model,
+                        onStatus: { [weak self] status in
+                            Task { @MainActor in self?.aiGeneratedAnswer = status }
+                        }
+                    )
+                    guard !Task.isCancelled else { return }
+                    let citations = OpenRouterClient.extractCitations(from: result.answer, contextFrames: result.frames)
+                    if let requestID {
+                        await self.coordinator.updateSearchRequestOutcome(requestID: requestID, status: "success", httpStatus: 200, errorMessage: nil)
+                    }
+                    await self.coordinator.recordAIAnswerOutcome(outcome: "success", cited: citations.count, source: (exportResult ? "deeplink" : "ui") + ":agent")
+                    if exportResult {
+                        AIAskResultExport.write([
+                            "status": "done", "question": question, "model": config.model,
+                            "startedAt": AIAskResultExport.iso(startedAt), "finishedAt": AIAskResultExport.iso(Date()),
+                            "elapsedMs": Int(Date().timeIntervalSince(startedAt) * 1000),
+                            "plan": "agent: \(result.toolCalls) tool calls", "notes": result.trace, "evidence": [],
+                            "answer": result.answer, "citedFrameIDs": citations.map { $0.frameID }
+                        ])
+                    }
+                    await MainActor.run {
+                        self.aiGeneratedAnswer = result.answer
+                        self.aiCitations = citations
+                        self.isAIGenerating = false
+                    }
+                    return
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    Log.warning("[SearchViewModel] AI agent failed, using retrieval pipeline: \(error.localizedDescription)", category: .search)
+                    if let requestID {
+                        await self.coordinator.updateSearchRequestOutcome(requestID: requestID, status: "failed", httpStatus: max(1, (error as NSError).code), errorMessage: error.localizedDescription)
+                    }
+                    await MainActor.run { self.aiGeneratedAnswer = "" }
+                }
+            }
+
             let resolved = await self.resolveAIContext(initial: initialContextFrames, question: question, answerModel: config.model)
             await self.runPlainStreamingAnswer(
                 question: question,
@@ -2937,6 +2981,11 @@ public class SearchViewModel: ObservableObject {
             self?.isAIGenerating = false
             self?.aiError = message
         }
+    }
+
+    /// Resolves a cited frame that is not among the current results into something the timeline can open.
+    func resultForCitation(_ citation: OpenRouterCitation) async -> SearchResult? {
+        await coordinator.searchResult(forFrameID: citation.frameID, snippet: citation.snippet)
     }
 
     public func clearAIAnswer() {
