@@ -94,6 +94,8 @@ public enum DailyMetricsQueries {
         case semanticIndexBatchOutcome = "semantic_index_batch_outcome"  // metadata: JSON {outcome, lane?, count?, n?, parsed?, finish?, truncated?, errorKind?, arm?}
         case semanticIndexBatchSizeChange = "semantic_index_batch_size_change"  // metadata: JSON {from, to, reason}
         case semanticIndexQuotaStop = "semantic_index_quota_stop"  // metadata: JSON {kind: daily_429, resumeAtUtc}
+        case semanticIndexFramesPropagated = "semantic_index_frames_propagated"  // metadata: JSON {reps, propagated, groups, maxRun}
+        case semanticIndexBackoff = "semantic_index_backoff"  // metadata: JSON {streak, delaySec}
         case semanticIndexingToggle = "semantic_indexing_toggle"  // metadata: JSON {enabled}
         case phraseLevelRedactionReveal = "phrase_level_redaction_reveal"
         case phraseLevelRedactionQueuedHover = "phrase_level_redaction_queued_hover"  // metadata: JSON {nodeID, frameID, processingStatus}

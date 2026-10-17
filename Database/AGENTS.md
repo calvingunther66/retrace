@@ -48,7 +48,7 @@ Database/
     ├── MigrationTests.swift
     ├── OCRPipelineTests.swift
     ├── QueryBuilderTests.swift
-    ├── SemanticIndexRetryStatusTests.swift  # status-5 restore after failed attempts + V23 telemetry round-trip on a real SQLite
+    ├── SemanticIndexRetryStatusTests.swift  # status-5 restore after failed attempts, V23 telemetry round-trip, per-frame propagated description rows on a real SQLite
     └── TestLogger.swift
 ```
 

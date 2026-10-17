@@ -60,7 +60,11 @@ public actor SemanticIndexer {
     /// Defaults key for the largest batch the controller may ramp to (clamped to the controller's steps; default 12).
     public static let batchCeilingDefaultsKey = "semanticIndexBatchCeiling"
     private static let batchControllerSnapshotKey = "semanticIndexBatchControllerSnapshot"
+    /// Defaults key: set to false to send every pending frame to the model instead of one per near-identical run.
+    public static let neighborDedupDefaultsKey = "semanticIndexNeighborDedup"
     private var batchController: SemanticBatchController
+    private var failureBackoff = SemanticFailureBackoff()
+    private let frameGrouper = SemanticFrameGrouper()
     private var batchControllerCeiling: Int
     /// Single source of truth for the backfill request budget — also read by
     /// `AppCoordinator.getSemanticIndexStatistics()` for the System Monitor readout, so that
@@ -120,7 +124,8 @@ public actor SemanticIndexer {
                 case .rateLimited(let retryAfterSeconds):
                     delay = .seconds(max(retryAfterSeconds, 5))
                 case .error:
-                    delay = self.idlePollInterval
+                    // During a provider outage, space retries out instead of burning the daily cap on them.
+                    delay = self.failureBackoff.delaySeconds.map { .seconds($0) } ?? self.idlePollInterval
                 case .pausedForPressure:
                     delay = self.idlePollInterval
                 case .quotaExhausted(let until):
@@ -264,8 +269,12 @@ public actor SemanticIndexer {
 
             refreshBatchControllerCeiling(nowMs: nowMs)
             let plan = batchController.plan(nowMs: nowMs)
+            let dedupEnabled = Self.neighborDedupEnabled()
+            // With grouping on, a batch is filled with one frame per distinct screen, so the pool must be wide
+            // enough to hold a full batch of distinct groups even when most pending frames are repeats.
+            let poolLimit = dedupEnabled ? max(96, batchController.maxN * 8) : batchController.maxN * 3 / 2
             let candidates = try await database.selectPendingSemanticFrames(
-                limit: batchController.maxN * 3 / 2, // headroom in case some get filtered out below
+                limit: poolLimit, // headroom in case some get filtered out below
                 freshCutoffMs: freshCutoffMs
             )
 
@@ -277,7 +286,7 @@ public actor SemanticIndexer {
             }
 
             var lane: String?
-            var batch: [SemanticIndexQueries.PendingFrame] = []
+            var pool: [SemanticIndexQueries.PendingFrame] = []
 
             for candidate in candidates {
                 guard appFilterPolicy.allows(bundleID: candidate.bundleID) else {
@@ -291,14 +300,27 @@ public actor SemanticIndexer {
                 }
 
                 lane = candidateLane
-                batch.append(candidate)
-                if batch.count >= plan.targetN { break }
+                pool.append(candidate)
             }
 
-            guard let resolvedLane = lane, !batch.isEmpty else {
+            guard let resolvedLane = lane, !pool.isEmpty else {
                 currentStatus = .idle
                 currentStatusMessage = "No pending frames match selection"
                 return .emptyQueue
+            }
+
+            var batch: [SemanticIndexQueries.PendingFrame] = []
+            var siblingsByRepresentative: [Int64: [SemanticIndexQueries.PendingFrame]] = [:]
+            if dedupEnabled {
+                let groups = await groupNearIdenticalFrames(pool)
+                let byID = Dictionary(pool.map { ($0.frameID, $0) }, uniquingKeysWith: { first, _ in first })
+                for group in groups.prefix(plan.targetN) {
+                    guard let representative = byID[group.representative.frameID] else { continue }
+                    batch.append(representative)
+                    siblingsByRepresentative[representative.frameID] = group.siblings.compactMap { byID[$0.frameID] }
+                }
+            } else {
+                batch = Array(pool.prefix(plan.targetN))
             }
 
             // Sort batch chronologically (oldest to newest) so the vision model sees the
@@ -308,7 +330,10 @@ public actor SemanticIndexer {
             currentStatus = .running
             currentStatusMessage = "Deep indexing \(sortedBatch.count) frames..."
 
-            return await dispatch(batch: sortedBatch, lane: resolvedLane, model: model, apiKey: apiKey, plan: plan)
+            return await dispatch(
+                batch: sortedBatch, siblings: siblingsByRepresentative,
+                lane: resolvedLane, model: model, apiKey: apiKey, plan: plan
+            )
         } catch {
             currentStatus = .error
             currentStatusMessage = error.localizedDescription
@@ -392,6 +417,7 @@ public actor SemanticIndexer {
 
     private func dispatch(
         batch: [SemanticIndexQueries.PendingFrame],
+        siblings: [Int64: [SemanticIndexQueries.PendingFrame]] = [:],
         lane: String,
         model: String,
         apiKey: String,
@@ -404,7 +430,13 @@ public actor SemanticIndexer {
             do {
                 let jpeg = try await extractDownscaledJPEG(for: frame)
                 let deltaSeconds = max(0, (frame.createdAtMs - baseTimeMs) / 1000)
-                let timeDesc = "+\(deltaSeconds)s"
+                var timeDesc = "+\(deltaSeconds)s"
+                if let run = siblings[frame.frameID], !run.isEmpty {
+                    // Tell the model this one image stands for a longer unchanged stretch.
+                    let times = run.map(\.createdAtMs) + [frame.createdAtMs]
+                    let spanSeconds = ((times.max() ?? 0) - (times.min() ?? 0)) / 1000
+                    timeDesc += ", screen unchanged for ~\(Self.humanDuration(seconds: spanSeconds)) across \(run.count + 1) captures"
+                }
                 frameInputs.append(OpenRouterClient.SemanticFrameInput(
                     frameID: frame.frameID,
                     jpegData: jpeg,
@@ -445,6 +477,7 @@ public actor SemanticIndexer {
         // call commits its own transaction) so a throw partway through the loop below only
         // reconsiders the frames that never got written — see the catch block.
         var writtenFrameIDs: [Int64] = []
+        var propagatedCount = 0
         do {
             let outcome = try await openRouterClient.describeFramesDetailed(
                 frames: frameInputs,
@@ -465,6 +498,29 @@ public actor SemanticIndexer {
                 // Update vector embedding with deep visual affordances
                 let deepVec = await vectorEngine.embedTextOnDevice(result.description)
                 try? await vectorEngine.addVector(frameID: FrameID(value: result.frameID), vector: deepVec)
+
+                // The rest of this frame's near-identical run shares its description. Each sibling gets its own
+                // FTS row (retention deletes per frame, so rows must not be shared). Best-effort: a sibling that
+                // fails to write simply stays pending and is described on a later cycle.
+                for sibling in siblings[result.frameID] ?? [] {
+                    do {
+                        try await database.writeSemanticDescription(
+                            frameID: sibling.frameID, description: result.description, indexedAtMs: indexedAtMs
+                        )
+                        try? await vectorEngine.addVector(frameID: FrameID(value: sibling.frameID), vector: deepVec)
+                        propagatedCount += 1
+                    } catch {
+                        Log.warning("[SemanticIndexer] Could not propagate description to frame \(sibling.frameID): \(error.localizedDescription)", category: .processing)
+                    }
+                }
+            }
+            failureBackoff.recordSuccess()
+            if propagatedCount > 0 {
+                let runs = siblings.values.filter { !$0.isEmpty }
+                try? await database.recordMetricEvent(
+                    metricType: .semanticIndexFramesPropagated,
+                    metadata: "{\"reps\":\(parsed.count),\"propagated\":\(propagatedCount),\"groups\":\(runs.count),\"maxRun\":\((runs.map(\.count).max() ?? 0) + 1)}"
+                )
             }
 
             // Frames the reply did not describe: a reply cut off by the output limit that still produced entries
@@ -579,6 +635,19 @@ public actor SemanticIndexer {
             // Only API/transport errors are evidence about batch size; a local DB failure is not.
             if let controllerOutcome = Self.controllerOutcome(for: nsError, sent: frameInputs.count) {
                 await recordBatchOutcome(controllerOutcome, plan: plan)
+                switch controllerOutcome {
+                case .availabilityFailure, .timedOut:
+                    failureBackoff.recordAvailabilityFailure()
+                    if let delay = failureBackoff.delaySeconds {
+                        Log.warning("[SemanticIndexer] \(failureBackoff.consecutiveFailures) availability failures in a row — backing off \(delay)s", category: .processing)
+                        try? await database.recordMetricEvent(
+                            metricType: .semanticIndexBackoff,
+                            metadata: "{\"streak\":\(failureBackoff.consecutiveFailures),\"delaySec\":\(delay)}"
+                        )
+                    }
+                default:
+                    break
+                }
             }
 
             if nsError.code == 429 {
@@ -609,6 +678,39 @@ public actor SemanticIndexer {
             Log.error("[SemanticIndexer] Dispatch failed: \(nsError.localizedDescription)", category: .processing)
             return .error(nsError.localizedDescription)
         }
+    }
+
+    // MARK: - Near-duplicate grouping
+
+    /// Fetches each pool frame's OCR tokens and groups runs of near-identical screens (see `SemanticFrameGrouper`).
+    private func groupNearIdenticalFrames(_ pool: [SemanticIndexQueries.PendingFrame]) async -> [SemanticFrameGrouper.Group] {
+        var frames: [SemanticFrameGrouper.Frame] = []
+        frames.reserveCapacity(pool.count)
+        for frame in pool {
+            var tokens: Set<String>?
+            if let ocr = try? await database.getOCRTextForFrame(frameID: frame.frameID) {
+                tokens = SemanticFrameGrouper.tokens(from: [ocr.mainText, ocr.chromeText, ocr.title].compactMap { $0 }.joined(separator: " "))
+            }
+            frames.append(SemanticFrameGrouper.Frame(
+                frameID: frame.frameID,
+                segmentID: frame.segmentID,
+                bundleID: frame.bundleID,
+                contextKey: [frame.bundleID, frame.windowName, frame.browserUrl].map { $0 ?? "" }.joined(separator: "|"),
+                createdAtMs: frame.createdAtMs,
+                tokens: tokens
+            ))
+        }
+        return frameGrouper.group(frames)
+    }
+
+    private static func neighborDedupEnabled() -> Bool {
+        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
+        return defaults.object(forKey: neighborDedupDefaultsKey) as? Bool ?? true
+    }
+
+    static func humanDuration(seconds: Int64) -> String {
+        if seconds < 90 { return "\(max(seconds, 1))s" }
+        return "\((seconds + 30) / 60)m"
     }
 
     // MARK: - Batch-size controller plumbing

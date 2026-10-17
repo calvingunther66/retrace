@@ -57,6 +57,29 @@ final class SemanticIndexRetryStatusTests: XCTestCase {
         XCTAssertEqual(pending.map(\.frameID), [1])
     }
 
+    func testPendingSelectionCarriesTheSegmentID() throws {
+        try seedFrame(id: 1, status: 5, retry: 0, hasBaseline: true, encoded: true)
+        XCTAssertEqual(try SemanticIndexQueries.selectPending(db: db, limit: 10, freshCutoffMs: 0).map(\.segmentID), [1])
+    }
+
+    /// Description propagation to a near-identical run writes one description to several frames. Each must end
+    /// up with its own FTS row so retention deleting one frame cannot remove a sibling's searchable description.
+    func testPropagatedDescriptionsGetOwnRowsAndSurviveSiblingDeletion() throws {
+        try seedFrame(id: 1, status: 5, retry: 0, hasBaseline: true, encoded: true)   // representative
+        try seedFrame(id: 2, status: 5, retry: 0, hasBaseline: true, encoded: true)   // sibling that had a baseline
+        try seedFrame(id: 3, status: 0, retry: 0, hasBaseline: false, encoded: true)  // sibling without one
+        for id: Int64 in [1, 2, 3] {
+            try SemanticIndexQueries.writeDescription(db: db, frameID: id, description: "Settings window with component toggles", indexedAtMs: 9_000)
+        }
+        for id: Int64 in [1, 2, 3] { XCTAssertEqual(try status(of: id), 2) }
+        XCTAssertEqual(try scalarText("SELECT COUNT(DISTINCT docid) FROM semantic_doc_frame;"), "3", "one FTS row per frame")
+        XCTAssertEqual(try scalarText("SELECT COUNT(*) FROM semanticRanking WHERE semanticRanking MATCH 'toggles';"), "3", "baseline text was replaced, not duplicated")
+
+        try SemanticIndexQueries.deleteDescriptions(db: db, frameIDs: [2])
+        XCTAssertEqual(try scalarText("SELECT COUNT(*) FROM semanticRanking WHERE semanticRanking MATCH 'toggles';"), "2")
+        XCTAssertEqual(try scalarText("SELECT COUNT(*) FROM semantic_doc_frame WHERE frameId IN (1, 3);"), "2")
+    }
+
     func testV23AddsTelemetryColumnsAndRoundTripsThem() throws {
         for column in ["bodyBytes", "promptTokens", "completionTokens", "finishReason", "latencyMs", "parsedCount", "contentEmpty", "batchTarget", "arm", "errorKind"] {
             XCTAssertTrue(try columnExists("semantic_index_requests", column), column)
