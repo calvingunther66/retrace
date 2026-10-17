@@ -167,6 +167,14 @@ public struct SpotlightSearchOverlay: View {
                                 OpenRouterAIAnswerView(viewModel: viewModel) { citation in
                                     if let match = viewModel.results?.results.first(where: { $0.id.value == citation.frameID }) {
                                         onResultSelected(match, viewModel.searchQuery)
+                                    } else {
+                                        // Agent-found frames are not in the visible results; look the frame up directly.
+                                        let query = viewModel.searchQuery
+                                        Task {
+                                            if let match = await viewModel.resultForCitation(citation) {
+                                                await MainActor.run { onResultSelected(match, query) }
+                                            }
+                                        }
                                     }
                                 }
                                 .padding(.horizontal, 20)

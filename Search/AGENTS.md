@@ -24,6 +24,8 @@ Search/
 ├── Reasoning/
 │   └── CognitiveReasoner.swift    # Multi-hop reasoning over the entity mesh + episodic sessions
 ├── AIQuery/
+│   ├── AIAgentTools.swift         # Tool-use agent tools (list_apps, search_screen with single-app isolation + word search, browse_app, get_frame_text); pure query parsing/app resolution
+│   ├── AIScreenAgent.swift        # Tool-calling answer loop over OpenRouter; primary Ask-AI path, falls back to planner/retriever on failure
 │   ├── AIQueryPlanner.swift       # Deterministic question planner: facets, app scope, recency, time range
 │   ├── AIEvidenceRetriever.swift  # Executes a plan: relaxing FTS tiers, progressive recency windows, episodes, keyword-in-context evidence
 │   ├── AISearchMemory.swift       # Persistent learned search hints (bundle IDs + phrases) in <storage>/ai_search_memory.json — structured only, never prompt text
@@ -34,10 +36,12 @@ Search/
 │   └── OnDeviceLanguageModel.swift # Apple FoundationModels provider: on-device (default) + Private Cloud Compute tier; token-budgeted prompts; OnDeviceTransport
 ├── OpenRouter/
 │   ├── OpenRouterClient.swift               # OpenRouter API client (describeFramesDetailed returns finish_reason/usage/bytes/latency; max_tokens scales with batch size)
+│   ├── OpenRouterToolChat.swift             # chatWithTools: one function-calling chat completion (tools/tool_calls)
 │   ├── DescriptionSalvageParser.swift       # Per-entry tolerant parser for batched vision replies (keeps every complete entry; never indexes a half-written one)
 │   └── OpenRouterGranularSearchCoordinator.swift # OpenRouter-backed semantic indexing pipeline
 └── Tests/
     ├── QueryParserTests.swift
+    ├── AIAgentToolsTests.swift
     ├── AIQueryPlannerTests.swift
     ├── AISearchMemoryTests.swift
     ├── AIQueryRefinerTests.swift

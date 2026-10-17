@@ -14,7 +14,7 @@ public final class OpenRouterClient: Sendable {
 
     /// Extracts the human-readable error message from an OpenRouter JSON error response.
     /// OpenRouter returns: `{"error": {"code": 429, "message": "...", "metadata": {...}}}`
-    private static func parseErrorMessage(from data: Data) -> String? {
+    static func parseErrorMessage(from data: Data) -> String? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let error = json["error"] as? [String: Any],
               let message = error["message"] as? String else {
@@ -55,7 +55,7 @@ public final class OpenRouterClient: Sendable {
     }
 
     /// Builds a user-friendly error description for a given HTTP status code and optional parsed message.
-    private static func friendlyError(statusCode: Int, parsedMessage: String?, model: String? = nil) -> String {
+    static func friendlyError(statusCode: Int, parsedMessage: String?, model: String? = nil) -> String {
         let modelHint = model.map { " (\($0))" } ?? ""
         switch statusCode {
         case 401:

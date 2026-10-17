@@ -52,10 +52,10 @@ public actor SemanticIndexer {
     /// Live-toggle read from UserDefaults every loop iteration, so flipping this in Settings
     /// takes effect without an app restart (there's no push notification wiring the way
     /// `FrameProcessingQueue.ocrEnabled` gets pushed via `updatePowerConfig`, so this polls).
-    private var isEnabled: Bool {
-        let defaults = UserDefaults(suiteName: OpenRouterCredentialsManager.settingsSuiteName) ?? .standard
-        return defaults.bool(forKey: OpenRouterCredentialsManager.semanticIndexingEnabledDefaultsKey)
-    }
+    ///
+    /// Retired: AI visual indexing is permanently off (the settings toggle was removed and `ServiceContainer` no
+    /// longer starts this actor). Kept hard-off here so a stale persisted flag can never re-enable uploads.
+    private var isEnabled: Bool { false }
 
     /// Defaults key for the largest batch the controller may ramp to (clamped to the controller's steps; default 12).
     public static let batchCeilingDefaultsKey = "semanticIndexBatchCeiling"

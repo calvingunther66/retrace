@@ -1535,11 +1535,6 @@ public actor AppCoordinator {
             Task { await self?.handleStorageVolumeMounted(notification) }
         }
         storageHealthObserverTokens.append(mounted)
-
-        let forceRestartSemantic = center.addObserver(forName: Notification.Name("forceRestartSemanticIndexing"), object: nil, queue: .main) { [weak self] _ in
-            Task { await self?.forceRestartSemanticIndexer(resetFailedFrames: true) }
-        }
-        storageHealthObserverTokens.append(forceRestartSemantic)
     }
 
     private func stopStorageHealthNotifications() {
@@ -3641,6 +3636,41 @@ public actor AppCoordinator {
             try? await services.database.recordMetricEvent(metricType: .aiSearchRetrieval, metadata: json)
         }
         return pack
+    }
+
+    /// Builds a navigable `SearchResult` for a frame cited by Ask AI that is not in the visible results list
+    /// (the agent finds frames on its own, so they are not part of the user's current search).
+    public nonisolated func searchResult(forFrameID frameID: Int64, snippet: String) async -> SearchResult? {
+        guard let frame = try? await services.database.getFrame(id: FrameID(value: frameID)) else { return nil }
+        return SearchResult(
+            id: frame.id, timestamp: frame.timestamp, snippet: snippet, matchedText: snippet,
+            relevanceScore: 1, metadata: frame.metadata, segmentID: frame.segmentID,
+            videoID: frame.videoID, frameIndex: frame.frameIndexInSegment, source: frame.source
+        )
+    }
+
+    /// Tool-using Ask-AI path: the model isolates an app, searches for words, reads frames and answers.
+    /// Throws on any failure so the caller can fall back to the planner/retriever pipeline.
+    public nonisolated func runAIAgent(
+        question: String,
+        apps: [AIQueryApp],
+        apiKey: String,
+        model: String,
+        onStatus: @escaping @Sendable (String) -> Void
+    ) async throws -> AIAgentResult {
+        let start = Date()
+        let tools = AIAgentTools(database: services.database, ftsEngine: services.ftsEngine, apps: apps)
+        let agent = AIScreenAgent(tools: tools, apiKey: apiKey, model: model)
+        do {
+            let result = try await agent.run(question: question, onStatus: onStatus)
+            let meta = "{\"outcome\":\"success\",\"toolCalls\":\(result.toolCalls),\"modelCalls\":\(result.modelCalls),\"framesShown\":\(result.frames.count),\"ms\":\(Int(Date().timeIntervalSince(start) * 1000))}"
+            try? await services.database.recordMetricEvent(metricType: .aiSearchAgent, metadata: meta)
+            return result
+        } catch {
+            let meta = "{\"outcome\":\"failed\",\"toolCalls\":0,\"modelCalls\":0,\"framesShown\":0,\"ms\":\(Int(Date().timeIntervalSince(start) * 1000))}"
+            try? await services.database.recordMetricEvent(metricType: .aiSearchAgent, metadata: meta)
+            throw error
+        }
     }
 
     /// When the first retrieval pass matched a part of the question weakly, ask the model for better search

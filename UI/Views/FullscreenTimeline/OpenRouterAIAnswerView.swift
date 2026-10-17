@@ -13,6 +13,8 @@ public struct OpenRouterAIAnswerView: View {
         self.onSelectCitation = onSelectCitation
     }
 
+    @State private var didCopy = false
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             // Header
@@ -36,6 +38,27 @@ public struct OpenRouterAIAnswerView: View {
                             .font(.retraceCaption2Medium)
                             .foregroundColor(.retraceSecondary)
                     }
+                }
+
+                if let answer = viewModel.aiGeneratedAnswer, !answer.isEmpty, !viewModel.isAIGenerating {
+                    Button(action: {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(answer, forType: .string)
+                        didCopy = true
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.5))
+                            didCopy = false
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            RetraceSymbol(didCopy ? "checkmark" : "doc.on.doc", size: 12)
+                            Text(didCopy ? "Copied" : "Copy")
+                                .font(.retraceCaption2Medium)
+                        }
+                        .foregroundColor(.retraceSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Copy answer")
                 }
 
                 Button(action: {
