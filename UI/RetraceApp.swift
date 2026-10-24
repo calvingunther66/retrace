@@ -269,11 +269,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var powerSettingsObserver: NSObjectProtocol?
     private var lowPowerModeObserver: NSObjectProtocol?
     private var pendingPowerSettingsSnapshot: OCRPowerSettingsSnapshot?
-    private var wasRecordingBeforeSleep = false
+    private var wakeResumeTask: Task<Void, Never>?
+    /// A resume cancelled by a new sleep that may still be unwinding; the next resume waits for it first.
+    private var cancelledWakeResumeTask: Task<Void, Never>?
+    private var screenUnlockObserver: NSObjectProtocol?
     private var lastKnownPowerSource: PowerStateMonitor.PowerSource?
     private var lastKnownLowPowerMode: Bool?
     private var isHandlingSystemSleep = false
-    private var isHandlingSystemWake = false
     private var pendingDeeplinkURLs: [URL] = []
     private var shouldShowDashboardAfterInitialization = false
     private var isActivationRevealInFlight = false
@@ -297,6 +299,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private static let singleInstanceLockRetryDelay: Duration = .milliseconds(100)
     nonisolated private static let watchdogSleepSuspensionSeconds: TimeInterval = 12 * 60 * 60
     nonisolated private static let watchdogWakeGracePeriodSeconds: TimeInterval = 60
+    /// Delay before each wake-resume attempt. Right after wake storage/permissions can lag, so a failed start
+    /// is retried a few times before we give up and let the pause reminder tell the user.
+    private static let wakeResumeAttemptDelays: [Duration] = [.zero, .seconds(2), .seconds(5), .seconds(10)]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Check if another instance is already running. Relaunches still need to
@@ -1660,6 +1665,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         sleepWakeObservers.append(screensWakeObserver)
 
+        // Unlocking is the one thing the user always does when opening the computer. It is a third, redundant
+        // wake trigger: with the pause reminder suppressed while a resume is owed, it guarantees a path back
+        // to recording even if neither didWake nor screensDidWake was delivered.
+        screenUnlockObserver = DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.apple.screenIsUnlocked"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.startWakeResumeIfNeeded(trigger: "screenUnlocked")
+            }
+        }
+
         // System power-off (logout/restart/shutdown) must bypass the interactive quit
         // confirmation: there is no user to click it, and the modal blocks termination
         // until the system force-kills the app — which then looks like a crash to the
@@ -1819,15 +1837,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         isHandlingSystemSleep = true
         defer { isHandlingSystemSleep = false }
 
-        wasRecordingBeforeSleep = await wrapper.coordinator.isCapturing()
+        // Sleeping again mid-resume: drop the in-flight attempt; the pending flag stays set.
+        wakeResumeTask?.cancel()
+        cancelledWakeResumeTask = wakeResumeTask
+        wakeResumeTask = nil
 
-        if wasRecordingBeforeSleep {
-            Log.info("[AppDelegate] System going to sleep - stopping pipeline to finalize current segment", category: .app)
-            do {
-                try await wrapper.coordinator.stopPipeline(persistState: false)
-            } catch {
-                Log.error("[AppDelegate] Failed to stop pipeline on sleep: \(error)", category: .app)
-            }
+        // Only ever *set* the pending flag here. Dark-wake cycles deliver extra willSleep notifications while
+        // capture is already stopped; recomputing it from isCapturing() would erase the owed resume.
+        guard await wrapper.coordinator.isCapturing() else { return }
+
+        // Mark before stopping so the pause reminder never sees "not capturing" without the marker.
+        SleepResumeState.shared.markResumePending()
+        Log.info("[AppDelegate] System going to sleep - stopping pipeline to finalize current segment", category: .app)
+        do {
+            try await wrapper.coordinator.stopPipeline(persistState: false)
+        } catch {
+            Log.error("[AppDelegate] Failed to stop pipeline on sleep: \(error)", category: .app)
         }
     }
 
@@ -1837,27 +1862,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             after: Self.watchdogWakeGracePeriodSeconds,
             reason: "system did wake"
         )
-
-        guard let wrapper = coordinatorWrapper else { return }
-        guard !isHandlingSystemWake else { return }
-        guard wasRecordingBeforeSleep else { return }
-        isHandlingSystemWake = true
-        wasRecordingBeforeSleep = false
-        defer { isHandlingSystemWake = false }
-        schedulePowerSettingsApply()
-
-        if await wrapper.coordinator.isCapturing() {
-            await wrapper.refreshStatus()
-            return
-        }
-
-        Log.info("[AppDelegate] System woke from sleep - resuming pipeline", category: .app)
-        do {
-            try await wrapper.coordinator.startPipeline()
-            await wrapper.refreshStatus()
-        } catch {
-            Log.error("[AppDelegate] Failed to resume pipeline on wake: \(error)", category: .app)
-        }
+        startWakeResumeIfNeeded(trigger: "didWake")
     }
 
     @MainActor
@@ -1874,6 +1879,91 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             after: Self.watchdogWakeGracePeriodSeconds,
             reason: "screens did wake"
         )
+        // didWake is not reliably delivered after dark-wake/maintenance cycles (observed: screensDidWake with
+        // no didWake for hours). The screen coming back on is what the user perceives as "opening the computer".
+        startWakeResumeIfNeeded(trigger: "screensDidWake")
+    }
+
+    /// Resume capture that sleep stopped. Coalesces concurrent triggers (didWake + screensDidWake arrive together).
+    @MainActor
+    private func startWakeResumeIfNeeded(trigger: String) {
+        guard SleepResumeState.shared.isResumePending else { return }
+        guard wakeResumeTask == nil else { return }
+
+        let predecessor = cancelledWakeResumeTask
+        wakeResumeTask = Task { @MainActor [weak self] in
+            // A cancelled predecessor may still be in its "stop again" branch; don't race it.
+            await predecessor?.value
+            await self?.resumeCaptureAfterSleep(trigger: trigger)
+            // If we were cancelled, handleSystemSleep already cleared the reference and a newer task may own it.
+            if !Task.isCancelled {
+                self?.wakeResumeTask = nil
+            }
+            self?.cancelledWakeResumeTask = nil
+        }
+    }
+
+    @MainActor
+    private func resumeCaptureAfterSleep(trigger: String) async {
+        // Let an in-flight sleep stop finish first so we never start and stop in the wrong order.
+        var waitedForSleepStop = 0
+        while isHandlingSystemSleep, waitedForSleepStop < 100 {
+            waitedForSleepStop += 1
+            try? await Task.sleep(for: .milliseconds(100), clock: .continuous)
+        }
+
+        guard let wrapper = coordinatorWrapper else { return }
+        schedulePowerSettingsApply()
+
+        for (attempt, delay) in Self.wakeResumeAttemptDelays.enumerated() {
+            if delay > .zero {
+                try? await Task.sleep(for: delay, clock: .continuous)
+            }
+            // Cancelled by another sleep; the pending flag stays set for the next wake.
+            guard !Task.isCancelled else { return }
+
+            if await wrapper.coordinator.isCapturing() {
+                SleepResumeState.shared.finishResume(succeeded: true)
+                await wrapper.refreshStatus()
+                return
+            }
+            // The user took over with a timed pause while we were waiting; respect it.
+            if MenuBarManager.shared?.isPausedState == true {
+                Log.info("[AppDelegate] Wake resume skipped (\(trigger)): recording is paused by the user", category: .app)
+                SleepResumeState.shared.finishResume(succeeded: true)
+                return
+            }
+
+            Log.info(
+                "[AppDelegate] Resuming pipeline after sleep (trigger=\(trigger), attempt \(attempt + 1)/\(Self.wakeResumeAttemptDelays.count))",
+                category: .app
+            )
+            let attemptStart = Date()
+            do {
+                try await wrapper.coordinator.startPipeline()
+                Log.info(
+                    "[AppDelegate] Pipeline resumed after sleep in \(Int(Date().timeIntervalSince(attemptStart) * 1000))ms",
+                    category: .app
+                )
+                if Task.isCancelled {
+                    // Went back to sleep while starting: stop again and keep owing the resume.
+                    try? await wrapper.coordinator.stopPipeline(persistState: false)
+                    return
+                }
+                SleepResumeState.shared.finishResume(succeeded: true)
+                await wrapper.refreshStatus()
+                return
+            } catch {
+                Log.error("[AppDelegate] Failed to resume pipeline after sleep (attempt \(attempt + 1)): \(error)", category: .app)
+                // A revoked permission will not fix itself in a few seconds; surface it right away.
+                if case AppError.permissionDenied(_) = error { break }
+            }
+        }
+
+        guard !Task.isCancelled else { return }
+        Log.error("[AppDelegate] Giving up resuming pipeline after sleep (trigger=\(trigger))", category: .app)
+        SleepResumeState.shared.finishResume(succeeded: false)
+        await wrapper.refreshStatus()
     }
 
     // MARK: - Recording Control
@@ -2652,6 +2742,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             workspaceCenter.removeObserver(observer)
         }
         sleepWakeObservers.removeAll()
+        if let screenUnlockObserver {
+            DistributedNotificationCenter.default().removeObserver(screenUnlockObserver)
+            self.screenUnlockObserver = nil
+        }
         powerSettingsApplyTask?.cancel()
         powerSettingsApplyTask = nil
         pendingPowerSettingsSnapshot = nil
