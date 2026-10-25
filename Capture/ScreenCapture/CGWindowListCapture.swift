@@ -835,20 +835,11 @@ public actor CGWindowListCapture {
     }
 
     private func firstMatchingPattern(in value: String, patterns: [String]) -> String? {
-        guard !value.isEmpty else { return nil }
-        for rawPattern in patterns {
-            let pattern = rawPattern.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard patternHasContent(pattern) else { continue }
-
-            if value.range(of: pattern, options: [.caseInsensitive, .diacriticInsensitive]) != nil {
-                return pattern
-            }
-        }
-        return nil
+        ExclusionPatternMatcher.firstMatch(in: value, patterns: patterns)
     }
 
     private func patternHasContent(_ pattern: String) -> Bool {
-        pattern.contains(where: { !$0.isWhitespace })
+        ExclusionPatternMatcher.hasContent(pattern)
     }
 
     private func tracePrivateRedaction(_ : String) {}

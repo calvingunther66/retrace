@@ -119,6 +119,24 @@ extension SettingsView {
         }
     }
 
+    func recordInputEventLoggingToggleMetric(enabled: Bool, outcome: String) {
+        let hasInputMonitoring = CGPreflightListenEventAccess()
+        let hasAccessibility = AXIsProcessTrusted()
+        Task {
+            let metadata = Self.inPageURLMetricMetadata([
+                "enabled": enabled,
+                "outcome": outcome,
+                "hasInputMonitoring": hasInputMonitoring,
+                "hasAccessibility": hasAccessibility,
+                "source": "settings_capture_card"
+            ])
+            try? await coordinatorWrapper.coordinator.recordMetricEvent(
+                metricType: .inputEventLoggingToggle,
+                metadata: metadata
+            )
+        }
+    }
+
     func recordCaptureIntervalUpdatedMetric(seconds: Double) {
         Task {
             let metadata = Self.inPageURLMetricMetadata([
@@ -337,6 +355,44 @@ extension SettingsView {
         }
     }
 
+    func updateInputEventLoggingSetting() {
+        if isProgrammaticInputEventLoggingToggleChange {
+            isProgrammaticInputEventLoggingToggleChange = false
+            return
+        }
+
+        let requestedEnabled = inputEventLoggingEnabled
+
+        Task {
+            if requestedEnabled {
+                let granted = await requestListenEventAccessIfNeeded()
+                guard granted else {
+                    await MainActor.run {
+                        isProgrammaticInputEventLoggingToggleChange = true
+                        inputEventLoggingEnabled = false
+                        recordInputEventLoggingToggleMetric(enabled: requestedEnabled, outcome: "permission_denied")
+                        showSettingsToast(
+                            "Input event logging needs Input Monitoring permission. Allow Retrace in System Settings, then turn it on again.",
+                            isError: true,
+                            duration: .seconds(3.6)
+                        )
+                    }
+                    return
+                }
+            }
+
+            await applyCaptureConfigMutation(
+                successLog: "[SettingsView] Input event logging updated to: \(requestedEnabled)",
+                failureLog: "[SettingsView] Failed to update input event logging",
+                transform: { $0.updating(inputEventLoggingEnabled: requestedEnabled) },
+                onSuccess: { _ in
+                    recordInputEventLoggingToggleMetric(enabled: requestedEnabled, outcome: "applied")
+                    showCaptureUpdateFeedback()
+                }
+            )
+        }
+    }
+
     /// Show brief "Updated" feedback for compression settings
     func showCompressionUpdateFeedback() {
         Task { @MainActor in
@@ -413,6 +469,8 @@ extension SettingsView {
         isProgrammaticWindowChangeCaptureToggleChange = false
         captureOnMouseClick = SettingsDefaults.captureOnMouseClick
         isProgrammaticMouseClickCaptureToggleChange = false
+        inputEventLoggingEnabled = SettingsDefaults.inputEventLoggingEnabled
+        isProgrammaticInputEventLoggingToggleChange = false
         captureMousePosition = SettingsDefaults.captureMousePosition
         collectInPageURLsExperimental = SettingsDefaults.collectInPageURLsExperimental
         inPageURLVerificationByBundleID = [:]
@@ -430,7 +488,8 @@ extension SettingsView {
                         deduplicationThreshold: SettingsDefaults.deduplicationThreshold,
                         keepFramesOnMouseMovement: SettingsDefaults.keepFramesOnMouseMovement,
                         captureOnWindowChange: SettingsDefaults.captureOnWindowChange,
-                        captureOnMouseClick: SettingsDefaults.captureOnMouseClick
+                        captureOnMouseClick: SettingsDefaults.captureOnMouseClick,
+                        inputEventLoggingEnabled: SettingsDefaults.inputEventLoggingEnabled
                     )
                 }
             )

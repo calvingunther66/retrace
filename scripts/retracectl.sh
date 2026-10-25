@@ -18,7 +18,7 @@
 #
 # Offline analysis (NEVER touches the live DB — works on a snapshot copy):
 #   snapshot               VACUUM INTO a consistent copy + copy vectors.bin  -> $RETRACE_SNAP_DIR
-#   cli <retrace-cli args> run retrace-cli (search, ai-context, bench, index-bench, vector-status, ask)
+#   cli <retrace-cli args> run retrace-cli (search, ai-context, bench, index-bench, vector-status, ask, export)
 #                          against the snapshot; --db/--storage-dir are filled in for you
 #
 # Limits, stated honestly: the app has no in-process command bus, so beyond the deeplink routes above

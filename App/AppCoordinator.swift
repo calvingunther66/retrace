@@ -743,6 +743,8 @@ public actor AppCoordinator {
     private var orphanedFrameRecoveryTask: Task<Void, Never>?
 
     private var orphanedVideoCleanupTask: Task<Void, Never>?
+    /// Persists and links input events while the pipeline runs (created on first start).
+    private var inputEventWriter: InputEventWriter?
     private var dbStorageSnapshotTask: Task<Void, Never>?
     private var resourcePressureObservationTask: Task<Void, Never>?
     private var lastLoggedDBStorageSnapshot: DBStorageSnapshotLogState?
@@ -1426,6 +1428,16 @@ public actor AppCoordinator {
             )
         }
 
+        // Input event logging: install the sinks before capture can emit anything.
+        let inputWriter = makeInputEventWriterIfNeeded()
+        services.capture.onInputEvent = { event in
+            await inputWriter.enqueue(event)
+        }
+        services.capture.onInputPreCaptureOutcome = { result in
+            await inputWriter.recordPreCapture(result)
+        }
+        await inputWriter.start()
+
         // Start screen capture
         try await services.capture.startCapture(config: await services.capture.getConfig())
         Log.info("[PIPELINE-START] capture started at +\(elapsedMs())ms", category: .app)
@@ -1486,6 +1498,7 @@ public actor AppCoordinator {
 
         // Stop screen capture
         try await services.capture.stopCapture()
+        await stopInputEventWriter()
 
         // ⚠️ RELEASE 2 ONLY
         // // Stop audio capture
@@ -1494,6 +1507,32 @@ public actor AppCoordinator {
         finalizePipelineStopped(persistState: persistState, clearCaptureTask: true)
 
         Log.info("Capture pipeline stopped successfully", category: .app)
+    }
+
+    private func makeInputEventWriterIfNeeded() -> InputEventWriter {
+        if let inputEventWriter { return inputEventWriter }
+
+        let capture = services.capture
+        let writer = InputEventWriter(
+            store: .database(services.database),
+            metrics: InputEventWriter.MetricsSink(
+                record: { [weak self] type, metadata in
+                    try? await self?.recordMetricEvent(metricType: type, metadata: metadata)
+                },
+                captureStats: {
+                    await capture.drainInputEventStats()
+                }
+            )
+        )
+        inputEventWriter = writer
+        return writer
+    }
+
+    /// Flush buffered input events, run a last link pass and detach the sinks.
+    private func stopInputEventWriter() async {
+        services.capture.onInputEvent = nil
+        services.capture.onInputPreCaptureOutcome = nil
+        await inputEventWriter?.stop()
     }
 
     private func suspendPipelineInfrastructure() async {
@@ -1758,12 +1797,14 @@ public actor AppCoordinator {
             guard let self else { return }
             Log.info("[AppCoordinator] Listen-event access granted - retrying mouse click capture monitoring", category: .app)
             await self.services.capture.retryMouseClickMonitoringIfNeeded()
+            await self.services.capture.retryInputEventMonitoringIfNeeded()
         }
 
         PermissionMonitor.shared.onListenEventAccessRevoked = { [weak self] in
             guard let self else { return }
             Log.warning("[AppCoordinator] Listen-event access revoked - suspending mouse click capture monitoring", category: .app)
             await self.services.capture.suspendMouseClickMonitoringForPermissionLoss()
+            await self.services.capture.suspendInputEventMonitoringForPermissionLoss()
         }
 
         // Start the periodic permission check
@@ -2399,6 +2440,7 @@ public actor AppCoordinator {
                     )
                 }
             }
+            await stopInputEventWriter()
         }
 
         logPipelineMemorySnapshot(writersByResolution: writersByResolution, reason: "pipeline-ending")

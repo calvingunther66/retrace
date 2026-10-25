@@ -77,6 +77,10 @@ enum Schema {
         static let purge = "purge"
         static let dbStorageSnapshot = "db_storage_snapshot"
 
+        // Input event logging (V24)
+        static let inputEvent = "input_event"
+        static let inputEventAX = "input_event_ax"
+
         // Meta
         static let schemaMigrations = "schema_migrations"
     }

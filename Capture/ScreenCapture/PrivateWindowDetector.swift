@@ -29,6 +29,18 @@ struct PrivateWindowDetector {
         return isPrivate
     }
 
+    // MARK: - Browser Ownership
+
+    private static let browserOwnerNames = [
+        "Safari", "Google Chrome", "Chrome", "Brave Browser", "Microsoft Edge",
+        "Firefox", "Arc", "Vivaldi", "Chromium", "Opera", "Dia", "Dia Browser", "Comet", "DuckDuckGo"
+    ]
+
+    /// Whether a CGWindowList owner name belongs to a browser that can have private windows.
+    static func isBrowserOwnerName(_ ownerName: String) -> Bool {
+        browserOwnerNames.contains { ownerName.contains($0) }
+    }
+
     // MARK: - Detection Methods (CGWindowList)
 
     /// Detect if a window from CGWindowList is a private/incognito browsing window
@@ -42,13 +54,7 @@ struct PrivateWindowDetector {
         }
 
         // Check if this is a browser that could have private windows
-        let browserOwnerNames = [
-            "Safari", "Google Chrome", "Chrome", "Brave Browser", "Microsoft Edge",
-            "Firefox", "Arc", "Vivaldi", "Chromium", "Opera", "Dia", "Dia Browser", "Comet", "DuckDuckGo"
-        ]
-
-        let isBrowser = browserOwnerNames.contains { ownerName.contains($0) }
-        guard isBrowser else { return false }
+        guard isBrowserOwnerName(ownerName) else { return false }
 
         // Get window title for pattern matching
         guard let windowName = windowInfo[kCGWindowName as String] as? String,

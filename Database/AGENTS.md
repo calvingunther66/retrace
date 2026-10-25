@@ -34,10 +34,12 @@ Database/
 │   ├── V17_FrameCaptureTrigger.swift
 │   ├── V18_DailyMetricsRecencyIndex.swift
 │   ├── V19_FrameEncodedAt.swift
-│   └── V23_SemanticRequestTelemetry.swift  # nullable per-request telemetry columns on semantic_index_requests (V20-V22 not listed above)
+│   ├── V23_SemanticRequestTelemetry.swift  # nullable per-request telemetry columns on semantic_index_requests (V20-V22 not listed above)
+│   └── V24_InputEvents.swift      # input_event + input_event_ax tables, frame.displayId (idempotent: the latest migration is re-run by migration-safety tests)
 ├── Queries/
 │   ├── FrameQueries.swift     # Frame CRUD operations
 │   ├── SegmentQueries.swift   # Segment CRUD operations
+│   ├── InputEventQueries.swift # Input events: batch insert, timestamp-based pre/down/post frame linking, fetch, export frame facts, retention delete
 │   └── DocumentQueries.swift  # Document/FTS operations
 └── Tests/
     ├── AsyncQueuePipelineTests.swift
@@ -49,6 +51,7 @@ Database/
     ├── OCRPipelineTests.swift
     ├── QueryBuilderTests.swift
     ├── SemanticIndexRetryStatusTests.swift  # status-5 restore after failed attempts, V23 telemetry round-trip, per-frame propagated description rows on a real SQLite
+    ├── InputEventTests.swift                # V24 schema/idempotence, round trip, secure-field refusal, strict-pre/down/post linking, FK SET NULL, retention, export frame facts
     └── TestLogger.swift
 ```
 

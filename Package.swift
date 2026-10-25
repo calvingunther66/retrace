@@ -22,6 +22,7 @@ let package = Package(
         .library(name: "Shared", targets: ["Shared"]),
         .library(name: "Database", targets: ["Database"]),
         .library(name: "Storage", targets: ["Storage"]),
+        .library(name: "Export", targets: ["Export"]),
         .library(name: "Capture", targets: ["Capture"]),
         .library(name: "Processing", targets: ["Processing"]),
         .library(name: "Search", targets: ["Search"]),
@@ -105,6 +106,22 @@ let package = Package(
             name: "StorageTests",
             dependencies: ["Storage", "Shared"],
             path: "Storage/Tests"
+        ),
+
+        // MARK: - Export module (privacy-filtered input-event + frame export; used by retrace-cli)
+        .target(
+            name: "Export",
+            dependencies: ["Shared", "Database", "Storage"],
+            path: "Export",
+            exclude: [
+                "Tests",
+                "AGENTS.md"
+            ]
+        ),
+        .testTarget(
+            name: "ExportTests",
+            dependencies: ["Export", "Database", "Storage", "Shared"],
+            path: "Export/Tests"
         ),
 
         // MARK: - Capture module
@@ -381,7 +398,9 @@ let package = Package(
                 "Shared",
                 "Database",
                 "Search",
-                "Processing"
+                "Processing",
+                "Storage",
+                "Export"
             ],
             path: "Sources/RetraceCLI",
             linkerSettings: [

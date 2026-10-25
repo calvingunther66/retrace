@@ -24,6 +24,7 @@ Retrace is an open source alternative to Rewind AI that gives you photographic m
 - **HEVC video encoding** - Working but not yet optimized for efficiency
 - **Search highlighting** - Visual highlighting of search results in frames
 - **Privacy controls** - Exclude apps and private browsing windows
+- **Input event logging (opt-in)** - Records clicks, scrolls, keyboard shortcuts and typing *counts* (never the characters typed), each linked to the frames just before and after. Secure fields, excluded apps and private windows are never logged. `retrace-cli export` writes a privacy-filtered `events.jsonl` plus downscaled frames for building action datasets.
 
 ### 🚧 Coming Soon
 
@@ -249,6 +250,19 @@ _Roadmap for future releases to be determined based on user feedback and priorit
 - **No audio capture** - Audio recording and transcription infrastructure exists but is currently disabled
 
 See [GitHub Issues](https://github.com/haseab/retrace/issues) for known bugs and feature requests.
+
+## Input Event Export
+
+Turn on **Settings → Capture → Log input events** (needs Input Monitoring; Accessibility records *what* was clicked). Then, from a snapshot of the database:
+
+```bash
+scripts/retracectl.sh snapshot
+scripts/retracectl.sh cli export --out ~/retrace-export --config ~/dev/retrace-mcp/retrace_mcp.toml \
+  --since 2026-07-01 --triggers click --max-side 1280 \
+  --exclude-bundles com.example.app --exclude-url bank.example --exclude-window "Payroll"
+```
+
+The export refuses to run without the shared deny-list (`--config`, or `--no-deny-list` to waive it explicitly), skips frames that were redacted or are still awaiting redaction, skips events with unverified privacy checks (override with `--include-unverified`), and writes nothing for a skipped event. Output: `events.jsonl`, `frames/`, `manifest.json`. See `Export/AGENTS.md` for the line format. The MCP server's `get_frame_image` tool returns single downscaled frames under the same rules.
 
 ## Privacy & Security
 

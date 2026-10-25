@@ -14,8 +14,8 @@ public enum FrameQueries {
     static func insert(db: OpaquePointer, frame: FrameReference) throws -> Int64 {
         let sql = """
             INSERT INTO frame (
-                createdAt, imageFileName, segmentId, videoId, videoFrameIndex, isStarred, redactionReason, capture_trigger, processingStatus
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 4);
+                createdAt, imageFileName, segmentId, videoId, videoFrameIndex, isStarred, redactionReason, capture_trigger, displayId, processingStatus
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 4);
             """
 
         var statement: OpaquePointer?
@@ -59,6 +59,13 @@ public enum FrameQueries {
         // redactionReason: nullable, set when frame pixels were intentionally redacted
         bindTextOrNull(statement, 7, frame.metadata.redactionReason)
         bindTextOrNull(statement, 8, frame.metadata.captureTrigger?.rawValue)
+
+        // displayId: which display the frame shows (0 = unknown, stored as NULL)
+        if frame.metadata.displayID != 0 {
+            sqlite3_bind_int64(statement, 9, Int64(frame.metadata.displayID))
+        } else {
+            sqlite3_bind_null(statement, 9)
+        }
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw DatabaseError.queryFailed(

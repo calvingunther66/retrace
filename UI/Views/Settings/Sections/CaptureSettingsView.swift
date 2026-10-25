@@ -141,6 +141,17 @@ extension SettingsView {
                 Divider().overlay(Color.retraceBorder)
 
                 ModernToggleRow(
+                    title: "Log input events",
+                    subtitle: "Record clicks, scrolls, keyboard shortcuts and typing counts (never the characters you type), each linked to the frames just before and after, for building action datasets. Takes an extra frame on every click. Requires Input Monitoring; Accessibility lets Retrace record what was clicked. Secure fields, excluded apps and private windows are never logged.",
+                    isOn: $inputEventLoggingEnabled
+                )
+                .onChange(of: inputEventLoggingEnabled) { _ in
+                    updateInputEventLoggingSetting()
+                }
+
+                Divider().overlay(Color.retraceBorder)
+
+                ModernToggleRow(
                     title: "Capture mouse position",
                     subtitle: "Store pointer coordinates for each frame and render them in timeline playback. Estimated storage increases while this is enabled.",
                     isOn: $captureMousePosition

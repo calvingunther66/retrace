@@ -3,6 +3,9 @@ import Shared
 import Database
 import Search
 import Processing
+import Storage
+import Export
+import CoreGraphics
 
 // retrace-cli: command-line harness for the AI search / semantic indexing stack.
 //
@@ -454,6 +457,126 @@ func cmdAsk(_ o: Options) async throws {
     out(answer)
 }
 
+/// Validates `--db` (must exist, must not be the live store unless `--allow-live`) and resolves the storage dir.
+func resolveSnapshotPaths(_ o: Options) throws -> (dbPath: String, storageDir: String) {
+    guard let dbPath = o.flags["db"] else { throw CLIError("--db <path to snapshot retrace.db> is required") }
+    let live = AppPaths.defaultStorageRoot + "/retrace.db"
+    if URL(fileURLWithPath: dbPath).resolvingSymlinksInPath().path == URL(fileURLWithPath: live).resolvingSymlinksInPath().path,
+       !o.has("allow-live") {
+        throw CLIError("refusing to open the live database; use a snapshot copy (or pass --allow-live if you really mean it)")
+    }
+    // A typo'd --db would otherwise be silently created and migrated as an empty database.
+    guard FileManager.default.fileExists(atPath: NSString(string: dbPath).expandingTildeInPath) else {
+        throw CLIError("--db \(dbPath) does not exist (refusing to create an empty database)")
+    }
+    let storageDir = o.flags["storage-dir"] ?? URL(fileURLWithPath: dbPath).deletingLastPathComponent().path
+    return (dbPath, storageDir)
+}
+
+// MARK: - export / frame-image
+
+/// `2026-07-01`, `2026-07-01T09:30:00Z`, or epoch seconds/milliseconds -> epoch milliseconds.
+func parseTimeArgument(_ raw: String) -> Int64? {
+    if let number = Int64(raw) { return number >= 100_000_000_000 ? number : number * 1000 }
+    let iso = ISO8601DateFormatter()
+    iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = iso.date(from: raw) { return Int64(date.timeIntervalSince1970 * 1000) }
+    iso.formatOptions = [.withInternetDateTime]
+    if let date = iso.date(from: raw) { return Int64(date.timeIntervalSince1970 * 1000) }
+    let day = DateFormatter()
+    day.dateFormat = "yyyy-MM-dd"
+    day.timeZone = .current
+    if let date = day.date(from: raw) { return Int64(date.timeIntervalSince1970 * 1000) }
+    return nil
+}
+
+func csv(_ value: String?) -> [String] {
+    (value ?? "").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+}
+
+func cmdExport(_ o: Options) async throws {
+    let (dbPath, _) = try resolveSnapshotPaths(o)
+    guard let outPath = o.flags["out"] else { throw CLIError("--out <directory> is required") }
+
+    // Privacy first: the shared deny-list is mandatory unless explicitly waived.
+    var deny = ExportDenyList(excludeHiddenSegments: true)
+    if let config = o.flags["config"] ?? ProcessInfo.processInfo.environment["RETRACE_MCP_CONFIG"] {
+        deny = try ExportDenyList.load(path: config)
+        out("deny-list: \(config) (\(deny.excludeBundles.count) bundles, \(deny.excludeURLPatterns.count) url patterns, \(deny.excludeWindowPatterns.count) window patterns)")
+    } else if !o.has("no-deny-list") {
+        throw CLIError("pass --config <retrace_mcp.toml> (or set RETRACE_MCP_CONFIG) so the shared deny-list applies; use --no-deny-list to export without it")
+    }
+    deny = deny.merged(with: ExportDenyList(
+        excludeBundles: Set(csv(o.flags["exclude-bundles"])),
+        excludeURLPatterns: csv(o.flags["exclude-url"]),
+        excludeWindowPatterns: csv(o.flags["exclude-window"]),
+        excludeHiddenSegments: true
+    ))
+
+    let now = Int64(Date().timeIntervalSince1970 * 1000)
+    guard let since = o.flags["since"].map({ parseTimeArgument($0) }) ?? 0 else { throw CLIError("--since: expected YYYY-MM-DD, ISO8601 or epoch") }
+    guard let until = o.flags["until"].map({ parseTimeArgument($0) }) ?? now + 1 else { throw CLIError("--until: expected YYYY-MM-DD, ISO8601 or epoch") }
+
+    var options = InputExportOptions(
+        sinceMs: since, untilMs: until, outDirectory: URL(fileURLWithPath: NSString(string: outPath).expandingTildeInPath), denyList: deny
+    )
+    // `--triggers click` is the user-facing spelling; `--kinds` is the same filter.
+    let kinds = csv(o.flags["kinds"] ?? o.flags["triggers"])
+    if !kinds.isEmpty {
+        let parsed = kinds.compactMap(InputEventKind.init(rawValue:))
+        guard parsed.count == kinds.count else { throw CLIError("--kinds/--triggers: choose from \(InputEventKind.allCases.map(\.rawValue).joined(separator: ","))") }
+        options.kinds = parsed
+    }
+    options.maxSide = o.int("max-side", 1280)
+    options.quality = o.flags["quality"].flatMap(Double.init) ?? 0.8
+    if let format = o.flags["format"] {
+        guard let parsed = FrameImageFormat(rawValue: format) else { throw CLIError("--format: jpeg or png") }
+        options.format = parsed
+    }
+    options.includeUnverified = o.has("include-unverified")
+    options.keepURLQuery = o.has("keep-url-query")
+    options.maxPreGapMs = Int64(o.int("max-pre-gap-ms", 5_000))
+    options.includeDownFrames = !o.has("no-down-frames")
+    options.limit = o.flags["limit"].flatMap(Int.init)
+
+    let chunksRoot = NSString(string: o.flags["chunks-root"] ?? AppPaths.defaultStorageRoot).expandingTildeInPath
+    let storageDir = o.flags["storage-dir"] ?? URL(fileURLWithPath: dbPath).deletingLastPathComponent().path
+    let db = DatabaseManager(databasePath: dbPath, storageRootPath: storageDir)
+    try await db.initialize()
+
+    let summary = try await InputEventExporter(
+        database: db, imageSource: HEVCFrameImageSource(storageRoot: chunksRoot), options: options
+    ).run()
+
+    out("events seen:     \(summary.eventsSeen)")
+    out("events exported: \(summary.eventsExported)")
+    out("frames written:  \(summary.framesWritten)")
+    for (reason, count) in summary.skippedEvents.sorted(by: { $0.key < $1.key }) { out("  skipped  \(reason): \(count)") }
+    for (reason, count) in summary.omittedFrames.sorted(by: { $0.key < $1.key }) { out("  omitted frame \(reason): \(count)") }
+    out("output: \(options.outDirectory.path)")
+}
+
+/// Decode one frame from a chunk and write it downscaled. Takes explicit video coordinates (no DB), so
+/// the Python MCP server can apply its own deny-list/redaction SQL and then shell out for pixels only.
+func cmdFrameImage(_ o: Options) async throws {
+    guard let videoPath = o.flags["video-path"], let indexText = o.flags["frame-index"], let index = Int(indexText),
+          let outPath = o.flags["out"] else {
+        throw CLIError("frame-image needs --video-path <chunks/...> --frame-index N --out <file> [--frame-rate R] [--chunks-root DIR] [--max-side 1280] [--format jpeg|png] [--quality 0.8]")
+    }
+    let format = o.flags["format"].flatMap(FrameImageFormat.init(rawValue:)) ?? .jpeg
+    let chunksRoot = NSString(string: o.flags["chunks-root"] ?? AppPaths.defaultStorageRoot).expandingTildeInPath
+    let extractor = HEVCStorageExtractor(storageRoot: chunksRoot)
+    let image = try await extractor.extractFrameCGImage(
+        videoPath: videoPath, frameIndex: index, frameRate: o.flags["frame-rate"].flatMap(Double.init)
+    )
+    let encoded = try FrameImageEncoder.encode(
+        image, maxSide: o.int("max-side", 1280), format: format, quality: o.flags["quality"].flatMap(Double.init) ?? 0.8
+    )
+    try encoded.data.write(to: URL(fileURLWithPath: NSString(string: outPath).expandingTildeInPath), options: .atomic)
+    out("{\"width\":\(encoded.width),\"height\":\(encoded.height),\"bytes\":\(encoded.data.count),\"format\":\"\(format.rawValue)\"}")
+}
+
+
 @main
 struct RetraceCLI {
     static func main() async {
@@ -470,6 +593,8 @@ struct RetraceCLI {
             case "memory": try await cmdMemory(o)
             case "ask-local": try await cmdAskLocal(o)
             case "ask": try await cmdAsk(o)
+            case "export": try await cmdExport(o)
+            case "frame-image": try await cmdFrameImage(o)
             default:
                 out("""
                 retrace-cli <command> --db <snapshot retrace.db> [--storage-dir <dir>]
@@ -483,6 +608,12 @@ struct RetraceCLI {
                   ask-plan <question> [--expect a,b] [--learn] [--no-memory]   new planner + evidence retriever (no network); prints what the LLM would see
                   ask-local <question> [--tier pcc] [--refine] [--now ISO]   plan → evidence → Apple on-device model answers (fully offline)
                   ask <question> --model <slug> --send   OPT-IN: sends OCR text to OpenRouter (key via OPENROUTER_API_KEY)
+                  export --out <dir> --config <retrace_mcp.toml> [--since D] [--until D] [--triggers click,scroll,shortcut,typing]
+                         [--max-side 1280] [--format jpeg|png] [--exclude-bundles a,b] [--exclude-url p,q] [--exclude-window p]
+                         [--chunks-root DIR] [--include-unverified] [--max-pre-gap-ms 5000] [--limit N] [--keep-url-query]
+                         privacy-filtered input events + the frames around them -> events.jsonl, frames/, manifest.json
+                  frame-image --video-path P --frame-index N --out FILE [--frame-rate R] [--chunks-root DIR] [--max-side 1280]
+                         decode one frame (no DB); used by the MCP get_frame_image tool
                 """)
             }
         } catch {

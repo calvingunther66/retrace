@@ -1201,3 +1201,381 @@ private final class TestMouseClickTapSession: MouseClickTapSessionControlling, @
         continuation?.resume(returning: result)
     }
 }
+
+// MARK: - Input event logging triggers
+
+private actor FakeInputEventMonitor: CaptureInputEventMonitoring {
+    private var startResult: Bool
+    private(set) var startCount = 0
+    private(set) var stopCount = 0
+    /// Simulates a real monitor flushing an open burst while it stops.
+    var eventFlushedOnStop: InputEvent?
+    private var onMouseDown: (@Sendable (InputMouseDown) async -> Void)?
+    private var onActionCompleted: (@Sendable (InputEventDraft) async -> Void)?
+    private var onEvent: (@Sendable (InputEvent) async -> Void)?
+
+    init(startResult: Bool = true) {
+        self.startResult = startResult
+    }
+
+    func setStartResult(_ value: Bool) { startResult = value }
+
+    func setHandlers(
+        onMouseDown: (@Sendable (InputMouseDown) async -> Void)?,
+        onActionCompleted: (@Sendable (InputEventDraft) async -> Void)?,
+        onEvent: (@Sendable (InputEvent) async -> Void)?
+    ) {
+        self.onMouseDown = onMouseDown
+        self.onActionCompleted = onActionCompleted
+        self.onEvent = onEvent
+    }
+
+    func updatePrivacyPolicy(_ policy: InputPrivacyPolicy) {}
+    func drainStats() -> InputEventStats { InputEventStats() }
+
+    func startMonitoring() async -> Bool {
+        startCount += 1
+        return startResult
+    }
+
+    func stopMonitoring() async {
+        stopCount += 1
+        if let event = eventFlushedOnStop {
+            eventFlushedOnStop = nil
+            await onEvent?(event)
+        }
+    }
+
+    func setEventFlushedOnStop(_ event: InputEvent?) { eventFlushedOnStop = event }
+
+    var hasHandlers: Bool { onMouseDown != nil || onActionCompleted != nil || onEvent != nil }
+
+    func emitMouseDown(tsMs: Int64) async {
+        await onMouseDown?(InputMouseDown(button: .left, tsMs: tsMs, x: 10, y: 10))
+    }
+
+    func emitClickCompleted(button: InputButton = .left, endTsMs: Int64) async {
+        await onActionCompleted?(InputEventDraft(
+            kind: .click, tsMs: endTsMs - 60, endTsMs: endTsMs, button: button, clickCount: 1,
+            modifiers: [], x: 10, y: 10
+        ))
+    }
+
+    func emitEvent(_ event: InputEvent) async { await onEvent?(event) }
+}
+
+private actor InputPreRecorder {
+    private(set) var results: [InputPreCaptureResult] = []
+    func append(_ result: InputPreCaptureResult) { results.append(result) }
+}
+
+private actor InputEventRecorder {
+    private(set) var events: [InputEvent] = []
+    func append(_ event: InputEvent) { events.append(event) }
+}
+
+/// Blocks inside `captureFrame` until released, to model a capture that is already executing.
+private actor GatedScreenCaptureBackend: ScreenCaptureBackend {
+    private var frames: [CapturedFrame]
+    private let gate = AsyncGate()
+    private var captures = 0
+
+    init(frames: [CapturedFrame]) { self.frames = frames }
+
+    func startCapture(config: CaptureConfig, displayID: CGDirectDisplayID?) async throws {}
+    func stopCapture() async throws {}
+    func updateConfig(_ config: CaptureConfig) async throws {}
+
+    func captureFrame(displayID: CGDirectDisplayID) async -> CapturedFrame? {
+        captures += 1
+        await gate.wait()
+        guard !frames.isEmpty else { return nil }
+        return frames.removeFirst()
+    }
+
+    func release() async { await gate.open() }
+    func captureCount() -> Int { captures }
+}
+
+final class CaptureInputEventSchedulingTests: XCTestCase {
+
+    private func inputConfig(
+        captureOnMouseClick: Bool = false,
+        inputEventLoggingEnabled: Bool = true
+    ) -> CaptureConfig {
+        CaptureConfig(
+            captureIntervalSeconds: 60,
+            adaptiveCaptureEnabled: true,
+            deduplicationThreshold: CaptureConfig.defaultDeduplicationThreshold,
+            keepFramesOnMouseMovement: false,
+            maxResolution: .hd1080,
+            excludedAppBundleIDs: [],
+            excludePrivateWindows: false,
+            showCursor: true,
+            captureOnWindowChange: true,
+            captureOnMouseClick: captureOnMouseClick,
+            inputEventLoggingEnabled: inputEventLoggingEnabled
+        )
+    }
+
+    private func makeManager(
+        backend: any ScreenCaptureBackend,
+        inputMonitor: FakeInputEventMonitor,
+        refractory: TimeInterval = 0.2,
+        settle: TimeInterval = 0.05
+    ) -> CaptureManager {
+        CaptureManager(
+            config: inputConfig(),
+            cgWindowListCapture: backend,
+            displayMonitor: FakeDisplayMonitor(activeDisplayID: 3, hasPermission: true),
+            displaySwitchMonitor: FakeDisplaySwitchMonitor(),
+            mouseClickMonitor: FakeMouseClickMonitor(startResult: true),
+            inputEventMonitor: inputMonitor,
+            appInfoProvider: FakeAppInfoProvider(metadata: FrameMetadata(
+                appBundleID: "com.example.app", appName: "Example", windowName: "W", displayID: 3
+            )),
+            schedulingConfiguration: CaptureSchedulingConfiguration(
+                minimumInterCaptureInterval: refractory,
+                mouseClickSettleDelay: settle,
+                windowChangeSettleDelay: 0.06,
+                startWithImmediateIntervalCapture: false
+            )
+        )
+    }
+
+    private func frame(_ pixel: UInt8, at timestamp: Date = Date()) -> CapturedFrame {
+        let imageData = Data(repeating: pixel, count: 4 * 4 * 4)
+        return CapturedFrame(
+            timestamp: timestamp, imageData: imageData, width: 4, height: 4, bytesPerRow: 16,
+            metadata: FrameMetadata(displayID: 3)
+        )
+    }
+
+    private func sleep(_ milliseconds: UInt64) async throws {
+        try await Task.sleep(nanoseconds: milliseconds * 1_000_000)
+    }
+
+    func testMouseDownForcesAnImmediateCaptureAndReportsTheStoredFramesExactTimestamp() async throws {
+        let stamp = Date()
+        let backend = FakeScreenCaptureBackend(frames: [frame(10, at: stamp)])
+        let input = FakeInputEventMonitor()
+        let recorder = InputPreRecorder()
+        let collector = FrameCollector()
+        let manager = makeManager(backend: backend, inputMonitor: input)
+        manager.onInputPreCaptureOutcome = { await recorder.append($0) }
+
+        try await manager.startCapture(config: inputConfig())
+        let stream = await manager.frameStream
+        let streamTask = Task { for await f in stream { await collector.append(f) } }
+        defer { streamTask.cancel(); Task { try? await manager.stopCapture() } }
+
+        await input.emitMouseDown(tsMs: 1_234)
+        try await sleep(40)
+
+        let captureCount = await backend.captureCount()
+        let results = await recorder.results
+        let stored = await collector.lastFrame()
+        XCTAssertEqual(captureCount, 1, "no settle delay: the pressed state is grabbed right away")
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results.first?.requestMs, 1_234)
+        XCTAssertEqual(results.first?.outcome, .captured)
+        XCTAssertEqual(results.first?.keptFrameTimestampMs, InputEvent.epochMilliseconds(stamp),
+                       "same clock and truncation as frame.createdAt so the DB can match it exactly")
+        XCTAssertEqual(stored?.metadata.captureTrigger, .mouse)
+        XCTAssertEqual(stored?.metadata.displayID, 3,
+                       "the captured display must survive enrichment: exports skip frames whose display is unknown")
+    }
+
+    func testMouseDownCaptureBypassesTheRefractoryWindow() async throws {
+        let backend = FakeScreenCaptureBackend(frames: [frame(10), frame(90)])
+        let input = FakeInputEventMonitor()
+        let manager = makeManager(backend: backend, inputMonitor: input, refractory: 0.5)
+
+        try await manager.startCapture(config: inputConfig())
+        defer { Task { try? await manager.stopCapture() } }
+
+        await input.emitMouseDown(tsMs: 1_000)
+        try await sleep(30)
+        await input.emitMouseDown(tsMs: 1_060)
+        try await sleep(40)
+
+        let captureCount = await backend.captureCount()
+        XCTAssertEqual(captureCount, 2, "two clicks 60ms apart both get a pre-click frame")
+    }
+
+    func testPreCaptureDoesNotSwallowTheSettledPostCapture() async throws {
+        let backend = FakeScreenCaptureBackend(frames: [frame(10), frame(90)])
+        let input = FakeInputEventMonitor()
+        // A 0.5s refractory would block the post capture if the forced frame started the window.
+        let manager = makeManager(backend: backend, inputMonitor: input, refractory: 0.5, settle: 0.05)
+
+        try await manager.startCapture(config: inputConfig())
+        defer { Task { try? await manager.stopCapture() } }
+
+        await input.emitMouseDown(tsMs: InputEvent.epochMilliseconds(Date()))
+        try await sleep(20)
+        await input.emitClickCompleted(endTsMs: InputEvent.epochMilliseconds(Date()))
+        try await sleep(150)
+
+        let captureCount = await backend.captureCount()
+        XCTAssertEqual(captureCount, 2, "pre frame at mouse-down, settled post frame ~50ms after mouse-up")
+    }
+
+    func testIdenticalPreCaptureIsReportedAsDedupedWithNoTimestamp() async throws {
+        let backend = FakeScreenCaptureBackend(frames: [frame(40), frame(40)])
+        let input = FakeInputEventMonitor()
+        let recorder = InputPreRecorder()
+        let manager = makeManager(backend: backend, inputMonitor: input)
+        manager.onInputPreCaptureOutcome = { await recorder.append($0) }
+
+        try await manager.startCapture(config: inputConfig())
+        defer { Task { try? await manager.stopCapture() } }
+
+        await input.emitMouseDown(tsMs: 1_000)
+        try await sleep(30)
+        await input.emitMouseDown(tsMs: 1_100)
+        try await sleep(40)
+
+        let results = await recorder.results
+        XCTAssertEqual(results.map(\.outcome), [.captured, .deduped])
+        XCTAssertNil(results.last?.keptFrameTimestampMs, "a deduped frame has no row to link")
+    }
+
+    func testMouseDownDuringAnExecutingCaptureIsReportedDropped() async throws {
+        let backend = GatedScreenCaptureBackend(frames: [frame(10), frame(90)])
+        let input = FakeInputEventMonitor()
+        let recorder = InputPreRecorder()
+        let manager = makeManager(backend: backend, inputMonitor: input)
+        manager.onInputPreCaptureOutcome = { await recorder.append($0) }
+
+        try await manager.startCapture(config: inputConfig())
+        defer { Task { try? await manager.stopCapture() } }
+
+        await input.emitMouseDown(tsMs: 1_000)
+        try await sleep(30)                       // first capture is now blocked inside the backend
+        await input.emitMouseDown(tsMs: 1_050)    // arrives while one is executing
+        try await sleep(30)
+        let droppedWhileBlocked = await recorder.results
+        XCTAssertEqual(droppedWhileBlocked.map(\.requestMs), [1_050])
+        XCTAssertEqual(droppedWhileBlocked.map(\.outcome), [.dropped])
+
+        await backend.release()
+        try await sleep(40)
+        let results = await recorder.results
+        XCTAssertEqual(results.map(\.outcome), [.dropped, .captured])
+        XCTAssertEqual(results.last?.requestMs, 1_000)
+    }
+
+    func testFailedPreCaptureIsReported() async throws {
+        let backend = FakeScreenCaptureBackend(frames: [])
+        let input = FakeInputEventMonitor()
+        let recorder = InputPreRecorder()
+        let manager = makeManager(backend: backend, inputMonitor: input)
+        manager.onInputPreCaptureOutcome = { await recorder.append($0) }
+
+        try await manager.startCapture(config: inputConfig())
+        defer { Task { try? await manager.stopCapture() } }
+
+        await input.emitMouseDown(tsMs: 1_000)
+        try await sleep(30)
+        let results = await recorder.results
+        XCTAssertEqual(results.map(\.outcome), [.failed])
+    }
+
+    func testSettledPostCaptureIsRequestedUnlessClickCaptureAlreadyHandlesLeftClicks() async throws {
+        // Input logging only: a completed click must schedule its own settled capture.
+        do {
+            let backend = FakeScreenCaptureBackend(frames: [frame(10)])
+            let input = FakeInputEventMonitor()
+            let manager = makeManager(backend: backend, inputMonitor: input, settle: 0.03)
+            try await manager.startCapture(config: inputConfig(captureOnMouseClick: false))
+            await input.emitClickCompleted(endTsMs: InputEvent.epochMilliseconds(Date()))
+            try await sleep(100)
+            let count = await backend.captureCount()
+            XCTAssertEqual(count, 1)
+            try await manager.stopCapture()
+        }
+
+        // Click capture on: the existing left-click path owns the post frame; no duplicate request.
+        do {
+            let backend = FakeScreenCaptureBackend(frames: [frame(10)])
+            let input = FakeInputEventMonitor()
+            let manager = makeManager(backend: backend, inputMonitor: input, settle: 0.03)
+            try await manager.startCapture(config: inputConfig(captureOnMouseClick: true))
+            await input.emitClickCompleted(button: .left, endTsMs: InputEvent.epochMilliseconds(Date()))
+            try await sleep(100)
+            let leftCount = await backend.captureCount()
+            XCTAssertEqual(leftCount, 0)
+
+            // A right click is not covered by the left-mouse-up path, so input logging captures it.
+            await input.emitClickCompleted(button: .right, endTsMs: InputEvent.epochMilliseconds(Date()))
+            try await sleep(100)
+            let rightCount = await backend.captureCount()
+            XCTAssertEqual(rightCount, 1)
+            try await manager.stopCapture()
+        }
+    }
+
+    func testEventsAreForwardedOnlyWhileLoggingIsEnabled() async throws {
+        let backend = FakeScreenCaptureBackend(frames: [])
+        let input = FakeInputEventMonitor()
+        let recorder = InputEventRecorder()
+        let manager = makeManager(backend: backend, inputMonitor: input)
+        manager.onInputEvent = { await recorder.append($0) }
+
+        try await manager.startCapture(config: inputConfig())
+        defer { Task { try? await manager.stopCapture() } }
+
+        await input.emitEvent(InputEvent(tsMs: 1_000, kind: .click))
+        try await manager.updateConfig(inputConfig(inputEventLoggingEnabled: false))
+        await input.emitEvent(InputEvent(tsMs: 2_000, kind: .click))
+
+        let events = await recorder.events
+        XCTAssertEqual(events.map(\.tsMs), [1_000])
+        let stopCount = await input.stopCount
+        XCTAssertGreaterThanOrEqual(stopCount, 1, "turning logging off stops the tap")
+    }
+
+    func testStopCaptureDeliversTheFinalBurstBeforeDetachingHandlers() async throws {
+        let backend = FakeScreenCaptureBackend(frames: [])
+        let input = FakeInputEventMonitor()
+        let recorder = InputEventRecorder()
+        let manager = makeManager(backend: backend, inputMonitor: input)
+        manager.onInputEvent = { await recorder.append($0) }
+
+        try await manager.startCapture(config: inputConfig())
+        await input.setEventFlushedOnStop(InputEvent(tsMs: 9_000, kind: .typing, typedCount: 4))
+        try await manager.stopCapture()
+
+        let events = await recorder.events
+        XCTAssertEqual(events.map(\.typedCount), [4], "the burst open at stop must still be recorded")
+        let stillHasHandlers = await input.hasHandlers
+        XCTAssertFalse(stillHasHandlers, "handlers are detached once the monitor has stopped")
+    }
+
+    func testMonitoringStartsOnlyWhenEnabledAndRetriesAfterPermissionGrant() async throws {
+        let backend = FakeScreenCaptureBackend(frames: [])
+        let disabledMonitor = FakeInputEventMonitor()
+        let disabled = makeManager(backend: backend, inputMonitor: disabledMonitor)
+        try await disabled.startCapture(config: inputConfig(inputEventLoggingEnabled: false))
+        let disabledStarts = await disabledMonitor.startCount
+        XCTAssertEqual(disabledStarts, 0)
+        try await disabled.stopCapture()
+
+        let flaky = FakeInputEventMonitor(startResult: false)
+        let manager = makeManager(backend: backend, inputMonitor: flaky)
+        try await manager.startCapture(config: inputConfig())
+        let firstStarts = await flaky.startCount
+        XCTAssertEqual(firstStarts, 1)
+
+        await flaky.setStartResult(true)
+        await manager.retryInputEventMonitoringIfNeeded()
+        let retriedStarts = await flaky.startCount
+        XCTAssertEqual(retriedStarts, 2, "permission granted later: monitoring starts without restarting capture")
+
+        await manager.retryInputEventMonitoringIfNeeded()
+        let settledStarts = await flaky.startCount
+        XCTAssertEqual(settledStarts, 2, "no retry once it is running")
+        try await manager.stopCapture()
+    }
+}
