@@ -20,6 +20,38 @@ struct PauseReminderSettingsSnapshot: Sendable {
     }
 }
 
+/// Tracks the window in which capture was stopped by system sleep and the wake handler still owes a resume.
+///
+/// Sleep stops the pipeline on purpose, so that stop must not be treated like a user pause: the reminder
+/// timer would otherwise fire while the Mac is asleep/dark-waking and the panel would already be on screen
+/// when the user opens the lid. The flag is sticky: a second `willSleep` while already stopped (dark-wake
+/// cycles) must not clear it, otherwise the wake handler would silently skip the resume.
+@MainActor
+final class SleepResumeState {
+    static let shared = SleepResumeState()
+
+    private(set) var isResumePending = false
+    private var lastResumeFailed = false
+
+    /// Call before stopping the pipeline for sleep so no poll tick sees "not capturing" without it.
+    func markResumePending() {
+        isResumePending = true
+        lastResumeFailed = false
+    }
+
+    /// Call when the resume finished (`succeeded`), was abandoned on purpose, or ran out of retries.
+    func finishResume(succeeded: Bool) {
+        isResumePending = false
+        lastResumeFailed = !succeeded
+    }
+
+    /// Returns true once if the last resume failed, so the reminder can be shown immediately.
+    func consumeResumeFailure() -> Bool {
+        defer { lastResumeFailed = false }
+        return lastResumeFailed
+    }
+}
+
 /// Manages the pause reminder notification that appears after capture has been paused for 5 minutes
 /// Similar to Rewind AI's "Rewind is paused" notification
 @MainActor
@@ -38,10 +70,32 @@ public class PauseReminderManager: ObservableObject {
         }
     }
 
-    private enum SuppressionState: Equatable {
+    enum SuppressionState: Equatable {
         case none
         case onboarding
         case paused
+        /// Capture was stopped by system sleep and the wake handler is about to resume it.
+        case sleepResume
+    }
+
+    /// Whether leaving a suppression window while still not capturing should start the off-reminder timer.
+    nonisolated static func shouldStartOffReminder(leaving previous: SuppressionState, isCapturing: Bool) -> Bool {
+        guard !isCapturing else { return false }
+        switch previous {
+        case .paused, .sleepResume:
+            return true
+        case .none, .onboarding:
+            return false
+        }
+    }
+
+    /// A failed wake resume means recording really is off: tell the user now instead of after the delay.
+    nonisolated static func shouldShowImmediateReminderAfterFailedResume(
+        resumeFailed: Bool,
+        isCapturing: Bool,
+        isPausedState: Bool
+    ) -> Bool {
+        resumeFailed && !isCapturing && !isPausedState
     }
 
     // MARK: - Published State
@@ -193,6 +247,34 @@ public class PauseReminderManager: ObservableObject {
             hasCheckedInitialState = true
             wasCapturing = isCapturing
             suppressionState = .paused
+            // A failed wake resume is moot once the user has taken over with a timed pause.
+            _ = SleepResumeState.shared.consumeResumeFailure()
+            return
+        }
+
+        // Sleep stopped capture on purpose and the wake handler owes a resume. Treat it like a pause for
+        // reminder purposes: no timer, no panel, and hide anything that was armed/shown before the stop.
+        if SleepResumeState.shared.isResumePending {
+            if pauseStartTime != nil || reminderTimer != nil || remindLaterTimer != nil || shouldShowReminder {
+                onCaptureResumed()
+                Log.debug("[PauseReminderManager] Suppressing off reminder while waiting for wake resume", category: .ui)
+            }
+            hasCheckedInitialState = true
+            wasCapturing = isCapturing
+            suppressionState = .sleepResume
+            return
+        }
+
+        // The wake resume ran out of retries, so recording really is off: tell the user right away.
+        if Self.shouldShowImmediateReminderAfterFailedResume(
+            resumeFailed: SleepResumeState.shared.consumeResumeFailure(),
+            isCapturing: isCapturing,
+            isPausedState: isPausedState
+        ) {
+            hasCheckedInitialState = true
+            wasCapturing = isCapturing
+            suppressionState = .none
+            showUnexpectedStopReminder()
             return
         }
 
@@ -207,8 +289,9 @@ public class PauseReminderManager: ObservableObject {
             return
         }
 
-        // Transitioned from paused state -> off (still not capturing): start off reminder timer now.
-        if suppressionState == .paused && !isCapturing {
+        // Transitioned from a suppression window (timed pause / sleep resume) -> off (still not capturing):
+        // start off reminder timer now.
+        if Self.shouldStartOffReminder(leaving: suppressionState, isCapturing: isCapturing) {
             onCapturePaused()
         }
         suppressionState = .none
@@ -282,6 +365,12 @@ public class PauseReminderManager: ObservableObject {
     private func showReminderIfNotDismissed() async {
         guard !isDismissedForSession else {
             Log.debug("[PauseReminderManager] Reminder suppressed (user dismissed)", category: .ui)
+            return
+        }
+
+        // A timer armed before sleep can fire during dark wake; the wake handler is about to resume capture.
+        guard !SleepResumeState.shared.isResumePending else {
+            Log.debug("[PauseReminderManager] Reminder suppressed (waiting for wake resume)", category: .ui)
             return
         }
 

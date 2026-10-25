@@ -1390,16 +1390,20 @@ public actor AppCoordinator {
         }
 
         Log.info("Starting capture pipeline...", category: .app)
+        let startBegan = Date()
+        func elapsedMs() -> Int { Int(Date().timeIntervalSince(startBegan) * 1000) }
 
         // Join any in-flight crash recovery and ensure WAL writes are available
         // before we start capture.
         try await prepareForPipelineStart()
+        Log.info("[PIPELINE-START] storage/crash-recovery ready at +\(elapsedMs())ms", category: .app)
 
         // Check permissions before starting capture
         guard await services.capture.hasPermission() else {
             Log.error("Screen recording permission not granted", category: .app)
             throw AppError.permissionDenied(permission: "screen recording")
         }
+        Log.info("[PIPELINE-START] permission check passed at +\(elapsedMs())ms", category: .app)
 
         services.capture.onCaptureStopped = nil
         services.capture.onCaptureObserved = { timestamp, trigger in
@@ -1424,6 +1428,7 @@ public actor AppCoordinator {
 
         // Start screen capture
         try await services.capture.startCapture(config: await services.capture.getConfig())
+        Log.info("[PIPELINE-START] capture started at +\(elapsedMs())ms", category: .app)
 
         // Start permission monitoring to detect if user revokes permissions while recording
         await startPermissionMonitoring()
