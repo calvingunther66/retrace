@@ -203,7 +203,7 @@ retrace/
 │   └── validate_darkwake_watchdog.sh # Automated darkwake watchdog regression validation
 │
 ├── Sources/                     # Standalone executables
-│   ├── RetraceCLI/              # retrace-cli: AI search/indexing harness (search, ask-plan, ask-local, memory, ai-context, bench, index-bench, rebuild-vectors, vector-status, ask); snapshot-DB only
+│   ├── RetraceCLI/              # retrace-cli: AI search/indexing harness (search, ask-plan, ask-local, memory, ai-context, bench, index-bench, rebuild-vectors, vector-status, ask) + export (privacy-filtered input events + frames) and frame-image; snapshot-DB only
 │   ├── QueryRewindApps/
 │   └── TestMostRecentFrame/
 │
@@ -227,6 +227,7 @@ retrace/
 │   │   ├── FilterCriteria.swift # Timeline/search filter criteria
 │   │   ├── Source.swift         # Data source enum (native, rewind, etc.)
 │   │   ├── Tag.swift            # Tag model types
+│   │   ├── InputEvent.swift     # Input event logging models (InputEvent, InputEventKind, InputAXTarget, InputDisplayGeometry, link summary)
 │   │   └── Comment.swift        # Segment comment and attachment models
 │   └── Protocols/               # Module interfaces
 │       ├── DatabaseProtocol.swift
@@ -249,13 +250,14 @@ retrace/
 │   ├── IDMappingService.swift   # ID mapping between sources
 │   ├── Schema.swift             # Current schema definition
 │   ├── Migrations/              # Schema migration scripts (incl. V21_CognitiveMemorySystem.swift)
-│   ├── Queries/                 # Query implementations (incl. CognitiveMemoryQueries.swift)
+│   ├── Queries/                 # Query implementations (incl. CognitiveMemoryQueries.swift, InputEventQueries.swift)
 │   └── Tests/
 │
 ├── Storage/                     # File I/O, HEVC encoding
 │   ├── AGENTS.md
 │   ├── StorageManager.swift
 │   ├── ImageExtractor.swift     # Extract frames from video files
+│   ├── FrameImageEncoder.swift  # Max-side downscale + JPEG/PNG encode of a decoded frame (CoreGraphics/ImageIO, off-main safe)
 │   ├── IncrementalSegmentWriter.swift
 │   ├── SegmentWriterImpl.swift
 │   ├── FileManager/             # File system utilities
@@ -266,7 +268,8 @@ retrace/
 ├── Capture/                     # CGWindowListCapture integration
 │   ├── AGENTS.md
 │   ├── CaptureManager.swift
-│   ├── ScreenCapture/           # Screen capture implementation
+│   ├── ScreenCapture/           # Screen capture implementation (+ ExclusionPatternMatcher shared with input logging)
+│   ├── Input/                   # Input event logging (clicks/scrolls/shortcuts/typing counts): aggregator, listen-only tap monitor, AX/display context, fail-closed privacy policy; off by default (see Capture/Input/AGENTS.md)
 │   ├── Deduplication/           # Perceptual hash deduplication
 │   ├── Metadata/                # AppInfoProvider, BrowserURLExtractor
 │   ├── AppleScriptHelper/       # Bundled non-interactive helper executable for AppleScript-based browser URL extraction
@@ -300,6 +303,12 @@ retrace/
 │   ├── OpenRouter/              # OpenRouter-backed semantic indexing pipeline (OpenRouterClient, DescriptionSalvageParser: tolerant per-entry parser for truncated/odd vision replies)
 │   └── Tests/
 │
+├── Export/                      # Privacy-filtered input-event + frame export (used by retrace-cli only)
+│   ├── AGENTS.md
+│   ├── ExportDenyList.swift     # retrace_mcp.toml [privacy] parser + matching
+│   ├── InputEventExporter.swift # Gates, decodes/downscales frames, writes events.jsonl/frames/manifest.json
+│   └── Tests/
+│
 ├── Migration/                   # Import from other apps
 │   ├── AGENTS.md
 │   ├── MigrationManager.swift
@@ -309,6 +318,7 @@ retrace/
 │   ├── AppCoordinator.swift     # Central coordinator (orchestrates all modules)
 │   ├── DataAdapter.swift        # Data layer adapter (DB queries, transformations)
 │   ├── FeedbackRecentMetricSupport.swift # Shared feedback-export metric models and sanitization helpers
+│   ├── InputEventWriter.swift   # Buffers/batch-inserts input events, correlates the forced mouse-down frame, runs the lazy frame-link resolver, aggregated metrics
 │   ├── ServiceContainer.swift   # Dependency injection container
 │   ├── AppLifecycle.swift       # App lifecycle management
 │   ├── ModelManager.swift       # Model management
@@ -316,6 +326,7 @@ retrace/
 │   ├── RetentionManager.swift   # Data retention policies
 │   └── Tests/
 │       ├── FeedbackRecentMetricSupportTests.swift # Feedback-export metric sanitization coverage
+│       ├── InputEventWriterTests.swift # Writer against a real in-memory DB: linking, forced-frame report races, retry, metrics
 │       ├── InPageURLCaptureRoutingTests.swift
 │       ├── LoggingSystemTests.swift # Structured error context, error frequency, and crash logging coverage
 │       ├── MasterKeyManagerTests.swift
@@ -372,6 +383,7 @@ retrace/
 | **CAPTURE**    | `Capture/`    | `Capture/AGENTS.md`    | CGWindowListCapture API, frame deduplication, metadata extraction  |
 | **PROCESSING** | `Processing/` | `Processing/AGENTS.md` | Vision OCR, Accessibility API (no audio transcription yet)         |
 | **SEARCH**     | `Search/`     | `Search/AGENTS.md`     | Query parsing, FTS5 queries, result ranking, Cognitive Memory System (dense vector search, entity mesh, episodic clustering, multi-hop reasoning) |
+| **EXPORT**     | `Export/`     | `Export/AGENTS.md`     | Privacy-filtered input-event + frame export for `retrace-cli export` |
 | **MIGRATION**  | `Migration/`  | `Migration/AGENTS.md`  | Import from Rewind AI (Rewind only, others planned)                |
 | **APP**        | `App/`        | —                      | Coordinator, DI container, data adapter, lifecycle management      |
 | **UI**         | `UI/`         | `UI/AGENTS.md`         | SwiftUI interface (timeline, dashboard, settings, search)          |

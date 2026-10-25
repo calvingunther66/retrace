@@ -161,6 +161,11 @@ public struct CaptureConfig: Codable, Sendable {
     /// Default is false until the user enables it and grants Input Monitoring permission.
     public let captureOnMouseClick: Bool
 
+    /// Whether to log user input events (clicks, scrolls, shortcuts, typing counts) linked to frames.
+    /// Independent of `captureOnMouseClick`. Default false until the user opts in and grants
+    /// Input Monitoring (and Accessibility for element targets).
+    public let inputEventLoggingEnabled: Bool
+
     public init(
         captureIntervalSeconds: Double = 2.0,
         adaptiveCaptureEnabled: Bool = true,
@@ -175,7 +180,8 @@ public struct CaptureConfig: Codable, Sendable {
         redactBrowserURLPatterns: [String] = [],
         idleThresholdSeconds: Double = 120.0,
         captureOnWindowChange: Bool = true,
-        captureOnMouseClick: Bool = false
+        captureOnMouseClick: Bool = false,
+        inputEventLoggingEnabled: Bool = false
     ) {
         self.captureIntervalSeconds = captureIntervalSeconds
         self.adaptiveCaptureEnabled = adaptiveCaptureEnabled
@@ -191,6 +197,7 @@ public struct CaptureConfig: Codable, Sendable {
         self.idleThresholdSeconds = idleThresholdSeconds
         self.captureOnWindowChange = captureOnWindowChange
         self.captureOnMouseClick = captureOnMouseClick
+        self.inputEventLoggingEnabled = inputEventLoggingEnabled
     }
 
     public func updating(
@@ -207,7 +214,8 @@ public struct CaptureConfig: Codable, Sendable {
         redactBrowserURLPatterns: [String]? = nil,
         idleThresholdSeconds: Double? = nil,
         captureOnWindowChange: Bool? = nil,
-        captureOnMouseClick: Bool? = nil
+        captureOnMouseClick: Bool? = nil,
+        inputEventLoggingEnabled: Bool? = nil
     ) -> Self {
         Self(
             captureIntervalSeconds: captureIntervalSeconds ?? self.captureIntervalSeconds,
@@ -223,7 +231,8 @@ public struct CaptureConfig: Codable, Sendable {
             redactBrowserURLPatterns: redactBrowserURLPatterns ?? self.redactBrowserURLPatterns,
             idleThresholdSeconds: idleThresholdSeconds ?? self.idleThresholdSeconds,
             captureOnWindowChange: captureOnWindowChange ?? self.captureOnWindowChange,
-            captureOnMouseClick: captureOnMouseClick ?? self.captureOnMouseClick
+            captureOnMouseClick: captureOnMouseClick ?? self.captureOnMouseClick,
+            inputEventLoggingEnabled: inputEventLoggingEnabled ?? self.inputEventLoggingEnabled
         )
     }
 

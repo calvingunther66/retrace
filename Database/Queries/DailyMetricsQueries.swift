@@ -110,6 +110,9 @@ public enum DailyMetricsQueries {
         case mouseMovementDeduplicationToggle = "mouse_movement_deduplication_toggle"
         case mouseClickCapture = "mouse_click_capture"
         case mouseClickCaptureToggle = "mouse_click_capture_toggle"
+        case inputEventLoggingToggle = "input_event_logging_toggle"  // metadata: JSON {enabled, outcome: applied|permission_denied, hasInputMonitoring, hasAccessibility}
+        case inputEventLogged = "input_event_logged"  // metadata: JSON {click, scroll, shortcut, typing, unverified, droppedDrag, droppedSecureInput, droppedSecureField, droppedExcluded} (aggregated, <= 1 row/minute)
+        case inputEventLinked = "input_event_linked"  // metadata: JSON {resolved, gaveUp, stillPending, redacted, preMissing, postMissing} (aggregated, <= 1 row/minute)
         case captureIntervalUpdated = "capture_interval_updated"  // metadata: JSON {seconds, mode, source}
         case videoQualityUpdated = "video_quality_updated"
         case inPageURLPermissionProbe = "in_page_url_permission_probe"

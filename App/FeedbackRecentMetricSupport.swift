@@ -81,6 +81,8 @@ enum FeedbackRecentMetricSupport {
         .helpOpened,
         .inPageURLHover,
         .mouseClickCapture,
+        .inputEventLogged,
+        .inputEventLinked,
         .phraseLevelRedactionQueuedHover,
         .arrowKeyNavigation,
         .keyboardShortcut,

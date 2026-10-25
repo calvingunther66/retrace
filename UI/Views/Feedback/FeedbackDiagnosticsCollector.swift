@@ -320,6 +320,7 @@ extension FeedbackService {
         settings["keepFramesOnMouseMovement"] = boolString(defaults.object(forKey: "keepFramesOnMouseMovement") as? Bool ?? true)
         settings["captureOnWindowChange"] = boolString(defaults.object(forKey: "captureOnWindowChange") as? Bool ?? true)
         settings["captureOnMouseClick"] = boolString(defaults.object(forKey: "captureOnMouseClick") as? Bool ?? false)
+        settings["inputEventLoggingEnabled"] = boolString(defaults.object(forKey: "inputEventLoggingEnabled") as? Bool ?? false)
         settings["excludePrivateWindows"] = boolString(defaults.object(forKey: "excludePrivateWindows") as? Bool ?? false)
         settings["excludeCursor"] = boolString(defaults.object(forKey: "excludeCursor") as? Bool ?? false)
 

@@ -96,6 +96,7 @@ public struct SettingsView: View {
     @AppStorage("keepFramesOnMouseMovement", store: settingsStore) var keepFramesOnMouseMovement = SettingsDefaults.keepFramesOnMouseMovement
     @AppStorage("captureOnWindowChange", store: settingsStore) var captureOnWindowChange: Bool = SettingsDefaults.captureOnWindowChange
     @AppStorage("captureOnMouseClick", store: settingsStore) var captureOnMouseClick: Bool = SettingsDefaults.captureOnMouseClick
+    @AppStorage("inputEventLoggingEnabled", store: settingsStore) var inputEventLoggingEnabled: Bool = SettingsDefaults.inputEventLoggingEnabled
     @AppStorage("collectInPageURLsExperimental", store: settingsStore) var collectInPageURLsExperimental: Bool = SettingsDefaults.collectInPageURLsExperimental
     @AppStorage("inPageURLPermissionCache", store: settingsStore) var inPageURLPermissionCacheRaw = ""
     @State var lastNonZeroCaptureIntervalSeconds = SettingsDefaults.captureIntervalSeconds
@@ -276,6 +277,7 @@ public struct SettingsView: View {
     @State var hasAccessibilityPermission = false
     @State var hasListenEventAccess = false
     @State var isProgrammaticMouseClickCaptureToggleChange = false
+    @State var isProgrammaticInputEventLoggingToggleChange = false
     @State var browserExtractionPermissionStatus: PermissionStatus = .notDetermined
     @State var inPageURLTargets: [InPageURLBrowserTarget] = []
     @State var inPageURLPermissionStateByBundleID: [String: InPageURLPermissionState] = [:]

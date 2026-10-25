@@ -603,6 +603,89 @@ public actor DatabaseManager: DatabaseProtocol {
         }
     }
 
+    // MARK: - Input Events (V24)
+    //
+    // Concrete-only (not on DatabaseProtocol): input logging is an App-layer feature and the
+    // resolver's UPDATEs must run on this actor's write connection, not the query_only read pool.
+
+    /// Persist a batch of input events in one transaction. Returns the new row ids.
+    @discardableResult
+    public func insertInputEvents(_ events: [InputEvent]) async throws -> [Int64] {
+        try withTracedDatabaseOperation("insert_input_events") { db in
+            try InputEventQueries.insertBatch(db: db, events: events)
+        }
+    }
+
+    /// Pair pending events with the frames around them (see `InputEventQueries.resolveLinks`).
+    public func resolveInputEventLinks(
+        nowMs: Int64,
+        minAgeMs: Int64 = 5_000,
+        giveUpAfterMs: Int64 = 30_000,
+        limit: Int = 200
+    ) async throws -> InputEventLinkSummary {
+        try withTracedDatabaseOperation("resolve_input_event_links") { db in
+            try InputEventQueries.resolveLinks(
+                db: db,
+                nowMs: nowMs,
+                minAgeMs: minAgeMs,
+                giveUpAfterMs: giveUpAfterMs,
+                limit: limit
+            )
+        }
+    }
+
+    /// Export-gating facts for a set of frames (redaction, processing/rewrite state, display, video, segment).
+    public func getInputExportFrameInfo(frameIDs: [Int64]) async throws -> [Int64: InputExportFrameInfo] {
+        try withTracedDatabaseOperation("get_input_export_frame_info") { db in
+            try InputEventQueries.exportFrameInfo(db: db, frameIDs: frameIDs)
+        }
+    }
+
+    /// Late-arriving forced-capture correlation for a click that was already stored.
+    @discardableResult
+    public func setInputEventDownFrameTimestamp(eventTsMs: Int64, frameTsMs: Int64) async throws -> Bool {
+        try withTracedDatabaseOperation("set_input_event_down_frame") { db in
+            try InputEventQueries.setDownFrameTimestamp(db: db, eventTsMs: eventTsMs, frameTsMs: frameTsMs)
+        }
+    }
+
+    public func getInputEvents(
+        sinceMs: Int64,
+        untilMs: Int64,
+        kinds: [InputEventKind]? = nil,
+        afterID: Int64 = 0,
+        limit: Int = 500
+    ) async throws -> [InputEvent] {
+        try withTracedDatabaseOperation("get_input_events") { db in
+            try InputEventQueries.fetchRange(
+                db: db,
+                sinceMs: sinceMs,
+                untilMs: untilMs,
+                kinds: kinds,
+                afterID: afterID,
+                limit: limit
+            )
+        }
+    }
+
+    public func getInputEventAXElements(eventID: Int64) async throws -> [InputAXElement] {
+        try withTracedDatabaseOperation("get_input_event_ax") { db in
+            try InputEventQueries.fetchAXElements(db: db, eventID: eventID)
+        }
+    }
+
+    /// Delete events older than `cutoff` (batched). Returns rows deleted.
+    @discardableResult
+    public func deleteInputEvents(olderThan cutoff: Date, limit: Int = 500) async throws -> Int {
+        try withTracedDatabaseOperation("delete_input_events") { db in
+            try InputEventQueries.deleteOlderThan(
+                db: db,
+                cutoffMs: Schema.dateToTimestamp(cutoff),
+                limit: limit
+            )
+        }
+    }
+
     public func getFrame(id: FrameID) async throws -> FrameReference? {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")

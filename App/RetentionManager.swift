@@ -202,6 +202,20 @@ public actor RetentionManager {
                 deletedSegmentCount = try await deleteAppSegmentsOlderThan(cutoffDate, excludingApps: excludedApps, excludingTagIds: excludedTagIds, excludeHidden: excludeHidden)
                 Log.info("[RetentionManager] Deleted \(deletedSegmentCount) app segments", category: .app)
 
+                // Step 3b: Delete input events (clicks, scrolls, shortcuts, typing counts) that aged
+                // out with their frames. Their frame links are ON DELETE SET NULL, so without this
+                // sweep they would outlive the screenshots they describe.
+                let inputEventBatchSize = DatabaseConfig.retentionDeleteBatchSize
+                var deletedInputEventCount = 0
+                while true {
+                    let deleted = try await database.deleteInputEvents(olderThan: cutoffDate, limit: inputEventBatchSize)
+                    deletedInputEventCount += deleted
+                    if deleted < inputEventBatchSize { break }
+                }
+                if deletedInputEventCount > 0 {
+                    Log.info("[RetentionManager] Deleted \(deletedInputEventCount) input events", category: .app)
+                }
+
                 // Step 4: Delete orphaned video segments and their files
                 for videoSegment in videoSegmentsToDelete {
                     do {

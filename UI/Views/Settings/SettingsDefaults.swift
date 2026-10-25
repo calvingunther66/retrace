@@ -72,6 +72,7 @@ enum SettingsDefaults {
     static let keepFramesOnMouseMovement = true
     static let captureOnWindowChange = true
     static let captureOnMouseClick = false
+    static let inputEventLoggingEnabled = false
     static let collectInPageURLsExperimental = false
 
     static let retentionDays: Int = 0

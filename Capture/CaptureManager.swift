@@ -97,6 +97,45 @@ protocol CaptureMouseClickMonitoring: Actor {
     func stopMonitoring() async
 }
 
+/// Input-event logging as seen by `CaptureManager` (an actor so tests can substitute a fake).
+protocol CaptureInputEventMonitoring: Actor {
+    func setHandlers(
+        onMouseDown: (@Sendable (InputMouseDown) async -> Void)?,
+        onActionCompleted: (@Sendable (InputEventDraft) async -> Void)?,
+        onEvent: (@Sendable (InputEvent) async -> Void)?
+    )
+    func updatePrivacyPolicy(_ policy: InputPrivacyPolicy)
+    func drainStats() -> InputEventStats
+    func startMonitoring() async -> Bool
+    func stopMonitoring() async
+}
+
+/// What happened to the capture forced on mouse-down.
+public enum InputPreCaptureOutcome: String, Sendable {
+    /// Captured and kept; `keptFrameTimestampMs` identifies the stored frame exactly.
+    case captured
+    /// Captured but identical to the last kept frame, so no new frame row exists.
+    case deduped
+    /// Another capture was already executing, or the request was replaced.
+    case dropped
+    /// The capture backend returned no frame (blocked state, error).
+    case failed
+}
+
+public struct InputPreCaptureResult: Sendable {
+    /// The mouse-down `tsMs` that requested the capture (matches `InputEvent.tsMs` of the click).
+    public let requestMs: Int64
+    public let outcome: InputPreCaptureOutcome
+    /// `frame.createdAt` of the stored frame, same clock/truncation as the database. Only for `.captured`.
+    public let keptFrameTimestampMs: Int64?
+
+    public init(requestMs: Int64, outcome: InputPreCaptureOutcome, keptFrameTimestampMs: Int64?) {
+        self.requestMs = requestMs
+        self.outcome = outcome
+        self.keptFrameTimestampMs = keptFrameTimestampMs
+    }
+}
+
 protocol CaptureAppInfoProviding: Sendable {
     func getFrontmostAppInfo(
         includeBrowserURL: Bool,
@@ -134,12 +173,18 @@ public actor CaptureManager: CaptureProtocol {
     private static let activationAgreementTimeout: TimeInterval = 0.15
 
     private enum CaptureTrigger: Sendable, Equatable {
+        /// Forced on mouse-down while input logging is on: the "pressed" frame.
+        case inputPre
+        /// Settled capture after a logged action (click, scroll, shortcut, typing burst).
+        case inputPost
         case mouseClick
         case windowChange
         case interval
 
         var priority: Int {
             switch self {
+            case .inputPre: return 4
+            case .inputPost: return 3
             case .mouseClick: return 3
             case .windowChange: return 2
             case .interval: return 1
@@ -148,6 +193,10 @@ public actor CaptureManager: CaptureProtocol {
 
         func settleDelay(using configuration: CaptureSchedulingConfiguration) -> TimeInterval {
             switch self {
+            case .inputPre:
+                return 0
+            case .inputPost:
+                return configuration.mouseClickSettleDelay
             case .mouseClick:
                 return configuration.mouseClickSettleDelay
             case .windowChange:
@@ -164,12 +213,15 @@ public actor CaptureManager: CaptureProtocol {
         let fireTime: Date
         let windowChangeEvent: WindowChangeEvent?
         let windowChangeSignature: WindowChangeSignature?
+        /// For `.inputPre`: the mouse-down `tsMs` this capture answers.
+        var inputRequestMs: Int64? = nil
     }
 
     private let cgWindowListCapture: any ScreenCaptureBackend
     private let displayMonitor: any CaptureDisplayMonitoring
     private let displaySwitchMonitor: any CaptureDisplaySwitchMonitoring
     private let mouseClickMonitor: any CaptureMouseClickMonitoring
+    private let inputEventMonitor: any CaptureInputEventMonitoring
     private let deduplicator: FrameDeduplicator
     private let appInfoProvider: any CaptureAppInfoProviding
     private let schedulingConfiguration: CaptureSchedulingConfiguration
@@ -195,6 +247,7 @@ public actor CaptureManager: CaptureProtocol {
     private var hasShownAccessibilityWarning = false
     private var hasReportedMouseMonitorUnavailable = false
     private var mouseClickMonitoringNeedsRetry = false
+    private var inputEventMonitoringNeedsRetry = false
 
     private var lastAcceptedWindowChangeSignature: WindowChangeSignature?
     private var isWindowChangeEvaluationInFlight = false
@@ -203,6 +256,10 @@ public actor CaptureManager: CaptureProtocol {
     private var scheduledCaptureTask: Task<Void, Never>?
     private var pendingCapture: PendingCapture?
     private var lastActualCaptureTime: Date?
+    /// Time of the last capture that counts toward the refractory window. Identical to
+    /// `lastActualCaptureTime` except that forced mouse-down (`.inputPre`) captures do not move it,
+    /// so a pre-click frame cannot swallow the settled post-click capture 230ms later.
+    private var lastRefractoryAnchorTime: Date?
     private var currentCaptureDisplayID: UInt32?
     private var isCaptureExecutionInFlight = false
     private static let dedupedFrameBufferLimit = 8
@@ -214,6 +271,10 @@ public actor CaptureManager: CaptureProtocol {
     nonisolated(unsafe) public var onCaptureStopped: (@Sendable () async -> Void)?
     nonisolated(unsafe) public var onCaptureObserved: (@Sendable (Date, String) async -> Void)?
     nonisolated(unsafe) public var onMouseClickCaptureOutcome: (@Sendable (MouseClickCaptureOutcome, Date) async -> Void)?
+    /// A user action (click, scroll, shortcut, typing burst) that passed the privacy checks.
+    nonisolated(unsafe) public var onInputEvent: (@Sendable (InputEvent) async -> Void)?
+    /// Result of the capture forced on a mouse-down, including the stored frame's exact timestamp.
+    nonisolated(unsafe) public var onInputPreCaptureOutcome: (@Sendable (InputPreCaptureResult) async -> Void)?
 
     public init(config: CaptureConfig = .default) {
         let displayMonitor = DisplayMonitor()
@@ -222,6 +283,10 @@ public actor CaptureManager: CaptureProtocol {
         self.displayMonitor = displayMonitor
         self.displaySwitchMonitor = DisplaySwitchMonitor(displayMonitor: displayMonitor)
         self.mouseClickMonitor = MouseClickMonitor()
+        self.inputEventMonitor = InputEventMonitor(
+            contextProvider: LiveInputContextProvider(),
+            policy: InputPrivacyPolicy(config: config)
+        )
         self.deduplicator = FrameDeduplicator()
         self.appInfoProvider = AppInfoProvider()
         self.schedulingConfiguration = .production
@@ -234,6 +299,7 @@ public actor CaptureManager: CaptureProtocol {
         displayMonitor: any CaptureDisplayMonitoring,
         displaySwitchMonitor: any CaptureDisplaySwitchMonitoring,
         mouseClickMonitor: any CaptureMouseClickMonitoring,
+        inputEventMonitor: (any CaptureInputEventMonitoring)? = nil,
         deduplicator: FrameDeduplicator = FrameDeduplicator(),
         appInfoProvider: any CaptureAppInfoProviding = AppInfoProvider(),
         schedulingConfiguration: CaptureSchedulingConfiguration = .production,
@@ -244,6 +310,10 @@ public actor CaptureManager: CaptureProtocol {
         self.displayMonitor = displayMonitor
         self.displaySwitchMonitor = displaySwitchMonitor
         self.mouseClickMonitor = mouseClickMonitor
+        self.inputEventMonitor = inputEventMonitor ?? InputEventMonitor(
+            contextProvider: LiveInputContextProvider(),
+            policy: InputPrivacyPolicy(config: config)
+        )
         self.deduplicator = deduplicator
         self.appInfoProvider = appInfoProvider
         self.schedulingConfiguration = schedulingConfiguration
@@ -287,6 +357,7 @@ public actor CaptureManager: CaptureProtocol {
 
         await startDisplaySwitchMonitoring(initialDisplayID: activeDisplayID)
         await configureMouseClickMonitoring(enabled: config.captureOnMouseClick)
+        await configureInputEventMonitoring(enabled: config.inputEventLoggingEnabled)
 
         if intervalCaptureEnabled(), schedulingConfiguration.startWithImmediateIntervalCapture {
             enqueueCapture(trigger: .interval, requestedAt: now())
@@ -310,6 +381,9 @@ public actor CaptureManager: CaptureProtocol {
 
         await displaySwitchMonitor.stopMonitoring()
         await mouseClickMonitor.stopMonitoring()
+        // Stop first: it flushes any open scroll/typing burst through the still-installed handlers.
+        await inputEventMonitor.stopMonitoring()
+        await inputEventMonitor.setHandlers(onMouseDown: nil, onActionCompleted: nil, onEvent: nil)
         try await cgWindowListCapture.stopCapture()
 
         dedupedFrameContinuation?.finish()
@@ -322,6 +396,7 @@ public actor CaptureManager: CaptureProtocol {
         updateCaptureMemoryLedger(currentFrameBytes: 0)
         currentCaptureDisplayID = nil
         lastActualCaptureTime = nil
+        lastRefractoryAnchorTime = nil
         totalCapturedBytes = 0
         hasShownAccessibilityWarning = false
         hasReportedMouseMonitorUnavailable = false
@@ -362,6 +437,8 @@ public actor CaptureManager: CaptureProtocol {
         if _isCapturing {
             try await cgWindowListCapture.updateConfig(config)
             await configureMouseClickMonitoring(enabled: config.captureOnMouseClick)
+            await inputEventMonitor.updatePrivacyPolicy(InputPrivacyPolicy(config: config))
+            await configureInputEventMonitoring(enabled: config.inputEventLoggingEnabled)
             cancelDisabledPendingRequestIfNeeded()
             scheduleNextIntervalCapture(from: lastActualCaptureTime ?? now())
         }
@@ -403,9 +480,11 @@ public actor CaptureManager: CaptureProtocol {
         updateCaptureMemoryLedger(currentFrameBytes: 0)
         totalCapturedBytes = 0
         lastActualCaptureTime = nil
+        lastRefractoryAnchorTime = nil
         hasShownAccessibilityWarning = false
         hasReportedMouseMonitorUnavailable = false
         mouseClickMonitoringNeedsRetry = false
+        inputEventMonitoringNeedsRetry = false
         isCaptureExecutionInFlight = false
         stats = CaptureStatistics(
             totalFramesCaptured: 0,
@@ -467,6 +546,99 @@ public actor CaptureManager: CaptureProtocol {
 
         mouseClickMonitoringNeedsRetry = true
         await mouseClickMonitor.stopMonitoring()
+    }
+
+    private func configureInputEventMonitoring(enabled: Bool) async {
+        if enabled && _isCapturing {
+            await inputEventMonitor.updatePrivacyPolicy(InputPrivacyPolicy(config: currentConfig))
+            await inputEventMonitor.setHandlers(
+                onMouseDown: { [weak self] down in
+                    await self?.handleInputMouseDown(down)
+                },
+                onActionCompleted: { [weak self] draft in
+                    await self?.handleInputActionCompleted(draft)
+                },
+                onEvent: { [weak self] event in
+                    await self?.forwardInputEvent(event)
+                }
+            )
+            let started = await inputEventMonitor.startMonitoring()
+            inputEventMonitoringNeedsRetry = !started
+        } else {
+            await inputEventMonitor.stopMonitoring()
+            await inputEventMonitor.setHandlers(onMouseDown: nil, onActionCompleted: nil, onEvent: nil)
+            inputEventMonitoringNeedsRetry = false
+        }
+    }
+
+    public func retryInputEventMonitoringIfNeeded() async {
+        guard _isCapturing else { return }
+        guard currentConfig.inputEventLoggingEnabled else { return }
+        guard inputEventMonitoringNeedsRetry else { return }
+
+        await configureInputEventMonitoring(enabled: true)
+    }
+
+    public func suspendInputEventMonitoringForPermissionLoss() async {
+        guard _isCapturing else { return }
+        guard currentConfig.inputEventLoggingEnabled else { return }
+
+        inputEventMonitoringNeedsRetry = true
+        await inputEventMonitor.stopMonitoring()
+    }
+
+    /// Counters accumulated since the last drain (feeds the `inputEventLogged` metric).
+    public func drainInputEventStats() async -> InputEventStats {
+        await inputEventMonitor.drainStats()
+    }
+
+    /// Mouse-down: grab the frame as the user saw it, bypassing the refractory window.
+    private func handleInputMouseDown(_ down: InputMouseDown) async {
+        guard _isCapturing else { return }
+        guard currentConfig.inputEventLoggingEnabled else { return }
+
+        enqueueCapture(PendingCapture(
+            trigger: .inputPre,
+            fireTime: now(),
+            windowChangeEvent: nil,
+            windowChangeSignature: nil,
+            inputRequestMs: down.tsMs
+        ))
+    }
+
+    /// An action finished: request a settled capture so the event has a "post" frame, unless the
+    /// existing click-capture path already will.
+    private func handleInputActionCompleted(_ draft: InputEventDraft) async {
+        guard _isCapturing else { return }
+        guard currentConfig.inputEventLoggingEnabled else { return }
+
+        if draft.kind == .click, draft.button == .left, currentConfig.captureOnMouseClick {
+            return
+        }
+
+        let endedAt = Date(timeIntervalSince1970: Double(draft.endTsMs) / 1000)
+        enqueueCapture(trigger: .inputPost, requestedAt: max(endedAt, now().addingTimeInterval(-1)))
+    }
+
+    private func forwardInputEvent(_ event: InputEvent) async {
+        guard currentConfig.inputEventLoggingEnabled else { return }
+        await onInputEvent?(event)
+    }
+
+    private func reportInputPreOutcome(
+        requestMs: Int64?,
+        _ outcome: InputPreCaptureOutcome,
+        keptFrameTimestampMs: Int64? = nil
+    ) {
+        guard let requestMs, let onInputPreCaptureOutcome else { return }
+        let result = InputPreCaptureResult(
+            requestMs: requestMs,
+            outcome: outcome,
+            keptFrameTimestampMs: keptFrameTimestampMs
+        )
+        Task {
+            await onInputPreCaptureOutcome(result)
+        }
     }
 
     private func handleMouseClick() async {
@@ -608,16 +780,25 @@ public actor CaptureManager: CaptureProtocol {
             if capture.trigger == .mouseClick {
                 reportMouseClickOutcome(.debounced)
             }
+            if capture.trigger == .inputPre {
+                reportInputPreOutcome(requestMs: capture.inputRequestMs, .dropped)
+            }
             return
         }
 
         if let existing = pendingCapture {
             guard shouldReplacePendingCapture(existing: existing, with: capture) else {
+                if capture.trigger == .inputPre {
+                    reportInputPreOutcome(requestMs: capture.inputRequestMs, .dropped)
+                }
                 return
             }
 
             if existing.trigger == .mouseClick {
                 reportMouseClickOutcome(.superseded)
+            }
+            if existing.trigger == .inputPre {
+                reportInputPreOutcome(requestMs: existing.inputRequestMs, .dropped)
             }
         }
 
@@ -682,6 +863,9 @@ public actor CaptureManager: CaptureProtocol {
         let captureAttemptCompletedAt = now()
         if let frame {
             lastActualCaptureTime = captureAttemptCompletedAt
+            if capture.trigger != .inputPre {
+                lastRefractoryAnchorTime = captureAttemptCompletedAt
+            }
             if let windowChangeEvent = capture.windowChangeEvent {
                 let shouldDropFrame = shouldDropWindowChangeCapture(
                     event: windowChangeEvent,
@@ -699,9 +883,12 @@ public actor CaptureManager: CaptureProtocol {
             if let windowChangeSignature = capture.windowChangeSignature {
                 lastAcceptedWindowChangeSignature = windowChangeSignature
             }
-            await handleCapturedFrame(frame, trigger: capture.trigger)
+            await handleCapturedFrame(frame, trigger: capture.trigger, inputRequestMs: capture.inputRequestMs)
             scheduleNextIntervalCapture(from: captureAttemptCompletedAt)
         } else {
+            if capture.trigger == .inputPre {
+                reportInputPreOutcome(requestMs: capture.inputRequestMs, .failed)
+            }
             scheduleNextIntervalCapture(from: max(captureAttemptStartedAt, captureAttemptCompletedAt))
         }
 
@@ -713,7 +900,7 @@ public actor CaptureManager: CaptureProtocol {
 
     private func displayIDForCapture(trigger: CaptureTrigger) async -> UInt32 {
         switch trigger {
-        case .mouseClick:
+        case .inputPre, .inputPost, .mouseClick:
             let (activeDisplayID, hasPermission) = await displayMonitor.getActiveDisplayIDWithPermissionStatus()
             if hasPermission {
                 return activeDisplayID
@@ -792,11 +979,16 @@ public actor CaptureManager: CaptureProtocol {
         guard bypassRefractoryDrop || !isCaptureExecutionInFlight else {
             return true
         }
-        guard let lastActualCaptureTime else {
+        // The mouse-down capture exists to grab the screen *now*; it still yields to a capture that
+        // is already executing (above) but not to the refractory window.
+        if capture.trigger == .inputPre {
+            return false
+        }
+        guard let lastRefractoryAnchorTime else {
             return false
         }
 
-        let refractoryEndsAt = lastActualCaptureTime.addingTimeInterval(
+        let refractoryEndsAt = lastRefractoryAnchorTime.addingTimeInterval(
             schedulingConfiguration.minimumInterCaptureInterval
         )
         return capture.fireTime < refractoryEndsAt
@@ -807,6 +999,8 @@ public actor CaptureManager: CaptureProtocol {
 
         let shouldCancel: Bool
         switch pendingCapture.trigger {
+        case .inputPre, .inputPost:
+            shouldCancel = !currentConfig.inputEventLoggingEnabled
         case .mouseClick:
             shouldCancel = !currentConfig.captureOnMouseClick
         case .windowChange:
@@ -850,7 +1044,8 @@ public actor CaptureManager: CaptureProtocol {
 
     private func handleCapturedFrame(
         _ frame: CapturedFrame,
-        trigger: CaptureTrigger
+        trigger: CaptureTrigger,
+        inputRequestMs: Int64? = nil
     ) async {
         updateCaptureMemoryLedger(currentFrameBytes: Int64(frame.imageData.count))
         defer {
@@ -897,6 +1092,13 @@ public actor CaptureManager: CaptureProtocol {
                 if trigger == .mouseClick {
                     reportMouseClickOutcome(.captured)
                 }
+                if trigger == .inputPre {
+                    reportInputPreOutcome(
+                        requestMs: inputRequestMs,
+                        .captured,
+                        keptFrameTimestampMs: InputEvent.epochMilliseconds(enrichedFrame.timestamp)
+                    )
+                }
 
                 Log.info(
                     Self.deduplicationAnalysisLogMessage(
@@ -920,6 +1122,9 @@ public actor CaptureManager: CaptureProtocol {
 
                 if trigger == .mouseClick {
                     reportMouseClickOutcome(.deduped)
+                }
+                if trigger == .inputPre {
+                    reportInputPreOutcome(requestMs: inputRequestMs, .deduped)
                 }
 
                 Log.info(
@@ -950,6 +1155,13 @@ public actor CaptureManager: CaptureProtocol {
 
             if trigger == .mouseClick {
                 reportMouseClickOutcome(.captured)
+            }
+            if trigger == .inputPre {
+                reportInputPreOutcome(
+                    requestMs: inputRequestMs,
+                    .captured,
+                    keptFrameTimestampMs: InputEvent.epochMilliseconds(enrichedFrame.timestamp)
+                )
             }
 
             Log.info(
@@ -1046,6 +1258,10 @@ public actor CaptureManager: CaptureProtocol {
 
     private static func triggerLogDescription(for trigger: CaptureTrigger) -> String {
         switch trigger {
+        case .inputPre:
+            return "input_pre"
+        case .inputPost:
+            return "input_post"
         case .mouseClick:
             return "mouse_click"
         case .windowChange:
@@ -1138,7 +1354,7 @@ public actor CaptureManager: CaptureProtocol {
 
     private static func storedCaptureTrigger(for trigger: CaptureTrigger) -> FrameCaptureTrigger {
         switch trigger {
-        case .mouseClick:
+        case .mouseClick, .inputPre, .inputPost:
             return .mouse
         case .windowChange:
             return .window
