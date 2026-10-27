@@ -133,40 +133,11 @@ extension SettingsView {
     }
 
     func sidebarButton(tab: SettingsTab) -> some View {
-        let isSelected = shellViewModel.selectedTab == tab
-        let isHovered = shellViewModel.hoveredTab == tab
-
-        return Button(action: { shellViewModel.selectedTab = tab }) {
-            HStack(spacing: 12) {
-                // Icon: clay when selected
-                RetraceSymbol(tab.icon, size: 13.5, label: "")
-                    .foregroundColor(isSelected ? .retraceAccent : .retraceInk2)
-                    .frame(width: 32, height: 32)
-
-                Text(tab.rawValue)
-                    .font(isSelected ? .retraceCalloutBold : .retraceCallout)
-                    .foregroundColor(isSelected ? .retraceInk : .retraceInk2)
-
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
-                    .fill(isSelected ? Color.retraceAccentWash : (isHovered ? Color.retraceSurfaceHover : Color.clear))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
-                    .stroke(isSelected ? Color.retraceAccent : Color.clear, lineWidth: 1)
-            )
-            .retraceFocusRing(cornerRadius: .radiusMd)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                shellViewModel.hoveredTab = hovering ? tab : nil
-            }
-        }
+        SettingsSidebarButton(
+            tab: tab,
+            isSelected: shellViewModel.selectedTab == tab,
+            action: { shellViewModel.selectedTab = tab }
+        )
     }
 
     // MARK: - Content
@@ -409,3 +380,61 @@ extension SettingsView {
 
     // MARK: - General Settings
 }
+
+
+/// One sidebar row. Hover state is local `@State` on purpose: when it lived on the shared settings view
+/// model, every enter/exit re-rendered all of `SettingsView`, which rebuilt the hover tracking areas under a
+/// stationary cursor and made the highlight flash on/off in a loop.
+private struct SettingsSidebarButton: View {
+    let tab: SettingsTab
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        let _ = UIDiagnostics.render("SettingsSidebarButton.body")
+        Button(action: action) {
+            HStack(spacing: 12) {
+                // Icon: clay when selected
+                RetraceSymbol(tab.icon, size: 13.5, label: "")
+                    .foregroundColor(isSelected ? .retraceAccent : .retraceInk2)
+                    .frame(width: 32, height: 32)
+
+                Text(tab.rawValue)
+                    .font(isSelected ? .retraceCalloutBold : .retraceCallout)
+                    .foregroundColor(isSelected ? .retraceInk : .retraceInk2)
+
+                Spacer()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            // Fade opacity of fixed-colour fills. Animating a fill between `Color.clear` (transparent black)
+            // and a light colour passes through a dark intermediate, which showed up as both the row being
+            // left and the row being entered flashing dark before settling.
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceSurfaceHover)
+                        .opacity(isHovered && !isSelected ? 1 : 0)
+                    RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                        .fill(Color.retraceAccentWash)
+                        .opacity(isSelected ? 1 : 0)
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: .radiusMd, style: .continuous)
+                    .stroke(Color.retraceAccent, lineWidth: 1)
+                    .opacity(isSelected ? 1 : 0)
+            )
+            .retraceFocusRing(cornerRadius: .radiusMd)
+            .contentShape(RoundedRectangle(cornerRadius: .radiusMd, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            if isHovered != hovering { isHovered = hovering }
+        }
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
+    }
+}
+

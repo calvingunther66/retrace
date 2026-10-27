@@ -1093,7 +1093,7 @@ private struct RetraceButtonBody: View {
         switch kind {
         case .primary: return hovering ? .retraceAccentHover : .retraceAccent
         case .secondary: return hovering ? .retraceSurfaceHover : .retraceSurface
-        case .ghost: return hovering ? .retraceSurfaceHover : .clear
+        case .ghost: return Color.retraceSurfaceHover.opacity(hovering ? 1 : 0)
         case .danger: return hovering ? Color.retraceCriticalBg.opacity(0.7) : .retraceCriticalBg
         }
     }

@@ -3,7 +3,6 @@ import SwiftUI
 @MainActor
 final class SettingsShellViewModel: ObservableObject {
     @Published var selectedTab: SettingsTab
-    @Published var hoveredTab: SettingsTab?
     @Published var pendingScrollTargetID: String?
     @Published var isScrollingToTarget = false
     @Published var isPauseReminderCardHighlighted = false
@@ -33,7 +32,6 @@ final class SettingsShellViewModel: ObservableObject {
         cancelSettingsSearchReset()
         showSettingsSearch = false
         settingsSearchQuery = ""
-        hoveredTab = nil
         isScrollingToTarget = false
         pendingScrollTargetID = nil
         showingSectionResetConfirmation = false
