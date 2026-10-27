@@ -2781,6 +2781,7 @@ public class SimpleTimelineViewModel: ObservableObject {
         setupSearchOverlayPersistence()
         initializeDiskFrameBuffer()
         startDiskFrameBufferMemoryReporting()
+        UIDiagnostics.shared.observe(self, name: "TimelineVM")
     }
 
     /// Persist search overlay visibility state across app launches

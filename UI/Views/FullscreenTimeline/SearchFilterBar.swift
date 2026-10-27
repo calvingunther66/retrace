@@ -31,6 +31,7 @@ public struct SearchFilterBar: View {
     // MARK: - Body
 
     public var body: some View {
+        let _ = UIDiagnostics.render("SearchFilterBar.body")
         HStack(spacing: 8) {
             SearchOrderChip(
                 selection: SearchOrderOption.from(

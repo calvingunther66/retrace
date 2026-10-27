@@ -270,6 +270,7 @@ public class DashboardViewModel: ObservableObject {
         setupUnexpectedRecordingStopObserver()
         // Check permissions immediately on init
         checkPermissions()
+        UIDiagnostics.shared.observe(self, name: "DashboardVM")
     }
 
     // MARK: - Setup
@@ -329,6 +330,13 @@ public class DashboardViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
+    /// `@Published` fires `objectWillChange` on every assignment, even of an equal value. The 1 Hz refresh
+    /// below used to assign ~13 properties per tick, which invalidated every view observing this model
+    /// (including the Settings window hosted alongside the dashboard) and made hover states flicker.
+    private func assignIfChanged<T: Equatable>(_ keyPath: ReferenceWritableKeyPath<DashboardViewModel, T>, _ value: T) {
+        if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
+    }
+
     private func setupAutoRefresh() {
         // Refresh recording status and permissions every 1 second with leeway for power efficiency
         let timer = DispatchSource.makeTimerSource(queue: .main)
@@ -356,17 +364,17 @@ public class DashboardViewModel: ObservableObject {
     private func updateRecordingStatus(force: Bool = false) {
         guard force || !isRecordingToggleInFlight else { return }
         // Read from thread-safe holder to avoid actor hops and keep UI updates responsive.
-        isRecording = coordinator.statusHolder.status.isRunning
+        assignIfChanged(\.isRecording, coordinator.statusHolder.status.isRunning)
     }
 
     private func updatePauseStatus() {
         guard let menuBarManager = MenuBarManager.shared else {
-            isRecordingPaused = false
-            recordingPauseRemainingSeconds = nil
+            assignIfChanged(\.isRecordingPaused, false)
+            assignIfChanged(\.recordingPauseRemainingSeconds, nil)
             return
         }
-        isRecordingPaused = menuBarManager.isPausedState
-        recordingPauseRemainingSeconds = menuBarManager.timedPauseRemainingSeconds
+        assignIfChanged(\.isRecordingPaused, menuBarManager.isPausedState)
+        assignIfChanged(\.recordingPauseRemainingSeconds, menuBarManager.timedPauseRemainingSeconds)
     }
 
     /// How long the OCR queue can have a backlog with zero completions before it's treated
@@ -379,16 +387,16 @@ public class DashboardViewModel: ObservableObject {
 
     private func updateQueueStatus() async {
         let powerState = coordinator.getCurrentPowerState()
-        ocrIsPaused = powerState.isPaused
+        assignIfChanged(\.ocrIsPaused, powerState.isPaused)
         switch powerState.source {
-        case .ac: powerSource = "AC"
-        case .battery: powerSource = "Battery"
-        case .unknown: powerSource = "Unknown"
+        case .ac: assignIfChanged(\.powerSource, "AC")
+        case .battery: assignIfChanged(\.powerSource, "Battery")
+        case .unknown: assignIfChanged(\.powerSource, "Unknown")
         }
 
         guard let stats = await coordinator.getQueueStatistics() else { return }
-        ocrQueueDepth = stats.ocrQueueDepth
-        ocrTotalProcessed = stats.totalProcessed
+        assignIfChanged(\.ocrQueueDepth, stats.ocrQueueDepth)
+        assignIfChanged(\.ocrTotalProcessed, stats.totalProcessed)
 
         let now = Date()
         // A backlog reappearing after being empty starts a fresh stall clock, rather than
@@ -411,9 +419,9 @@ public class DashboardViewModel: ObservableObject {
         // Don't clobber "still stuck after restart" messaging while a restart is in flight —
         // restartOCR() owns ocrDegraded/ocrRestartLikelyRequiresRelaunch during that window.
         if !ocrRestartInFlight {
-            ocrDegraded = stats.isOCRDegraded || isStalled
+            assignIfChanged(\.ocrDegraded, stats.isOCRDegraded || isStalled)
             if !ocrDegraded {
-                ocrRestartLikelyRequiresRelaunch = false
+                assignIfChanged(\.ocrRestartLikelyRequiresRelaunch, false)
             }
         }
     }
@@ -432,35 +440,35 @@ public class DashboardViewModel: ObservableObject {
         // Don't nag if the user voluntarily stopped recording and all permissions are fine.
         // But if a permission is missing, always warn — the user may be unable to start recording.
         if !isRecording && !permissionsMissing {
-            showAccessibilityWarning = false
-            showScreenRecordingWarning = false
+            assignIfChanged(\.showAccessibilityWarning, false)
+            assignIfChanged(\.showScreenRecordingWarning, false)
             return
         }
 
         // Accessibility
         if hasAccessibility {
-            showAccessibilityWarning = false
-            accessibilityDismissedUntil = nil
+            assignIfChanged(\.showAccessibilityWarning, false)
+            if accessibilityDismissedUntil != nil { accessibilityDismissedUntil = nil }
         } else if let snoozeEnd = accessibilityDismissedUntil {
             if now >= snoozeEnd {
                 accessibilityDismissedUntil = nil
                 showAccessibilityWarning = true
             }
         } else {
-            showAccessibilityWarning = true
+            assignIfChanged(\.showAccessibilityWarning, true)
         }
 
         // Screen recording
         if hasScreenRecording {
-            showScreenRecordingWarning = false
-            screenRecordingDismissedUntil = nil
+            assignIfChanged(\.showScreenRecordingWarning, false)
+            if screenRecordingDismissedUntil != nil { screenRecordingDismissedUntil = nil }
         } else if let snoozeEnd = screenRecordingDismissedUntil {
             if now >= snoozeEnd {
                 screenRecordingDismissedUntil = nil
                 showScreenRecordingWarning = true
             }
         } else {
-            showScreenRecordingWarning = true
+            assignIfChanged(\.showScreenRecordingWarning, true)
         }
     }
 
@@ -1075,7 +1083,7 @@ public class DashboardViewModel: ObservableObject {
             )
         }.value
 
-        recentCrashReport = report
+        assignIfChanged(\.recentCrashReport, report)
 
         guard let report, report.acknowledgmentIdentifier != lastTrackedCrashBannerIdentifier else {
             return
@@ -1129,7 +1137,7 @@ public class DashboardViewModel: ObservableObject {
         }.value
         let report = unacknowledgedReports.first
 
-        recentWALFailureCrash = report
+        assignIfChanged(\.recentWALFailureCrash, report)
 
         if report?.fileName != previousFileName {
             let acknowledgedList = acknowledgedFileNames.sorted().joined(separator: ", ")

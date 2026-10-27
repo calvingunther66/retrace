@@ -14,6 +14,9 @@
 #                          (uses the app's own OpenRouter key; sends matched screen text to the configured model)
 #   screenshot [file]      screencapture of the main display (needs Screen Recording permission
 #                          for whatever process runs this; reports failure instead of hanging)
+#   diag-on|diag-off       enable/disable the deep UI trace (UI/Diagnostics; takes effect on next launch)
+#   diag-status            is it enabled, where the trace is, how big
+#   diag-analyze [args]    summarise ~/Library/Logs/Retrace/ui-trace.jsonl (scripts/analyze_ui_trace.py)
 #   logs [n]               tail the app's own log lines from the unified log
 #
 # Offline analysis (NEVER touches the live DB — works on a snapshot copy):
@@ -64,6 +67,13 @@ case "$cmd" in
     q=$(python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(" ".join(sys.argv[1:])))' "$@")
     open "retrace://search?q=$q" && echo "opened search for: $*"
     ;;
+  diag-on)  defaults write io.retrace.app RetraceUIDiagnostics -bool true && echo "UI diagnostics ON — relaunch Retrace; ⌃⌥⌘M marks an issue; trace: ~/Library/Logs/Retrace/ui-trace.jsonl" ;;
+  diag-off) defaults write io.retrace.app RetraceUIDiagnostics -bool false && echo "UI diagnostics OFF — takes effect on next launch" ;;
+  diag-status)
+    echo "enabled flag: $(defaults read io.retrace.app RetraceUIDiagnostics 2>/dev/null || echo 0)"
+    ls -l "$HOME/Library/Logs/Retrace/ui-trace.jsonl" 2>/dev/null || echo "no trace file yet"
+    ;;
+  diag-analyze) exec python3 "$ROOT/scripts/analyze_ui_trace.py" "$@" ;;
   ask-enable)  defaults write io.retrace.app allowAskDeeplink -bool true && echo "retrace://ask enabled" ;;
   ask-disable) defaults write io.retrace.app allowAskDeeplink -bool false && echo "retrace://ask disabled" ;;
   ask)

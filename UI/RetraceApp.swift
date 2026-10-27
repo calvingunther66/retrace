@@ -309,6 +309,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let isRelaunch = UserDefaults.standard.bool(forKey: "isRelaunching")
         let restartDebuggingSession = CrashRecoverySupport.beginRestartDebuggingSession()
         let launchTargetDescription: String
+        // Opt-in deep UI trace (RetraceUIDiagnostics default / RETRACE_UI_DIAGNOSTICS=1); no-op otherwise.
+        UIDiagnostics.shared.startIfEnabled()
         switch CrashRecoverySupport.currentLaunchTarget() {
         case .appBundle(let url):
             launchTargetDescription = "appBundle(\(url.path))"
@@ -828,6 +830,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             // Configure the dashboard window controller
             DashboardWindowController.shared.configure(coordinator: wrapper.coordinator)
+            if UIDiagnostics.isEnabled {
+                HotkeyManager.shared.registerHotkey(key: "M", modifiers: [.control, .option, .command]) {
+                    UIDiagnostics.shared.mark()
+                }
+                HotkeyManager.shared.registerHotkey(key: "M", modifiers: [.shift, .option, .command]) {
+                    UIDiagnostics.shared.mark()
+                }
+            }
+
 
             // Configure the pause reminder window controller
             PauseReminderWindowController.shared.configure(coordinator: wrapper.coordinator)

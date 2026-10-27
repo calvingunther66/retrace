@@ -60,6 +60,7 @@ public struct TimelineTapeView: View {
     // MARK: - Body
 
     public var body: some View {
+        let _ = UIDiagnostics.render("TimelineTapeView.body")
         ZStack {
             // Background (tap to clear selection)
             Rectangle()
@@ -815,6 +816,7 @@ struct FrameSegmentView: View {
     @State private var isHovering = false
 
     var body: some View {
+        let _ = UIDiagnostics.render("FrameSegmentView.body")
         Rectangle()
             .fill(isHovering ? Color.retraceInk.opacity(0.2) : Color.clear)
             .frame(width: pixelsPerFrame, height: tapeHeight)

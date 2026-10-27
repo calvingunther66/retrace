@@ -20,6 +20,7 @@ public struct FullscreenFrameView: View {
     // MARK: - Body
 
     public var body: some View {
+        let _ = UIDiagnostics.render("FullscreenFrameView.body")
         GeometryReader { geometry in
             ZStack {
                 // Background

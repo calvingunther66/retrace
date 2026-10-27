@@ -407,6 +407,7 @@ public struct DashboardView: View {
     // MARK: - Body
 
     public var body: some View {
+        let _ = UIDiagnostics.render("DashboardView.body")
         VStack(alignment: .leading, spacing: 0) {
             if hasDashboardBanners {
                 VStack(spacing: 12) {

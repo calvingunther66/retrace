@@ -1094,6 +1094,10 @@ public class MenuBarManager: ObservableObject {
         }
     }
 
+    @objc private func markUIIssue() {
+        UIDiagnostics.shared.mark()
+    }
+
     private func setupMenu() {
         let menu = NSMenu()
         let visibleDashboardContent = LaunchMenuRouting.visibleDashboardContent()
@@ -1187,6 +1191,12 @@ public class MenuBarManager: ObservableObject {
         )
         feedbackItem.image = NSImage.retraceSymbol("exclamationmark.bubble", pointSize: 14)
         menu.addItem(feedbackItem)
+
+        if UIDiagnostics.isEnabled {
+            let markItem = NSMenuItem(title: "Mark UI Issue (⌃⌥⌘M or ⇧⌥⌘M)", action: #selector(markUIIssue), keyEquivalent: "")
+            markItem.target = self
+            menu.addItem(markItem)
+        }
 
         menu.addItem(NSMenuItem.separator())
 

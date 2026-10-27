@@ -199,6 +199,7 @@ retrace/
 │   ├── release.sh               # End-to-end release automation
 │   ├── create-release.sh        # Release build + packaging helper
 │   ├── check_no_nanoseconds_sleep.sh # Guardrail for Task.sleep(nanoseconds:)
+│   ├── analyze_ui_trace.py      # Summarises ~/Library/Logs/Retrace/ui-trace.jsonl (hitches, hot frames, storms, MARKs)
 │   ├── validate_sleep_wake_stability.sh # Sleep/wake soak validation workflow
 │   └── validate_darkwake_watchdog.sh # Automated darkwake watchdog regression validation
 │
@@ -348,6 +349,7 @@ retrace/
     │   ├── FullscreenTimeline/  # Timeline scrubbing & playback (10 views)
     │   ├── Search/              # Search UI (SearchView, ResultRow, FrameViewer)
     │   ├── Settings/            # Settings shell, support components, and extracted section/action files
+    ├── Diagnostics/             # Opt-in deep UI trace: run-loop hitch monitor + main-thread stack sampler, breadcrumbs, 1s ticks (see UI/AGENTS.md)
     │   │   └── Sections/        # Concern-split settings sections, verification flows, and shared actions
     │   ├── Onboarding/          # Onboarding flow
     │   └── Feedback/            # Feedback form, diagnostics presentation, and submission/export helpers

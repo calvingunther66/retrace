@@ -131,6 +131,7 @@ public struct SpotlightSearchOverlay: View {
     // MARK: - Body
 
     public var body: some View {
+        let _ = UIDiagnostics.render("SpotlightSearchOverlay.body")
         ZStack {
             // Backdrop - also dismisses dropdowns if open
             // Only show backdrop when expanded
