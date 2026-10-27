@@ -18,6 +18,7 @@ struct VideoFrameView: NSViewRepresentable {
     }
 
     func updateNSView(_ playerView: AVPlayerView, context: Context) {
+        UIDiagnostics.render("VideoFrameView.update")
         Log.debug("[VideoFrameView] updateNSView - path: \(videoInfo.videoPath), frame: \(videoInfo.frameIndex), time: \(videoInfo.timeInSeconds)s", category: .app)
         context.coordinator.invalidateObserver()
 

@@ -544,6 +544,7 @@ public class SearchViewModel: ObservableObject {
         setupBindings()
         startMemoryReporting()
         prepareThumbnailDiskCache()
+        UIDiagnostics.shared.observe(self, name: "SearchViewModel")
     }
 
     init(coordinator: AppCoordinator, executeSearch: @escaping SearchExecutor) {
@@ -553,6 +554,7 @@ public class SearchViewModel: ObservableObject {
         setupBindings()
         startMemoryReporting()
         prepareThumbnailDiskCache()
+        UIDiagnostics.shared.observe(self, name: "SearchViewModel")
     }
 
     // MARK: - Setup

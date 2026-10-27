@@ -498,6 +498,7 @@ public struct SettingsView: View {
     public var body: some View {
         settingsBodyBase
             .onChange(of: shellViewModel.selectedTab) { newTab in
+        let _ = UIDiagnostics.render("SettingsView.body")
                 postSelectedTabNotification(newTab)
             }
             .onReceive(NotificationCenter.default.publisher(for: .openSettingsPower)) { _ in

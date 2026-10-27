@@ -31,6 +31,7 @@ public struct ContentView: View {
     // MARK: - Body
 
     public var body: some View {
+        let _ = UIDiagnostics.render("ContentView.body")
         ZStack {
             if let showOnboarding = showOnboarding {
                 if showOnboarding {

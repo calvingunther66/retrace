@@ -17,6 +17,13 @@ UI/
 │   ├── SafariInPageURLMenu.imageset/   # Safari screenshot: open Develop > Developer Settings
 │   ├── SafariInPageURLToggle.imageset/ # Safari screenshot: enable Allow JavaScript from Apple Events
 │   └── SafariInPageURLAllow.imageset/  # Safari screenshot: confirmation dialog with Allow button
+├── Diagnostics/                        # Opt-in deep UI trace (RetraceUIDiagnostics default / RETRACE_UI_DIAGNOSTICS=1) -> ~/Library/Logs/Retrace/ui-trace.jsonl
+│   ├── UIDiagnostics.swift             # Facade: enable flag, emit(), mark (⌃⌥⌘M), render() body counters, observe() objectWillChange rates
+│   ├── UITraceWriter.swift             # Buffered off-thread JSONL writer (independent of Log.*; keeps one .prev session)
+│   ├── HitchMonitor.swift              # Main run-loop iteration timing (src/commit/post phases) + watcher thread sampling main's stack
+│   ├── StackSampler.swift              # thread_suspend + arm64 frame-pointer walk (no allocation while suspended) + dladdr symbolication
+│   ├── UIBreadcrumbs.swift             # NSEvent monitor (no key characters), window/app/workspace/app-defined notifications
+│   └── ProcessSampler.swift            # 1s tick: frame stats, CPU, main-thread CPU, footprint, hot threads (+ bgstack samples)
 ├── Views/
 │   ├── Timeline/
 │   │   ├── TimelineView.swift           # Main timeline scrubber
@@ -680,3 +687,14 @@ You depend on:
 8. Add UI tests for behaviorally significant flows when warranted
 
 Focus on getting the timeline + search working first before polishing dashboard/settings.
+
+
+## UI Diagnostics (dev-only deep trace)
+
+Hidden developer tool, off by default: `scripts/retracectl.sh diag-on`, relaunch, use the app, press **⌃⌥⌘M**
+(or menu bar → "Mark UI Issue") when something feels wrong, then `scripts/retracectl.sh diag-analyze`.
+It is not a user-facing feature, so it deliberately has no `daily_metrics` instrumentation (Critical Rule 7).
+Never log typed characters or other apps' window titles in this trace. To count a new SwiftUI view's body
+evaluations add `let _ = UIDiagnostics.render("Name.body")`; to watch a view model's publish rate call
+`UIDiagnostics.shared.observe(self, name:)` at the end of its init. Profile on the signed release build
+(`./build_and_sign.sh`), not `dev.sh`: debug SwiftUI hitches for reasons that don't exist in release.

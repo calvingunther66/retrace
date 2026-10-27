@@ -270,6 +270,7 @@ public class DashboardViewModel: ObservableObject {
         setupUnexpectedRecordingStopObserver()
         // Check permissions immediately on init
         checkPermissions()
+        UIDiagnostics.shared.observe(self, name: "DashboardVM")
     }
 
     // MARK: - Setup

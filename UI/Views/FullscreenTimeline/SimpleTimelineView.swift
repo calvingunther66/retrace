@@ -55,6 +55,7 @@ public struct SimpleTimelineView: View {
     // MARK: - Body
 
     public var body: some View {
+        let _ = UIDiagnostics.render("SimpleTimelineView.body")
         GeometryReader { geometry in
             // Calculate actual frame rect for coordinate transformations
             let actualFrameRect = calculateActualDisplayedFrameRectForView(
@@ -1470,6 +1471,7 @@ struct SimpleVideoFrameView: NSViewRepresentable {
     }
 
     func updateNSView(_ containerView: DoubleBufferedVideoView, context: Context) {
+        UIDiagnostics.render("SimpleVideoFrameView.update")
         // Update callbacks in case they changed
         containerView.onLoadFailed = onLoadFailed
         containerView.onLoadSuccess = onLoadSuccess
@@ -4125,6 +4127,7 @@ struct ZoomedTextSelectionNSView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: ZoomedSelectionView, context: Context) {
+        UIDiagnostics.render("ZoomedSelectionView.update")
         nsView.zoomRegion = zoomRegion
         nsView.enlargedSize = enlargedSize
 
@@ -4590,6 +4593,7 @@ struct URLBoundingBoxOverlay: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: URLOverlayView, context: Context) {
+        UIDiagnostics.render("URLOverlayView.update")
         // Calculate the actual frame rect from normalized coordinates
         // Note: The bounding box coordinates are normalized (0.0-1.0)
         let rect = NSRect(
@@ -4708,6 +4712,7 @@ struct OCRHyperlinkOverlay: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: OCRHyperlinkOverlayView, context: Context) {
+        UIDiagnostics.render("OCRHyperlinkOverlayView.update")
         nsView.onHoverChanged = onHoverChanged
         nsView.onOpen = onOpen
         nsView.entries = matches.compactMap { match in
@@ -4914,6 +4919,7 @@ struct TextSelectionOverlay: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: TextSelectionView, context: Context) {
+        UIDiagnostics.render("TextSelectionView.update")
         // Build node data with selection ranges (normal mode - no zoom transformation)
         nsView.nodeData = viewModel.ocrNodes.map { node in
             let rect = NSRect(
@@ -5758,6 +5764,7 @@ private struct SearchHighlightHoverTracker: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: SearchHighlightHoverTrackingView, context: Context) {
+        UIDiagnostics.render("SearchHighlightHover.update")
         let didRectsChange = nsView.highlightedRects != highlightedRects
         nsView.highlightedRects = highlightedRects
         nsView.onHoverLocationChanged = onHoverLocationChanged
