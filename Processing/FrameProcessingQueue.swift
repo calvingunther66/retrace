@@ -1445,19 +1445,15 @@ public actor FrameProcessingQueue {
             actualFrameID: frameID
         )
         let indexedText = phraseRedactionResult.sanitizedText
-        let hasRedactedNodes = !phraseRedactionResult.redactedCombinedNodeOrders.isEmpty
 
-        // DAT-01: Insert OCR nodes BEFORE indexing into FTS so the safe failure direction is:
+        // DAT-01: Insert OCR nodes BEFORE indexing into FTS for ALL frames so the safe failure direction is:
         //   • If insertNodes fails → FTS never written → frame stays processingStatus=0 → re-queued on restart ✓
         //   • If FTS index fails  → nodes already written → frame stays processingStatus=0 → re-queued on restart ✓
-        // The previous ordering (FTS first, nodes second) created "ghost" FTS hits with no bounding boxes
-        // when the app crashed or insertNodes failed after search.index() succeeded.
-        // NOTE: A fully atomic cross-actor transaction is not possible without funnelling both writes
-        // through a single DatabaseManager method; this reordering minimises the blast radius.
+        // Prevents ghost FTS hits with missing bounding boxes and ensures consistent transaction sequencing.
+        // Uses ocrStage.frameWidth/frameHeight to ensure node coordinates match the processed image bounds.
         let hasAnyOCRRegions = !indexedText.regions.isEmpty || !indexedText.chromeRegions.isEmpty
-        if hasAnyOCRRegions && hasRedactedNodes {
+        if hasAnyOCRRegions {
             // Delete any existing nodes first to prevent duplicates
-            // (can happen if frame is reprocessed without going through reprocessOCR)
             try await databaseManager.deleteNodes(frameID: FrameID(value: frameID))
 
             var nodeData: [(textOffset: Int, textLength: Int, bounds: CGRect, windowIndex: Int?)] = []
@@ -1489,13 +1485,12 @@ public actor FrameProcessingQueue {
                 chromeOffset += textLength + 1
             }
 
-            // Use videoSegment we already fetched above (no redundant query)
             try await databaseManager.insertNodes(
                 frameID: FrameID(value: frameID),
                 nodes: nodeData,
                 encryptedTexts: phraseRedactionResult.encryptedRedactedTexts,
-                frameWidth: videoSegment.width,
-                frameHeight: videoSegment.height
+                frameWidth: ocrStage.frameWidth,
+                frameHeight: ocrStage.frameHeight
             )
         }
 
@@ -1512,51 +1507,11 @@ public actor FrameProcessingQueue {
         }
         _ = docid  // Used below in the redacted-nodes check; kept to preserve any future callers.
 
-        // Insert nodes for non-redacted frames (only FTS docid needed for the guard check above).
-        if hasAnyOCRRegions && !hasRedactedNodes && docid > 0 {
-            try await databaseManager.deleteNodes(frameID: FrameID(value: frameID))
-
-            var nodeData: [(textOffset: Int, textLength: Int, bounds: CGRect, windowIndex: Int?)] = []
-            nodeData.reserveCapacity(indexedText.regions.count + indexedText.chromeRegions.count)
-
-            var mainOffset = 0
-            for region in indexedText.regions {
-                let textLength = region.text.count
-                nodeData.append((
-                    textOffset: mainOffset,
-                    textLength: textLength,
-                    bounds: region.bounds,
-                    windowIndex: nil
-                ))
-                mainOffset += textLength + 1
-            }
-
-            var chromeOffset = indexedText.fullText.count
-            for region in indexedText.chromeRegions {
-                let textLength = region.text.count
-                nodeData.append((
-                    textOffset: chromeOffset,
-                    textLength: textLength,
-                    bounds: region.bounds,
-                    windowIndex: nil
-                ))
-                chromeOffset += textLength + 1
-            }
-
-            try await databaseManager.insertNodes(
-                frameID: FrameID(value: frameID),
-                nodes: nodeData,
-                encryptedTexts: phraseRedactionResult.encryptedRedactedTexts,
-                frameWidth: videoSegment.width,
-                frameHeight: videoSegment.height
-            )
-        }
-
         do {
             try await resolveInPageURLMetadataIfPossible(
                 frameID: frameID,
-                frameWidth: videoSegment.width,
-                frameHeight: videoSegment.height
+                frameWidth: ocrStage.frameWidth,
+                frameHeight: ocrStage.frameHeight
             )
         } catch {
             Log.warning(
@@ -1623,7 +1578,7 @@ public actor FrameProcessingQueue {
                 frameIndex: frameRef.frameIndexInSegment
             )
 
-            guard let convertedFrame = try convertJPEGToCapturedFrame(frameData, frameRef: frameRef) else {
+            guard let convertedFrame = try Self.convertJPEGToCapturedFrame(frameData, frameRef: frameRef) else {
                 Log.error("[Queue-DIAG] Frame \(frameID) image conversion failed!", category: .processing)
                 await MemoryLedger.endResidualEpoch(residualEpoch)
                 throw ProcessingError.imageConversionFailed
@@ -1822,7 +1777,7 @@ public actor FrameProcessingQueue {
     }
 
     /// Convert JPEG data back to CapturedFrame for OCR
-    private func convertJPEGToCapturedFrame(_ jpegData: Data, frameRef: FrameReference) throws -> CapturedFrame? {
+    nonisolated static func convertJPEGToCapturedFrame(_ jpegData: Data, frameRef: FrameReference) throws -> CapturedFrame? {
         autoreleasepool {
             let sourceOptions = [
                 kCGImageSourceShouldCache: false,
@@ -1861,9 +1816,6 @@ public actor FrameProcessingQueue {
             let height = cgImage.height
             let bytesPerRow = width * 4
 
-            let colorSpace = CGColorSpaceCreateDeviceRGB()
-            let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-
             var pixelData = Data(count: bytesPerRow * height)
 
             pixelData.withUnsafeMutableBytes { ptr in
@@ -1873,8 +1825,8 @@ public actor FrameProcessingQueue {
                     height: height,
                     bitsPerComponent: 8,
                     bytesPerRow: bytesPerRow,
-                    space: colorSpace,
-                    bitmapInfo: bitmapInfo.rawValue
+                    space: VisionOCR.sharedOCRColorSpace,
+                    bitmapInfo: VisionOCR.sharedOCRBitmapInfo.rawValue
                 ) else {
                     return
                 }

@@ -417,6 +417,9 @@ public class TimelineWindowController: NSObject {
     nonisolated private static func setEmergencyTimelineVisible(_ visible: Bool) {
         withEmergencyTapState { state in
             state.isTimelineVisible = visible
+            if let tap = state.eventTap, CFMachPortIsValid(tap) {
+                CGEvent.tapEnable(tap: tap, enable: visible)
+            }
         }
     }
 
@@ -2810,6 +2813,9 @@ extension TimelineWindowController {
                 }
                 self.handleKeyEvent(event)
             } else if event.type == .scrollWheel {
+                guard let window = self.window, window.isVisible, window.frame.contains(NSEvent.mouseLocation) else {
+                    return
+                }
                 // Don't handle scroll events when search UI, filter dropdown, or tag submenu should own wheel input.
                 if let viewModel = self.timelineViewModel,
                    (viewModel.searchViewModel.isRecentEntriesPopoverVisible ||
@@ -2821,6 +2827,9 @@ extension TimelineWindowController {
                 }
                 self.handleScrollEvent(event, source: "GLOBAL")
             } else if event.type == .magnify {
+                guard let window = self.window, window.isVisible, window.frame.contains(NSEvent.mouseLocation) else {
+                    return
+                }
                 self.handleMagnifyEvent(event)
             }
         }

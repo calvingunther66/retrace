@@ -21,12 +21,31 @@ enum NodeQueries {
         frameWidth: Int,
         frameHeight: Int
     ) throws {
+        guard !nodes.isEmpty else { return }
+
         let sql = """
             INSERT INTO node (
                 frameId, nodeOrder, textOffset, textLength,
                 leftX, topY, width, height, windowIndex, encryptedText
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
+
+        let managesOwnTransaction = sqlite3_get_autocommit(db) != 0
+        if managesOwnTransaction {
+            guard sqlite3_exec(db, "BEGIN IMMEDIATE TRANSACTION;", nil, nil, nil) == SQLITE_OK else {
+                throw DatabaseError.queryFailed(
+                    query: "BEGIN IMMEDIATE TRANSACTION;",
+                    underlying: String(cString: sqlite3_errmsg(db))
+                )
+            }
+        }
+
+        var success = false
+        defer {
+            if managesOwnTransaction && !success {
+                sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            }
+        }
 
         var statement: OpaquePointer?
         defer {
@@ -76,6 +95,16 @@ enum NodeQueries {
             }
 
             sqlite3_reset(statement)
+        }
+
+        if managesOwnTransaction {
+            guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else {
+                throw DatabaseError.queryFailed(
+                    query: "COMMIT;",
+                    underlying: String(cString: sqlite3_errmsg(db))
+                )
+            }
+            success = true
         }
     }
 

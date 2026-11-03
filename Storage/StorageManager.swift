@@ -1445,7 +1445,7 @@ public actor StorageManager: StorageProtocol {
             return 0
         }
 
-        // Count frames without fully decoding them
+        // Count frames without decompressing pixel buffers
         var frameCount = 0
         while trackOutput.copyNextSampleBuffer() != nil {
             frameCount += 1
@@ -1482,6 +1482,11 @@ public actor StorageManager: StorageProtocol {
             )
             assetURL = symlinkPath
         }
+        defer {
+            if assetURL != segmentURL {
+                try? FileManager.default.removeItem(at: assetURL)
+            }
+        }
 
         let asset = AVAsset(url: assetURL)
 
@@ -1489,16 +1494,12 @@ public actor StorageManager: StorageProtocol {
             return false
         }
 
-        // Create asset reader to check first frame's timestamp
+        // Create asset reader to check first frame's timestamp (nil outputSettings avoids decompressing)
         guard let reader = try? AVAssetReader(asset: asset) else {
             return false
         }
 
-        let outputSettings: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
-        ]
-
-        let trackOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: outputSettings)
+        let trackOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
         trackOutput.alwaysCopiesSampleData = false
 
         guard reader.canAdd(trackOutput) else {

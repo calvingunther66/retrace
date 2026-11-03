@@ -248,7 +248,7 @@ public actor CGWindowListCapture {
     private let redactionBlurRadius: Double = 400
     private let redactionMaskCornerRadius: CGFloat = 12
     private let redactionBorderWidth: CGFloat = 2
-    private let redactionCIContext = CIContext()
+    private let redactionCIContext = CIContext(options: [.cacheIntermediates: false])
     private var lastDisplaySurfaceBytes: Int64 = 0
     /// Shared colorspace, reused across BGRA conversions (one live CGImage per tick).
     private static let sharedBGRColorSpace: CGColorSpace = CGColorSpaceCreateDeviceRGB()

@@ -29,6 +29,7 @@ public actor DataAdapter {
     private static let searchDedupeDifferentPositionMinAxisDelta: Double = 0.25
     private static let searchAllRawBatchSize = 150
     private static let queryTokenizer = QueryTokenizer()
+    private static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     // MARK: - Connections
 
@@ -1730,7 +1731,7 @@ public actor DataAdapter {
         // Bind app bundle IDs
         if let apps = filters?.selectedApps, !apps.isEmpty {
             for (index, app) in apps.enumerated() {
-                sqlite3_bind_text(statement, Int32(bindIndex + index), (app as NSString).utf8String, -1, nil)
+                sqlite3_bind_text(statement, Int32(bindIndex + index), app, -1, Self.SQLITE_TRANSIENT)
             }
             bindIndex += apps.count
         }
@@ -1902,11 +1903,11 @@ public actor DataAdapter {
             bindIndex += 1
         }
         for app in filterComponents.appBundleIDs {
-            sqlite3_bind_text(stmt, bindIndex, (app as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, bindIndex, app, -1, Self.SQLITE_TRANSIENT)
             bindIndex += 1
         }
         for stringValue in filterComponents.metadataBindValues {
-            sqlite3_bind_text(stmt, bindIndex, (stringValue as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(stmt, bindIndex, stringValue, -1, Self.SQLITE_TRANSIENT)
             bindIndex += 1
         }
         for date in filterComponents.dateRangeBounds {
@@ -2058,13 +2059,13 @@ public actor DataAdapter {
 
         if let apps = filters.selectedApps, !apps.isEmpty {
             for (index, app) in apps.enumerated() {
-                sqlite3_bind_text(statement, Int32(bindIndex + index), (app as NSString).utf8String, -1, nil)
+                sqlite3_bind_text(statement, Int32(bindIndex + index), app, -1, Self.SQLITE_TRANSIENT)
             }
             bindIndex += apps.count
         }
 
         for stringValue in segmentMetadataBindValues {
-            sqlite3_bind_text(statement, Int32(bindIndex), (stringValue as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, Int32(bindIndex), stringValue, -1, Self.SQLITE_TRANSIENT)
             bindIndex += 1
         }
 
@@ -2399,7 +2400,7 @@ public actor DataAdapter {
         // Bind app bundle IDs
         if let apps = filters?.selectedApps, !apps.isEmpty {
             for (index, app) in apps.enumerated() {
-                sqlite3_bind_text(statement, Int32(bindIndex + index), (app as NSString).utf8String, -1, nil)
+                sqlite3_bind_text(statement, Int32(bindIndex + index), app, -1, Self.SQLITE_TRANSIENT)
             }
             bindIndex += apps.count
         }
@@ -2503,7 +2504,7 @@ public actor DataAdapter {
         // Bind app bundle IDs
         if let apps = filters?.selectedApps, !apps.isEmpty {
             for (index, app) in apps.enumerated() {
-                sqlite3_bind_text(statement, Int32(bindIndex + index), (app as NSString).utf8String, -1, nil)
+                sqlite3_bind_text(statement, Int32(bindIndex + index), app, -1, Self.SQLITE_TRANSIENT)
             }
             bindIndex += apps.count
         }
@@ -4805,12 +4806,12 @@ public actor DataAdapter {
         var currentBindIndex = bindIndex
 
         for app in components.appBundleIDs {
-            sqlite3_bind_text(statement, currentBindIndex, (app as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, currentBindIndex, app, -1, Self.SQLITE_TRANSIENT)
             currentBindIndex += 1
         }
 
         for stringValue in components.metadataBindValues {
-            sqlite3_bind_text(statement, currentBindIndex, (stringValue as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, currentBindIndex, stringValue, -1, Self.SQLITE_TRANSIENT)
             currentBindIndex += 1
         }
 
@@ -5422,8 +5423,8 @@ public actor DataAdapter {
         }
         defer { connection.finalize(statement) }
 
-        sqlite3_bind_text(statement, 1, (startISO as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(statement, 2, (endISO as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(statement, 1, startISO, -1, Self.SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 2, endISO, -1, Self.SQLITE_TRANSIENT)
 
         var hours: [Date] = []
         while sqlite3_step(statement) == SQLITE_ROW {

@@ -3814,6 +3814,23 @@ public actor DatabaseManager: DatabaseProtocol {
         )
     }
 
+    public func recordFrameEntities(
+        frameId: Int64,
+        timestamp: Date,
+        entities: [(entityType: String, normalizedValue: String, displayName: String)]
+    ) async throws -> [MemoryEntity] {
+        guard let db = db else {
+            throw DatabaseError.connectionFailed(underlying: "Database not initialized")
+        }
+        let tsMs = Schema.dateToTimestamp(timestamp)
+        return try CognitiveMemoryQueries.recordFrameEntitiesBatch(
+            db: db,
+            frameId: frameId,
+            timestampMs: tsMs,
+            entities: entities
+        )
+    }
+
     public func getAssociatedEntities(sourceEntityId: Int64, limit: Int = 20) async throws -> [(entity: MemoryEntity, weight: Double)] {
         guard let db = db else {
             throw DatabaseError.connectionFailed(underlying: "Database not initialized")
