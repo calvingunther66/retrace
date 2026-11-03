@@ -922,16 +922,16 @@ enum AppSegmentQueries {
         sqlite3_bind_int64(statement, 2, Schema.dateToTimestamp(endDate))
         sqlite3_bind_int64(statement, 3, maxGapMs)
         sqlite3_bind_int64(statement, 4, maxGapMs)
-        sqlite3_bind_text(statement, 5, (bundleID as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(statement, 5, bundleID, -1, SQLITE_TRANSIENT)
 
         // For browser query, we have additional parameters for window fallback and tab-count CTEs.
         if isBrowser {
             sqlite3_bind_int64(statement, 6, maxGapMs)
             sqlite3_bind_int64(statement, 7, maxGapMs)
-            sqlite3_bind_text(statement, 8, (bundleID as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 8, bundleID, -1, SQLITE_TRANSIENT)
             sqlite3_bind_int64(statement, 9, maxGapMs)
             sqlite3_bind_int64(statement, 10, maxGapMs)
-            sqlite3_bind_text(statement, 11, (bundleID as NSString).utf8String, -1, nil)
+            sqlite3_bind_text(statement, 11, bundleID, -1, SQLITE_TRANSIENT)
         }
 
         var results: [(windowName: String?, isWebsite: Bool, duration: TimeInterval, tabCount: Int?, totalCount: Int, totalDuration: TimeInterval)] = []
@@ -1033,7 +1033,7 @@ enum AppSegmentQueries {
         sqlite3_bind_int64(statement, 2, Schema.dateToTimestamp(endDate))
         sqlite3_bind_int64(statement, 3, maxGapMs)
         sqlite3_bind_int64(statement, 4, maxGapMs)
-        sqlite3_bind_text(statement, 5, (bundleID as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(statement, 5, bundleID, -1, SQLITE_TRANSIENT)
 
         var results: [(windowName: String?, browserUrl: String?, duration: TimeInterval)] = []
         while sqlite3_step(statement) == SQLITE_ROW {
@@ -1148,8 +1148,8 @@ enum AppSegmentQueries {
         sqlite3_bind_int64(statement, 2, Schema.dateToTimestamp(endDate))
         sqlite3_bind_int64(statement, 3, maxGapMs)
         sqlite3_bind_int64(statement, 4, maxGapMs)
-        sqlite3_bind_text(statement, 5, (bundleID as NSString).utf8String, -1, nil)
-        sqlite3_bind_text(statement, 6, (domain as NSString).utf8String, -1, nil)
+        sqlite3_bind_text(statement, 5, bundleID, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(statement, 6, domain, -1, SQLITE_TRANSIENT)
 
         var results: [(windowName: String?, browserUrl: String?, duration: TimeInterval)] = []
         while sqlite3_step(statement) == SQLITE_ROW {

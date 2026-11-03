@@ -616,17 +616,19 @@ final class DataAdapterRewindBoundaryTests: XCTestCase {
         return calendar
     }
 
+    private static let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
     private func tagID(named name: String, in database: DatabaseManager) async throws -> Int64 {
         try await withConnection(database) { db in
             _ = try executeUpdate(
                 db: db,
                 sql: "INSERT OR IGNORE INTO tag (name) VALUES (?);",
-                bind: { sqlite3_bind_text($0, 1, (name as NSString).utf8String, -1, nil) }
+                bind: { sqlite3_bind_text($0, 1, name, -1, Self.SQLITE_TRANSIENT) }
             )
             return try fetchInt64(
                 db: db,
                 sql: "SELECT id FROM tag WHERE name = ?;",
-                bind: { sqlite3_bind_text($0, 1, (name as NSString).utf8String, -1, nil) }
+                bind: { sqlite3_bind_text($0, 1, name, -1, Self.SQLITE_TRANSIENT) }
             )
         }
     }
@@ -653,7 +655,7 @@ final class DataAdapterRewindBoundaryTests: XCTestCase {
                     INSERT INTO segment_comment (body, author, attachmentsJson)
                     VALUES (?, 'test', '[]');
                     """,
-                bind: { sqlite3_bind_text($0, 1, (body as NSString).utf8String, -1, nil) }
+                bind: { sqlite3_bind_text($0, 1, body, -1, Self.SQLITE_TRANSIENT) }
             )
             _ = try executeUpdate(
                 db: db,

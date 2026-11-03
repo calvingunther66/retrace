@@ -403,7 +403,6 @@ public actor HEVCEncoder {
         )
 
         var compressionProperties: [String: Any] = [
-            kVTCompressionPropertyKey_Quality as String: compressionTuning.quality,
             kVTCompressionPropertyKey_AverageBitRate as String: compressionTuning.averageBitRate,
             // Keep quality increases bounded while allowing bigger GOP-local bursts for sharp reference frames.
             kVTCompressionPropertyKey_DataRateLimits as String: [
@@ -419,7 +418,8 @@ public actor HEVCEncoder {
             // Storage guardrail: keep frame reordering enabled. B-frames are a major part of the
             // current storage-efficiency strategy and should not be disabled casually.
             kVTCompressionPropertyKey_AllowFrameReordering as String: true,
-            kVTCompressionPropertyKey_ExpectedFrameRate as String: Self.expectedSourceFrameRate
+            kVTCompressionPropertyKey_ExpectedFrameRate as String: Self.expectedSourceFrameRate,
+            kVTCompressionPropertyKey_MaximizePowerEfficiency as String: true
         ]
 
         if #available(macOS 15.0, *) {

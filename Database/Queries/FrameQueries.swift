@@ -172,7 +172,6 @@ public enum FrameQueries {
     ) throws {
         let sanitizedState = sanitizeInPageURLState(state, frameId: frameId)
         let sanitizedRows = sanitizeInPageURLRows(rows, frameId: frameId)
-        try ensureInPageURLSchema(db: db)
         try beginTransaction(db: db)
         do {
             try deleteInPageURLRows(db: db, frameId: frameId)
@@ -191,7 +190,6 @@ public enum FrameQueries {
 
     /// Get resolved in-page URL rows for a frame.
     static func getInPageURLRows(db: OpaquePointer, frameId: Int64) throws -> [FrameInPageURLRow] {
-        try ensureInPageURLSchema(db: db)
         let sql = """
             SELECT r.ord, t.url, r.nid
             FROM frame_in_page_url r
@@ -227,7 +225,6 @@ public enum FrameQueries {
     }
 
     static func getInPageURLState(db: OpaquePointer, frameId: Int64) throws -> FrameInPageURLState? {
-        try ensureInPageURLSchema(db: db)
         let sql = """
             SELECT mousePosition, scrollPosition, videoCurrentTime
             FROM frame
@@ -1236,9 +1233,7 @@ public enum FrameQueries {
             try FTSQueries.deleteForFrames(db: db, frameIds: frameIDs)
             try SemanticIndexQueries.deleteDescriptions(db: db, frameIDs: frameIDs)
 
-            for frameID in frameIDs {
-                try deleteFrameRow(db: db, frameID: frameID)
-            }
+            try deleteFrameRows(db: db, frameIDs: frameIDs)
 
             // None of the V21 cognitive-memory tables (episode_frame,
             // entity_mention, keyframe_vector_metadata, memory_entity,
@@ -1259,8 +1254,10 @@ public enum FrameQueries {
         }
     }
 
-    private static func deleteFrameRow(db: OpaquePointer, frameID: Int64) throws {
-        let sql = "DELETE FROM frame WHERE id = ?;"
+    private static func deleteFrameRows(db: OpaquePointer, frameIDs: [Int64]) throws {
+        guard !frameIDs.isEmpty else { return }
+        let placeholders = Array(repeating: "?", count: frameIDs.count).joined(separator: ", ")
+        let sql = "DELETE FROM frame WHERE id IN (\(placeholders));"
         var statement: OpaquePointer?
         defer {
             sqlite3_finalize(statement)
@@ -1273,7 +1270,9 @@ public enum FrameQueries {
             )
         }
 
-        sqlite3_bind_int64(statement, 1, frameID)
+        for (index, frameID) in frameIDs.enumerated() {
+            sqlite3_bind_int64(statement, Int32(index + 1), frameID)
+        }
 
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw DatabaseError.queryFailed(

@@ -242,20 +242,22 @@ public actor SemanticIndexer {
             return .awaitingPolicySync
         }
 
-        let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
-        guard !apiKey.isEmpty else {
-            currentStatus = .awaitingKey
-            currentStatusMessage = "OpenRouter API Key not configured"
-            Log.warning("[SemanticIndexer] Skipping cycle: no OpenRouter API key found in Keychain", category: .processing)
-            return .noAPIKey
-        }
-
         let model = Self.readIndexingModel()
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let freshCutoffMs = nowMs - Int64(freshLaneWindow * 1000)
 
         // Stage 1: Fast on-device baseline sweep using Apple Foundation Models / NaturalLanguage
+        // Runs independently of OpenRouter API key so local entity mesh, cognitive episodes,
+        // and on-device vector embeddings are always generated.
         await processBaselineStage(nowMs: nowMs)
+
+        let apiKey = OpenRouterCredentialsManager.getAPIKey() ?? ""
+        guard !apiKey.isEmpty else {
+            currentStatus = .awaitingKey
+            currentStatusMessage = "OpenRouter API Key not configured (Stage 1 on-device active)"
+            Log.info("[SemanticIndexer] OpenRouter API key not configured; Stage 1 baseline on-device indexing active", category: .processing)
+            return .noAPIKey
+        }
 
         // Stage 2: Deep visual indexing via vision LLM, strictly governed by daily request budget
         do {

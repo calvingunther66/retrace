@@ -490,17 +490,14 @@ public actor RewindImporter: MigrationProtocol {
                 )
                 let generatedFrameID = try await database.insertFrame(frameRef)
 
-                // Index text for search (inserts into searchRanking_content)
-                let document = IndexedDocument(
-                    id: 0,  // Will be auto-assigned by DB
-                    frameID: FrameID(value: generatedFrameID),
-                    timestamp: frameTimestamp,
-                    content: extractedText.fullText,
-                    appName: extractedText.metadata.appName,
-                    windowName: extractedText.metadata.windowName,
-                    browserURL: extractedText.metadata.browserURL
+                // Index text for search (inserts into searchRanking FTS5)
+                let docid = try await database.indexFrameText(
+                    mainText: extractedText.fullText,
+                    chromeText: extractedText.chromeText.isEmpty ? nil : extractedText.chromeText,
+                    windowTitle: extractedText.metadata.windowName,
+                    segmentId: appSegmentID.value,
+                    frameId: generatedFrameID
                 )
-                let docid = try await database.insertDocument(document)
 
                 // Insert OCR nodes (Rewind-compatible) with textOffset/textLength
                 if docid > 0 && !extractedText.regions.isEmpty {

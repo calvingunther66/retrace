@@ -89,6 +89,39 @@ public actor AcceleratedVectorEngine: AcceleratedVectorEngineProtocol {
                     isInitialized = true
                     Log.info("[AcceleratedVectorEngine] Initialized with \(frameIDMap.count) vectors from disk", category: .search)
                     return
+                } else if loadedVectors > 0 && !metadata.isEmpty {
+                    // Reconcile: match metadata entries to vectors present in fileData
+                    // Prevents wiping the entire vector cache when retention or debounced writes cause count mismatches.
+                    let fileFloats = fileData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+                    var reconciledBuffer: [Float] = []
+                    var reconciledFrameIDMap: [FrameID] = []
+                    var reconciledLookup: [FrameID: Int] = [:]
+
+                    let sortedMetadata = metadata.sorted { $0.offset < $1.offset }
+                    for entry in sortedMetadata {
+                        let start = entry.offset * dimensions
+                        let end = start + dimensions
+                        if end <= fileFloats.count {
+                            let newIdx = reconciledFrameIDMap.count
+                            let frameId = FrameID(value: entry.frameId)
+                            reconciledFrameIDMap.append(frameId)
+                            reconciledLookup[frameId] = newIdx
+                            reconciledBuffer.append(contentsOf: fileFloats[start..<end])
+                        }
+                    }
+
+                    if !reconciledFrameIDMap.isEmpty {
+                        vectorBuffer = reconciledBuffer
+                        frameIDMap = reconciledFrameIDMap
+                        frameIndexLookup = reconciledLookup
+                        isInitialized = true
+                        recordDirtyChangeAndSchedulePersist()
+                        Log.info(
+                            "[AcceleratedVectorEngine] Reconciled \(frameIDMap.count) vectors (disk had \(loadedVectors), db had \(metadata.count))",
+                            category: .search
+                        )
+                        return
+                    }
                 }
             } catch {
                 Log.warning("[AcceleratedVectorEngine] Failed reading cached vectors: \(error.localizedDescription)", category: .search)
@@ -321,7 +354,7 @@ public actor AcceleratedVectorEngine: AcceleratedVectorEngineProtocol {
         pendingPersistTask = Task {
             try? await Task.sleep(for: Self.persistDebounceInterval)
             guard !Task.isCancelled else { return }
-            await self.flushPendingPersist()
+            self.flushPendingPersist()
         }
     }
 }

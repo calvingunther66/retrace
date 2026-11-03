@@ -48,47 +48,26 @@ public actor EntityMeshManager: EntityMeshProtocol {
         frameID: Int64,
         episodeID: Int64?
     ) async throws -> [MemoryEntity] {
-        var harvested: [MemoryEntity] = []
-        var discoveredIDs: [Int64] = []
+        var rawCandidates: [(entityType: String, normalizedValue: String, displayName: String)] = []
         let now = Date()
 
         // 1. Browser URL entity
         if let browserURL, !browserURL.isEmpty, let url = URL(string: browserURL) {
             let normHost = url.host?.lowercased() ?? browserURL.lowercased()
-            let entId = try await database.upsertMemoryEntity(
+            rawCandidates.append((
                 entityType: MemoryEntityType.url.rawValue,
                 normalizedValue: normHost,
-                displayName: browserURL,
-                timestamp: now
-            )
-            discoveredIDs.append(entId)
-            harvested.append(MemoryEntity(
-                id: entId,
-                entityType: .url,
-                normalizedValue: normHost,
-                displayName: browserURL,
-                firstSeenAt: now,
-                lastSeenAt: now
+                displayName: browserURL
             ))
         }
 
         // 2. Extract embedded URLs from OCR
         for match in extractMatches(regex: urlRegex, in: text) {
             let norm = match.lowercased()
-            let entId = try await database.upsertMemoryEntity(
+            rawCandidates.append((
                 entityType: MemoryEntityType.url.rawValue,
                 normalizedValue: norm,
-                displayName: match,
-                timestamp: now
-            )
-            discoveredIDs.append(entId)
-            harvested.append(MemoryEntity(
-                id: entId,
-                entityType: .url,
-                normalizedValue: norm,
-                displayName: match,
-                firstSeenAt: now,
-                lastSeenAt: now
+                displayName: match
             ))
         }
 
@@ -98,102 +77,64 @@ public actor EntityMeshManager: EntityMeshProtocol {
             let trimmed = match.trimmingCharacters(in: .whitespacesAndNewlines)
             guard trimmed.count >= 4 else { continue }
             let norm = trimmed.lowercased()
-            let entId = try await database.upsertMemoryEntity(
+            rawCandidates.append((
                 entityType: MemoryEntityType.file.rawValue,
                 normalizedValue: norm,
-                displayName: trimmed,
-                timestamp: now
-            )
-            discoveredIDs.append(entId)
-            harvested.append(MemoryEntity(
-                id: entId,
-                entityType: .file,
-                normalizedValue: norm,
-                displayName: trimmed,
-                firstSeenAt: now,
-                lastSeenAt: now
+                displayName: trimmed
             ))
         }
 
         // 4. Extract Tickets (Linear, Jira)
         for match in extractMatches(regex: ticketRegex, in: allContext) {
             let norm = match.uppercased()
-            let entId = try await database.upsertMemoryEntity(
+            rawCandidates.append((
                 entityType: MemoryEntityType.ticket.rawValue,
                 normalizedValue: norm,
-                displayName: norm,
-                timestamp: now
-            )
-            discoveredIDs.append(entId)
-            harvested.append(MemoryEntity(
-                id: entId,
-                entityType: .ticket,
-                normalizedValue: norm,
-                displayName: norm,
-                firstSeenAt: now,
-                lastSeenAt: now
+                displayName: norm
             ))
         }
 
         // 5. Extract People (@mentions & emails)
         for match in extractMatches(regex: mentionRegex, in: text) {
             let norm = "@" + match.lowercased()
-            let entId = try await database.upsertMemoryEntity(
+            rawCandidates.append((
                 entityType: MemoryEntityType.person.rawValue,
                 normalizedValue: norm,
-                displayName: "@" + match,
-                timestamp: now
-            )
-            discoveredIDs.append(entId)
-            harvested.append(MemoryEntity(
-                id: entId,
-                entityType: .person,
-                normalizedValue: norm,
-                displayName: "@" + match,
-                firstSeenAt: now,
-                lastSeenAt: now
+                displayName: "@" + match
             ))
         }
 
         for match in extractMatches(regex: emailRegex, in: text) {
             let norm = match.lowercased()
-            let entId = try await database.upsertMemoryEntity(
+            rawCandidates.append((
                 entityType: MemoryEntityType.person.rawValue,
                 normalizedValue: norm,
-                displayName: match,
-                timestamp: now
-            )
-            discoveredIDs.append(entId)
-            harvested.append(MemoryEntity(
-                id: entId,
-                entityType: .person,
-                normalizedValue: norm,
-                displayName: match,
-                firstSeenAt: now,
-                lastSeenAt: now
+                displayName: match
             ))
         }
 
-        // Record mentions for this frame
-        let uniqueIDs = Array(Set(discoveredIDs))
-        for entId in uniqueIDs {
-            try await database.recordEntityMention(entityId: entId, frameId: frameID, confidence: 1.0)
-        }
-
-        // Record co-occurrence edges between all entities in this frame
-        if uniqueIDs.count >= 2 {
-            for i in 0..<uniqueIDs.count {
-                for j in (i + 1)..<uniqueIDs.count {
-                    try await database.recordEntityCoOccurrence(
-                        sourceEntityId: uniqueIDs[i],
-                        targetEntityId: uniqueIDs[j],
-                        timestamp: now
-                    )
+        // In-memory deduplication by (entityType, normalizedValue) and cap at 25 to prevent edge explosion
+        var seen = Set<String>()
+        var dedupedCandidates: [(entityType: String, normalizedValue: String, displayName: String)] = []
+        for candidate in rawCandidates {
+            let key = "\(candidate.entityType):\(candidate.normalizedValue)"
+            if seen.insert(key).inserted {
+                dedupedCandidates.append(candidate)
+                if dedupedCandidates.count >= 25 {
+                    break
                 }
             }
         }
 
-        return harvested
+        guard !dedupedCandidates.isEmpty else {
+            return []
+        }
+
+        return try await database.recordFrameEntities(
+            frameId: frameID,
+            timestamp: now,
+            entities: dedupedCandidates
+        )
     }
 
     // MARK: - Graph Traversal

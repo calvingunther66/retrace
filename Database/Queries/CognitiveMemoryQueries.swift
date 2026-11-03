@@ -261,7 +261,8 @@ public enum CognitiveMemoryQueries {
                 entityType = excluded.entityType,
                 lastSeenAt = MAX(lastSeenAt, excluded.lastSeenAt),
                 occurrenceCount = occurrenceCount + 1,
-                displayName = CASE WHEN LENGTH(excluded.displayName) > LENGTH(displayName) THEN excluded.displayName ELSE displayName END;
+                displayName = CASE WHEN LENGTH(excluded.displayName) > LENGTH(displayName) THEN excluded.displayName ELSE displayName END
+            RETURNING id;
             """
 
         var statement: OpaquePointer?
@@ -277,13 +278,15 @@ public enum CognitiveMemoryQueries {
         sqlite3_bind_int64(statement, 4, timestampMs)
         sqlite3_bind_int64(statement, 5, timestampMs)
 
-        guard sqlite3_step(statement) == SQLITE_DONE else {
+        let stepResult = sqlite3_step(statement)
+        if stepResult == SQLITE_ROW {
+            return sqlite3_column_int64(statement, 0)
+        }
+        guard stepResult == SQLITE_DONE else {
             throw DatabaseError.queryFailed(query: sql, underlying: String(cString: sqlite3_errmsg(db)))
         }
 
-        // Return entity id. Looked up by the same (entityType, normalizedValue) pair the
-        // uniqueness constraint and ON CONFLICT target use, since normalizedValue alone can
-        // now be shared across distinct entityTypes.
+        // Fallback for unexpected non-RETURNING execution
         if let existing = try findEntity(db: db, entityType: entityType, normalizedValue: normalizedValue) {
             return existing.id
         }
@@ -474,6 +477,66 @@ public enum CognitiveMemoryQueries {
     /// a mid-sequence failure (WAL busy, disk pressure, cancellation) between the two directional
     /// inserts would otherwise leave a permanently asymmetric edge in the knowledge graph, silently
     /// and unrecoverably, since the caller (`SemanticIndexer`) swallows this call with `try?`.
+    /// Records all entity upserts, mentions, and co-occurrences for a frame in a single transaction.
+    public static func recordFrameEntitiesBatch(
+        db: OpaquePointer,
+        frameId: Int64,
+        timestampMs: Int64,
+        entities: [(entityType: String, normalizedValue: String, displayName: String)]
+    ) throws -> [MemoryEntity] {
+        guard !entities.isEmpty else { return [] }
+
+        try execute(db: db, sql: "BEGIN IMMEDIATE TRANSACTION;", int64Params: [])
+        do {
+            var harvested: [MemoryEntity] = []
+            var uniqueIDs: [Int64] = []
+            let now = Date(timeIntervalSince1970: Double(timestampMs) / 1000.0)
+
+            for ent in entities {
+                let entId = try upsertEntity(
+                    db: db,
+                    entityType: ent.entityType,
+                    normalizedValue: ent.normalizedValue,
+                    displayName: ent.displayName,
+                    timestampMs: timestampMs
+                )
+                uniqueIDs.append(entId)
+                harvested.append(MemoryEntity(
+                    id: entId,
+                    entityType: MemoryEntityType(rawValue: ent.entityType) ?? .topic,
+                    normalizedValue: ent.normalizedValue,
+                    displayName: ent.displayName,
+                    firstSeenAt: now,
+                    lastSeenAt: now
+                ))
+            }
+
+            let dedupedIDs = Array(Set(uniqueIDs))
+            for entId in dedupedIDs {
+                try recordMention(db: db, entityId: entId, frameId: frameId, confidence: 1.0)
+            }
+
+            if dedupedIDs.count >= 2 {
+                for i in 0..<dedupedIDs.count {
+                    for j in (i + 1)..<dedupedIDs.count {
+                        try recordCoOccurrenceUnguarded(
+                            db: db,
+                            sourceEntityId: dedupedIDs[i],
+                            targetEntityId: dedupedIDs[j],
+                            timestampMs: timestampMs
+                        )
+                    }
+                }
+            }
+
+            try execute(db: db, sql: "COMMIT;", int64Params: [])
+            return harvested
+        } catch {
+            try? execute(db: db, sql: "ROLLBACK;", int64Params: [])
+            throw error
+        }
+    }
+
     public static func recordCoOccurrence(
         db: OpaquePointer,
         sourceEntityId: Int64,

@@ -154,6 +154,10 @@ struct SemanticBatchController: Sendable {
         switch outcome {
         case .ignored:
             return .none
+        case let .completed(sent, _, _, _) where sent < plan.targetN:
+            // Under-filled batch (e.g. queue had fewer items than targetN).
+            // Do not pollute statistical yield/stop-loss with artificial deficits.
+            return .none
         case let .completed(sent, parsed, truncated, meanChars):
             attempt = Attempt(completed: true, usable: parsed, sent: sent, truncated: truncated, timedOut: false, meanChars: meanChars)
         case let .timedOut(sent):

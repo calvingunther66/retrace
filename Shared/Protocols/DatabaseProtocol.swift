@@ -302,6 +302,13 @@ public protocol DatabaseProtocol: Actor {
     /// Record a co-occurrence edge between two entities seen together in the same frame
     func recordEntityCoOccurrence(sourceEntityId: Int64, targetEntityId: Int64, timestamp: Date) async throws
 
+    /// Record mentions and co-occurrences for entities found in a single frame in a single batched operation
+    func recordFrameEntities(
+        frameId: Int64,
+        timestamp: Date,
+        entities: [(entityType: String, normalizedValue: String, displayName: String)]
+    ) async throws -> [MemoryEntity]
+
     /// Get entities most strongly associated (by co-occurrence weight) with a given entity
     func getAssociatedEntities(sourceEntityId: Int64, limit: Int) async throws -> [(entity: MemoryEntity, weight: Double)]
 
@@ -382,6 +389,48 @@ extension DatabaseProtocol {
 
     public func recordEntityCoOccurrence(sourceEntityId: Int64, targetEntityId: Int64, timestamp: Date) async throws {
         throw DatabaseError.queryExecutionFailed("recordEntityCoOccurrence not implemented by this DatabaseProtocol conformer")
+    }
+
+    public func recordFrameEntities(
+        frameId: Int64,
+        timestamp: Date,
+        entities: [(entityType: String, normalizedValue: String, displayName: String)]
+    ) async throws -> [MemoryEntity] {
+        var harvested: [MemoryEntity] = []
+        var discoveredIDs: [Int64] = []
+        for ent in entities {
+            let entId = try await upsertMemoryEntity(
+                entityType: ent.entityType,
+                normalizedValue: ent.normalizedValue,
+                displayName: ent.displayName,
+                timestamp: timestamp
+            )
+            discoveredIDs.append(entId)
+            harvested.append(MemoryEntity(
+                id: entId,
+                entityType: MemoryEntityType(rawValue: ent.entityType) ?? .topic,
+                normalizedValue: ent.normalizedValue,
+                displayName: ent.displayName,
+                firstSeenAt: timestamp,
+                lastSeenAt: timestamp
+            ))
+        }
+        let uniqueIDs = Array(Set(discoveredIDs))
+        for entId in uniqueIDs {
+            try await recordEntityMention(entityId: entId, frameId: frameId, confidence: 1.0)
+        }
+        if uniqueIDs.count >= 2 {
+            for i in 0..<uniqueIDs.count {
+                for j in (i + 1)..<uniqueIDs.count {
+                    try await recordEntityCoOccurrence(
+                        sourceEntityId: uniqueIDs[i],
+                        targetEntityId: uniqueIDs[j],
+                        timestamp: timestamp
+                    )
+                }
+            }
+        }
+        return harvested
     }
 
     public func getAssociatedEntities(sourceEntityId: Int64, limit: Int) async throws -> [(entity: MemoryEntity, weight: Double)] { [] }
